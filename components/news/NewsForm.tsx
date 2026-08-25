@@ -1,0 +1,357 @@
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import { z } from 'zod';
+import { scrollToError } from '@/lib/form-utils';
+import CollapsibleSection from '../common/CollapsibleSection';
+import KeywordTagInput from '../categories/KeywordTagInput';
+import LoadingOverlay from '../common/LoadingOverlay';
+import { NewsItem } from './NewsTable';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
+import { AlertTriangle, AlertCircle } from 'lucide-react';
+
+interface NewsFormProps {
+  initialData?: NewsItem | null;
+  onSubmit?: (data: Partial<NewsItem>) => Promise<void> | void;
+  onSave?: (data: Partial<NewsItem>) => Promise<void> | void;
+  onCancel?: () => void;
+  onClose?: () => void;
+  isLoading?: boolean;
+}
+
+function getFormStatusVariant(status: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' {
+  const s = (status || '').toLowerCase();
+  if (s === 'show' || s === 'published' || s === 'active') return 'success';
+  if (s === 'hide') return 'destructive';
+  if (s === 'draft') return 'warning';
+  if (s === 'archived') return 'slate';
+  return 'default';
+}
+
+export default function NewsForm({
+  initialData,
+  onSubmit,
+  onSave,
+  onCancel,
+  onClose,
+  isLoading = false
+}: NewsFormProps) {
+  const handleCancel = onCancel || onClose || (() => { });
+  const handleSave = onSubmit || onSave || (async () => { });
+
+  const [formData, setFormData] = useState({
+    title: '',
+    summary: '',
+    source_name: '',
+    source_url: '',
+    favicon_url: '',
+    published_date: '',
+    status: 'show'
+  });
+
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        title: initialData.title || '',
+        summary: initialData.summary || '',
+        source_name: initialData.source_name || '',
+        source_url: initialData.source_url || '',
+        favicon_url: initialData.favicon_url || '',
+        published_date: initialData.published_date ? initialData.published_date.substring(0, 10) : '',
+        status: initialData.status || 'show'
+      });
+      const rawCats = initialData.categories;
+      if (Array.isArray(rawCats)) {
+        setSelectedCategories(rawCats);
+      } else if (typeof rawCats === 'string' && rawCats) {
+        try {
+          const parsed = JSON.parse(rawCats);
+          setSelectedCategories(Array.isArray(parsed) ? parsed : [rawCats]);
+        } catch {
+          setSelectedCategories((rawCats as string).split(',').map(s => s.trim()).filter(Boolean));
+        }
+      } else {
+        setSelectedCategories([]);
+      }
+    }
+  }, [initialData]);
+
+  const isDirty = useMemo(() => {
+    if (!initialData) return true;
+    const initialCats = initialData.categories || [];
+    const initialPubDate = initialData.published_date ? initialData.published_date.substring(0, 10) : '';
+
+    return (
+      formData.title !== (initialData.title || '') ||
+      formData.summary !== (initialData.summary || '') ||
+      formData.source_name !== (initialData.source_name || '') ||
+      formData.source_url !== (initialData.source_url || '') ||
+      formData.favicon_url !== (initialData.favicon_url || '') ||
+      formData.published_date !== initialPubDate ||
+      formData.status !== (initialData.status || 'show') ||
+      selectedCategories.join(',') !== initialCats.join(',')
+    );
+  }, [formData, selectedCategories, initialData]);
+
+  const validate = () => {
+    const newsSchema = z.object({
+      title: z.string().trim().min(1, 'Title is required'),
+      source_name: z.string().trim().min(1, 'Source name is required'),
+      source_url: z.string().trim().min(1, 'News URL is required').url('Invalid News URL'),
+      published_date: z.string().trim().min(1, 'Published date is required'),
+      favicon_url: z.string().trim().url('Invalid favicon URL').or(z.literal(''))
+    });
+
+    const result = newsSchema.safeParse(formData);
+    const newErrors: Record<string, string> = {};
+
+    if (!result.success) {
+      result.error.issues.forEach(issue => {
+        const path = issue.path[0] as string;
+        newErrors[path] = issue.message;
+      });
+    }
+
+    if (selectedCategories.length === 0) {
+      newErrors.categories = 'At least one category is required';
+    }
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      scrollToError(newErrors);
+      return false;
+    }
+    return true;
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+
+    if (errors[name]) {
+      setErrors(prev => {
+        const newErrs = { ...prev };
+        delete newErrs[name];
+        return newErrs;
+      });
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
+
+    setIsSubmitting(true);
+    try {
+      setErrors({});
+
+      await handleSave({
+        title: formData.title,
+        summary: formData.summary || null,
+        source_name: formData.source_name || null,
+        source_url: formData.source_url || null,
+        favicon_url: formData.favicon_url || null,
+        published_date: formData.published_date ? new Date(formData.published_date).toISOString() : null,
+        status: formData.status,
+        categories: selectedCategories
+      } as any);
+    } catch (err: any) {
+      setErrors({ submit: err?.message || 'An error occurred while saving news article.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const labelClass = "saas-label";
+
+  return (
+    <form onSubmit={handleSubmit} className="saas-form space-y-8 pb-10">
+      {Object.keys(errors).length > 0 && (
+        <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            {errors.submit ? 'Save Failed' : 'Validation Alert'}
+          </AlertTitle>
+          <AlertDescription>
+            {errors.submit ? (
+              <span className="font-semibold uppercase tracking-wider">{errors.submit}</span>
+            ) : (
+              <span>
+                There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:
+                <span className="font-black ml-1 uppercase tracking-tighter">
+                  {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
+                </span>
+              </span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* 1. Article Content & Metadata */}
+      <CollapsibleSection
+        id="news_content_section"
+        title={initialData ? 'Edit News Article' : 'New News Article'}
+        description="Provide headline, category, source details, summary snippet, links, publication date, and visibility status."
+        hasErrors={!!errors.title || !!errors.source_url || !!errors.favicon_url}
+        headerActions={
+          <Badge variant={getFormStatusVariant(formData.status)} className="px-3 py-1">
+            {formData.status}
+          </Badge>
+        }
+      >
+        <div className="space-y-6">
+          {/* 1. Title (Full Width) */}
+          <div className="space-y-1.5">
+            <label className={labelClass}>Title <span className="saas-label-required">*</span></label>
+            <Input
+              type="text"
+              name="title"
+              value={formData.title}
+              onChange={handleChange}
+              placeholder="e.g. OpenAI releases GPT-4o with real-time audio and vision"
+              className={errors.title ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+              required
+            />
+            {errors.title && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.title}</p>}
+          </div>
+
+          {/* 2. Categories */}
+          <div className="space-y-1.5">
+            <label className={labelClass}>Categories <span className="saas-label-required">*</span></label>
+            <KeywordTagInput
+              selectedKeywords={selectedCategories}
+              onKeywordsChange={(cats) => {
+                setSelectedCategories(cats);
+                if (errors.categories && cats.length > 0) {
+                  setErrors(prev => { const n = { ...prev }; delete n.categories; return n; });
+                }
+              }}
+              placeholder="Type or select news categories..."
+              type="generic"
+            />
+            {errors.categories && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.categories}</p>}
+          </div>
+
+          {/* 3. Source Name & News URL horizontally */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-1.5">
+              <label className={labelClass}>Source Name <span className="saas-label-required">*</span></label>
+              <Input
+                type="text"
+                name="source_name"
+                value={formData.source_name}
+                onChange={handleChange}
+                placeholder="e.g. TechCrunch, Reuters, OpenAI Blog"
+                className={errors.source_name ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                required
+              />
+              {errors.source_name && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_name}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className={labelClass}>News URL <span className="saas-label-required">*</span></label>
+              <Input
+                type="url"
+                name="source_url"
+                value={formData.source_url}
+                onChange={handleChange}
+                placeholder="https://techcrunch.com/2024/05/13/openai-launches-gpt-4o/"
+                className={errors.source_url ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                required
+              />
+              {errors.source_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_url}</p>}
+            </div>
+          </div>
+
+          {/* 4. Summary */}
+          <div className="space-y-1.5">
+            <label className={labelClass}>Summary</label>
+            <Textarea
+              name="summary"
+              value={formData.summary}
+              onChange={handleChange}
+              rows={4}
+              placeholder="Brief summary or highlight of the news update for cards and preview drawers..."
+              className="min-h-[100px]"
+            />
+          </div>
+
+          {/* 5. Favicon URL */}
+          <div className="space-y-1.5">
+            <label className={labelClass}>Favicon URL</label>
+            <Input
+              type="url"
+              name="favicon_url"
+              value={formData.favicon_url}
+              onChange={handleChange}
+              placeholder="https://techcrunch.com/favicon.ico"
+              className={errors.favicon_url ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+            />
+            {errors.favicon_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.favicon_url}</p>}
+          </div>
+
+          {/* 6. Published Date & Status in one line */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-1.5">
+              <label className={labelClass}>Published Date <span className="saas-label-required">*</span></label>
+              <Input
+                type="date"
+                name="published_date"
+                value={formData.published_date}
+                onChange={handleChange}
+                className={errors.published_date ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                required
+              />
+              {errors.published_date && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.published_date}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className={labelClass}>Status</label>
+              <Select
+                value={formData.status}
+                onChange={(val) => setFormData(prev => ({ ...prev, status: val }))}
+              >
+                <option value="show">Show</option>
+                <option value="hide">Hide</option>
+                <option value="draft">Draft</option>
+                <option value="archived">Archived</option>
+              </Select>
+            </div>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* Form Controls */}
+      <div className="saas-action-footer flex items-center justify-end gap-3 pt-6 border-t border-[var(--border-color)]">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleCancel}
+          className="h-10 px-6 font-semibold rounded-xl"
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          variant="default"
+          disabled={!isDirty || isSubmitting || isLoading}
+          className="h-10 px-6 font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 rounded-xl"
+        >
+          {isSubmitting || isLoading ? 'Saving...' : (initialData ? 'Update News Article' : 'Create News Article')}
+        </Button>
+      </div>
+
+      {(isSubmitting || isLoading) && <LoadingOverlay message="Synchronizing with database..." />}
+    </form>
+  );
+}
