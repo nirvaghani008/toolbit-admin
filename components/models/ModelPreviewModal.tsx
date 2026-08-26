@@ -17,7 +17,7 @@ function MarkdownContent({ content }: { content: string }) {
     const parts = text.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>;
+        return <strong key={i} className="font-bold text-slate-900 dark:text-zinc-100">{part.slice(2, -2)}</strong>;
       }
       return part;
     });
@@ -32,7 +32,7 @@ function MarkdownContent({ content }: { content: string }) {
     // H2
     if (line.startsWith('## ')) {
       elements.push(
-        <h2 key={i} className="text-base font-extrabold text-slate-900 dark:text-white mt-5 mb-2 first:mt-0">
+        <h2 key={i} className="text-base font-extrabold text-slate-900 dark:text-zinc-100 mt-5 mb-2 first:mt-0">
           {renderInline(line.slice(3))}
         </h2>
       );
@@ -42,7 +42,7 @@ function MarkdownContent({ content }: { content: string }) {
     // H3
     if (line.startsWith('### ')) {
       elements.push(
-        <h3 key={i} className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-4 mb-1">
+        <h3 key={i} className="text-sm font-bold text-slate-800 dark:text-zinc-200 mt-4 mb-1">
           {renderInline(line.slice(4))}
         </h3>
       );
@@ -52,7 +52,7 @@ function MarkdownContent({ content }: { content: string }) {
     // H4
     if (line.startsWith('#### ')) {
       elements.push(
-        <h4 key={i} className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-3 mb-1">
+        <h4 key={i} className="text-xs font-bold text-slate-700 dark:text-zinc-300 mt-3 mb-1">
           {renderInline(line.slice(5))}
         </h4>
       );
@@ -75,9 +75,9 @@ function MarkdownContent({ content }: { content: string }) {
           <div key={`table-${i}`} className="overflow-x-auto my-3">
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-100 dark:bg-slate-800">
+                <tr className="bg-slate-100 dark:bg-zinc-800">
                   {rows[0].map((cell, ci) => (
-                    <th key={ci} className="px-3 py-2 text-left font-bold text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                    <th key={ci} className="px-3 py-2 text-left font-bold text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700">
                       {renderInline(cell)}
                     </th>
                   ))}
@@ -85,9 +85,9 @@ function MarkdownContent({ content }: { content: string }) {
               </thead>
               <tbody>
                 {rows.slice(1).map((row, ri) => (
-                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white dark:bg-[#151c2c]' : 'bg-slate-50 dark:bg-slate-800/40'}>
+                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white dark:bg-zinc-900' : 'bg-slate-50 dark:bg-zinc-800/40'}>
                     {row.map((cell, ci) => (
-                      <td key={ci} className="px-3 py-2 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      <td key={ci} className="px-3 py-2 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
                         {renderInline(cell)}
                       </td>
                     ))}
@@ -103,7 +103,7 @@ function MarkdownContent({ content }: { content: string }) {
 
     // Horizontal rule
     if (/^---+$/.test(line.trim())) {
-      elements.push(<hr key={i} className="border-slate-200 dark:border-slate-700 my-3" />);
+      elements.push(<hr key={i} className="border-slate-200 dark:border-zinc-700 my-3" />);
       i++; continue;
     }
 
@@ -114,7 +114,7 @@ function MarkdownContent({ content }: { content: string }) {
 
     // Paragraph
     elements.push(
-      <p key={i} className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-2">
+      <p key={i} className="text-sm text-slate-600 dark:text-zinc-300 leading-relaxed mb-2">
         {renderInline(line)}
       </p>
     );
@@ -168,7 +168,7 @@ function ModelFavicon({ model }: { model: Model }) {
   const [hasError, setHasError] = useState(false);
 
   return (
-    <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md p-2 flex items-center justify-center shrink-0 overflow-hidden">
+    <div className="w-12 h-12 rounded-2xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 shadow-md p-2 flex items-center justify-center shrink-0 overflow-hidden">
       {!hasError && faviconUrl ? (
         <img
           src={faviconUrl}
@@ -308,11 +308,11 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
       onClick={onClose}
     >
       <div
-        className="bg-[#fcfcfd] dark:bg-[#0b0f19] w-full max-w-[1280px] max-h-[92vh] rounded-2xl md:rounded-[32px] shadow-2xl overflow-hidden flex flex-col border border-slate-200/80 dark:border-slate-800 animate-in zoom-in-95 duration-200"
+        className="bg-[#fcfcfd] dark:bg-zinc-950 w-full max-w-[1280px] max-h-[92vh] rounded-2xl md:rounded-[32px] shadow-2xl overflow-hidden flex flex-col border border-slate-200/80 dark:border-zinc-800 animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Control Bar */}
-        <div className="px-6 py-3 bg-white dark:bg-[#151c2c] border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between shrink-0 z-10 shadow-sm">
+        <div className="px-6 py-3 bg-white dark:bg-zinc-900 border-b border-slate-200/80 dark:border-zinc-800 flex items-center justify-between shrink-0 z-10 shadow-sm">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
             <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
@@ -335,7 +335,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 space-y-8">
 
           {/* 1. Hero Header Banner Card */}
-          <div className="relative overflow-hidden bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-purple-100/50 dark:from-purple-950/30 dark:via-slate-900 dark:to-indigo-950/40 rounded-3xl p-6 md:p-8 border border-purple-100/80 dark:border-slate-800 shadow-sm flex flex-col lg:flex-row gap-8 items-center justify-between">
+          <div className="relative overflow-hidden bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-purple-100/50 dark:from-purple-950/30 dark:via-slate-900 dark:to-indigo-950/40 rounded-3xl p-6 md:p-8 border border-purple-100/80 dark:border-zinc-800 shadow-sm flex flex-col lg:flex-row gap-8 items-center justify-between">
 
             {/* Animated Constellation & Glow Background */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
@@ -432,7 +432,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
 
               {/* Glowing Blur Orbs */}
               <div className="absolute -top-16 -left-16 w-64 h-64 bg-purple-300/30 dark:bg-purple-600/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-16 right-1/3 w-64 h-64 bg-indigo-300/30 dark:bg-indigo-600/20 rounded-full blur-3xl animate-pulse delay-700" />
+              <div className="absolute -bottom-16 right-1/3 w-64 h-64 bg-indigo-300/30 dark:bg-zinc-700/20 rounded-full blur-3xl animate-pulse delay-700" />
             </div>
 
             {/* Left Header Content */}
@@ -440,12 +440,12 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
               <div className="flex items-center gap-3">
                 <ModelFavicon model={model} />
                 <div>
-                  <div className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-zinc-400">
                     {model.provider || 'AI Provider'}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     {formattedReleaseDate && (
-                      <span className="px-2.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-semibold rounded-md flex items-center gap-1 border border-slate-200 dark:border-slate-700">
+                      <span className="px-2.5 py-0.5 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-[10px] font-semibold rounded-md flex items-center gap-1 border border-slate-200 dark:border-zinc-700">
                         <Calendar size={11} className="text-slate-400" /> Released {formattedReleaseDate}
                       </span>
                     )}
@@ -453,11 +453,11 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                 </div>
               </div>
 
-              <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight">
+              <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight leading-tight">
                 {model.name}
               </h1>
 
-              <p className="text-sm md:text-base text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl font-normal">
+              <p className="text-sm md:text-base text-slate-600 dark:text-zinc-300 leading-relaxed max-w-2xl font-normal">
                 {overviewText
                   ? overviewText.split('\n')[0].replace(/^#+\s*/, '')
                   : `${model.name} by ${model.provider || 'AI Provider'} — a frontier AI model.`}
@@ -478,7 +478,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                     href={newsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-5 py-2.5 bg-white/90 dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl font-bold text-xs flex items-center gap-1.5 hover:bg-white transition-all shadow-2xs"
+                    className="px-5 py-2.5 bg-white/90 dark:bg-zinc-800 border border-slate-200/90 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 rounded-2xl font-bold text-xs flex items-center gap-1.5 hover:bg-white transition-all shadow-2xs"
                   >
                     <FileText size={14} /> Announcement
                   </a>
@@ -509,7 +509,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
               const scale = cardH / 140; // 1.14 px per SVG unit
 
               return (
-                <div className="relative z-10 w-full lg:w-[420px] bg-white/90 dark:bg-[#151c2c]/90 backdrop-blur-md rounded-3xl p-5 md:p-6 border border-slate-200/80 dark:border-slate-800 shadow-md">
+                <div className="relative z-10 w-full lg:w-[420px] bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md rounded-3xl p-5 md:p-6 border border-slate-200/80 dark:border-zinc-800 shadow-md">
 
                   {/* ── Label row ── */}
                   <div className="flex items-center justify-between mb-2">
@@ -529,7 +529,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                         return (
                           <div
                             key={m}
-                            className="absolute left-0 right-0 px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700 flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs"
+                            className="absolute left-0 right-0 px-3 py-2 bg-slate-50 dark:bg-zinc-800/80 rounded-xl border border-slate-200/80 dark:border-zinc-700 flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-zinc-200 shadow-2xs"
                             style={{ top: `${topPx}px` }}
                           >
                             <span className={`w-5 h-5 rounded-md ${color} flex items-center justify-center font-serif text-xs font-black shrink-0`}>{icon}</span>
@@ -592,7 +592,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                         return (
                           <div
                             key={m}
-                            className="absolute left-0 right-0 px-3 py-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/80 dark:border-slate-700 flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-2xs"
+                            className="absolute left-0 right-0 px-3 py-2 bg-slate-50 dark:bg-zinc-800/80 rounded-xl border border-slate-200/80 dark:border-zinc-700 flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-zinc-200 shadow-2xs"
                             style={{ top: `${topPx}px` }}
                           >
                             <span className={`w-5 h-5 rounded-md ${color} flex items-center justify-center font-serif text-xs font-black shrink-0`}>{icon}</span>
@@ -615,18 +615,18 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
             {/* Left Content Column (8 Cols) */}
             <div className="lg:col-span-8 space-y-6">
 
-              <div className="bg-white dark:bg-[#151c2c] rounded-3xl p-6 md:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-6">
+              <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 md:p-8 border border-slate-200/80 dark:border-zinc-800 shadow-sm space-y-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 flex items-center justify-center shrink-0">
                     <FileText size={20} />
                   </div>
                   <div>
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Model Overview</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">Capabilities, design details, and architectural traits</p>
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-zinc-100">Model Overview</h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-normal">Capabilities, design details, and architectural traits</p>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="pt-2 border-t border-slate-100 dark:border-zinc-800">
                   {overviewText ? (
                     <>
                       <div className={showFullOverview ? '' : 'max-h-[420px] overflow-hidden relative'}>
@@ -639,7 +639,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                         <div className="pt-3 text-center">
                           <button
                             onClick={() => setShowFullOverview(!showFullOverview)}
-                            className="px-5 py-2 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-2xl border border-slate-200/80 dark:border-slate-700 inline-flex items-center gap-1.5 transition-all cursor-pointer"
+                            className="px-5 py-2 bg-slate-50 dark:bg-zinc-800 hover:bg-slate-100 text-slate-700 dark:text-zinc-200 text-xs font-bold rounded-2xl border border-slate-200/80 dark:border-zinc-700 inline-flex items-center gap-1.5 transition-all cursor-pointer"
                           >
                             {showFullOverview ? 'Show Less' : 'Read Full Overview'}
                             <ChevronDown size={14} className={`transition-transform ${showFullOverview ? 'rotate-180' : ''}`} />
@@ -648,7 +648,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                       )}
                     </>
                   ) : (
-                    <p className="text-sm text-slate-500 dark:text-slate-400 py-2">
+                    <p className="text-sm text-slate-500 dark:text-zinc-400 py-2">
                       No overview available for this model yet.
                     </p>
                   )}
@@ -656,14 +656,14 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
               </div>
 
               {/* Benchmark Performance Card */}
-              <div className="bg-white dark:bg-[#151c2c] rounded-3xl p-6 md:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-6">
+              <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 md:p-8 border border-slate-200/80 dark:border-zinc-800 shadow-sm space-y-6">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
                     <Award size={20} />
                   </div>
                   <div>
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">Benchmark Performance</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">Independent evaluations · Artificial Analysis</p>
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-zinc-100">Benchmark Performance</h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-normal">Independent evaluations · Artificial Analysis</p>
                   </div>
                 </div>
 
@@ -676,11 +676,11 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                       { label: 'AGENTIC INDEX', value: agenticIndex, color: 'border-t-purple-500 border-purple-500/20' },
                     ].map((g) =>
                       g.value !== null ? (
-                        <div key={g.label} className="p-6 bg-slate-50/80 dark:bg-slate-800/40 rounded-3xl border border-slate-200/60 dark:border-slate-700/60 text-center space-y-3">
-                          <div className={`w-24 h-24 rounded-full border-[5px] ${g.color} mx-auto flex items-center justify-center font-black text-xl text-slate-900 dark:text-white`}>
+                        <div key={g.label} className="p-6 bg-slate-50/80 dark:bg-zinc-800/40 rounded-3xl border border-slate-200/60 dark:border-zinc-700/60 text-center space-y-3">
+                          <div className={`w-24 h-24 rounded-full border-[5px] ${g.color} mx-auto flex items-center justify-center font-black text-xl text-slate-900 dark:text-zinc-100`}>
                             {g.value.toFixed(1)}%
                           </div>
-                          <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{g.label}</div>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400">{g.label}</div>
                         </div>
                       ) : null
                     )}
@@ -689,16 +689,16 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
 
                 {/* Progress Bar Benchmark List */}
                 {benchmarkRows.length > 0 ? (
-                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                  <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 space-y-4">
                     <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">ACCURACY & CAPABILITY DETAILS</div>
                     <div className="space-y-3">
                       {benchmarkRows.map((b, i) => (
                         <div key={i} className="space-y-1">
-                          <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-zinc-200">
                             <span>{b.name}</span>
                             <span>{b.score}</span>
                           </div>
-                          <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div className="w-full h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-slate-900 dark:bg-white rounded-full transition-all duration-500"
                               style={{ width: `${b.pct}%` }}
@@ -708,11 +708,11 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                       ))}
                     </div>
                     <div className="pt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
-                      <span>ⓘ</span> Independent evaluation data provided by <strong className="text-slate-700 dark:text-slate-300">Artificial Analysis</strong>.
+                      <span>ⓘ</span> Independent evaluation data provided by <strong className="text-slate-700 dark:text-zinc-300">Artificial Analysis</strong>.
                     </div>
                   </div>
                 ) : (
-                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-sm text-slate-400 text-center py-4">
+                  <div className="pt-4 border-t border-slate-100 dark:border-zinc-800 text-sm text-slate-400 text-center py-4">
                     No benchmark evaluations available for this model yet.
                   </div>
                 )}
@@ -724,45 +724,45 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
             <div className="lg:col-span-4 space-y-6">
 
               {/* Specs Card */}
-              <div className="bg-white dark:bg-[#151c2c] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-slate-200/80 dark:border-zinc-800 shadow-sm space-y-4">
                 <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">SPECS</div>
 
                 <div className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
                   <div className="py-3 flex items-center justify-between">
-                    <span className="font-semibold text-slate-500 dark:text-slate-400">Context window</span>
-                    <span className="font-extrabold text-slate-900 dark:text-white">{formatContextWindow(model.context_length ?? undefined)}</span>
+                    <span className="font-semibold text-slate-500 dark:text-zinc-400">Context window</span>
+                    <span className="font-extrabold text-slate-900 dark:text-zinc-100">{formatContextWindow(model.context_length ?? undefined)}</span>
                   </div>
                   {fmtPrice(inputPrice) && (
                     <div className="py-3 flex items-center justify-between">
-                      <span className="font-semibold text-slate-500 dark:text-slate-400">Input pricing</span>
+                      <span className="font-semibold text-slate-500 dark:text-zinc-400">Input pricing</span>
                       <div className="text-right">
-                        <div className="font-extrabold text-slate-900 dark:text-white">{fmtPrice(inputPrice)}</div>
+                        <div className="font-extrabold text-slate-900 dark:text-zinc-100">{fmtPrice(inputPrice)}</div>
                         {inputPrice !== 0 && <div className="text-[9px] text-slate-400">per 1M tokens</div>}
                       </div>
                     </div>
                   )}
                   {fmtPrice(outputPrice) && (
                     <div className="py-3 flex items-center justify-between">
-                      <span className="font-semibold text-slate-500 dark:text-slate-400">Output pricing</span>
+                      <span className="font-semibold text-slate-500 dark:text-zinc-400">Output pricing</span>
                       <div className="text-right">
-                        <div className="font-extrabold text-slate-900 dark:text-white">{fmtPrice(outputPrice)}</div>
+                        <div className="font-extrabold text-slate-900 dark:text-zinc-100">{fmtPrice(outputPrice)}</div>
                         {outputPrice !== 0 && <div className="text-[9px] text-slate-400">per 1M tokens</div>}
                       </div>
                     </div>
                   )}
                   {fmtPrice(cachedPrice) && (
                     <div className="py-3 flex items-center justify-between">
-                      <span className="font-semibold text-slate-500 dark:text-slate-400">Cached input</span>
+                      <span className="font-semibold text-slate-500 dark:text-zinc-400">Cached input</span>
                       <div className="text-right">
-                        <div className="font-extrabold text-slate-900 dark:text-white">{fmtPrice(cachedPrice)}</div>
+                        <div className="font-extrabold text-slate-900 dark:text-zinc-100">{fmtPrice(cachedPrice)}</div>
                         {cachedPrice !== 0 && <div className="text-[9px] text-slate-400">per 1M tokens</div>}
                       </div>
                     </div>
                   )}
                   {model.knowledge_cutoff && (
                     <div className="py-3 flex items-center justify-between">
-                      <span className="font-semibold text-slate-500 dark:text-slate-400">Knowledge cutoff</span>
-                      <span className="font-extrabold text-slate-900 dark:text-white">{model.knowledge_cutoff}</span>
+                      <span className="font-semibold text-slate-500 dark:text-zinc-400">Knowledge cutoff</span>
+                      <span className="font-extrabold text-slate-900 dark:text-zinc-100">{model.knowledge_cutoff}</span>
                     </div>
                   )}
                 </div>
@@ -771,21 +771,21 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
               </div>
 
               {/* Key Capabilities & Ratings Card */}
-              <div className="bg-white dark:bg-[#151c2c] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-slate-200/80 dark:border-zinc-800 shadow-sm space-y-4">
                 <div className="flex items-center gap-2">
-                  <Award size={16} className="text-slate-700 dark:text-slate-300" />
-                  <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">Key Capabilities & Ratings</h4>
+                  <Award size={16} className="text-slate-700 dark:text-zinc-300" />
+                  <h4 className="text-xs font-extrabold text-slate-900 dark:text-zinc-100">Key Capabilities & Ratings</h4>
                 </div>
 
                 {keyCapabilities.length > 0 ? (
                   <div className="space-y-4 pt-1">
                     {(showAllRatings ? keyCapabilities : keyCapabilities.slice(0, 5)).map((cap, i) => (
                       <div key={i} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-zinc-200">
                           <span>{cap.title}</span>
                           <span>{cap.rating}%</span>
                         </div>
-                        <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-slate-900 dark:bg-white rounded-full transition-all duration-500"
                             style={{ width: `${cap.rating}%` }}
@@ -820,3 +820,4 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
 
   return createPortal(modalJSX, document.body);
 }
+

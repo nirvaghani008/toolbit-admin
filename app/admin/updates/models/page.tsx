@@ -257,23 +257,20 @@ export default function ModelsPage() {
           <p className="text-sm text-[var(--text-muted)] font-medium mt-1">Manage AI models, providers, context windows, and availability status.</p>
         </div>
         {!showForm && (
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <Button 
               variant="outline"
-              size="sm"
               onClick={() => fetchModels(true)} 
               disabled={isRefreshing} 
-              className="h-9 px-4 font-semibold text-xs rounded-xl"
+              className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-indigo-500' : ''} />
+              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
               {isRefreshing ? 'Syncing...' : 'Refresh'}
             </Button>
             <Button 
-              variant="default"
-              size="sm"
               onClick={() => openForm()} 
-              className="h-9 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 rounded-xl"
+              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
               suppressHydrationWarning
             >
               + New Model
@@ -284,53 +281,114 @@ export default function ModelsPage() {
 
       {!showForm ? (
         <>
-          {/* Hero Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          {/* Stats Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
             {[
-              { id: 'all', label: 'Total Models', value: stats.all, color: 'text-indigo-500', bg: 'bg-indigo-500/10', hex: '#6366f1', icon: <Cpu size={18} />, points: sparklines.all },
-              { id: 'show', label: 'Show', value: stats.show, color: 'text-emerald-500', bg: 'bg-emerald-500/10', hex: '#10b981', icon: <CheckCircle2 size={18} />, points: sparklines.show },
-              { id: 'draft', label: 'Draft', value: stats.draft, color: 'text-cyan-500', bg: 'bg-cyan-500/10', hex: '#06b6d4', icon: <FileText size={18} />, points: sparklines.draft },
-              { id: 'archived', label: 'Archived', value: stats.archived, color: 'text-slate-400', bg: 'bg-slate-500/10', hex: '#64748b', icon: <Archive size={18} />, points: sparklines.archived },
-              { id: 'hide', label: 'Hide', value: stats.hide, color: 'text-rose-500', bg: 'bg-rose-500/10', hex: '#f43f5e', icon: <EyeOff size={18} />, points: sparklines.hide },
-            ].map((stat) => (
-              <button
-                key={stat.id}
-                onClick={() => { setStatusFilter(prev => prev === stat.id ? 'all' : stat.id); setCurrentPage(1); }}
-                className={`professional-card text-left rounded-2xl shadow-sm border group relative overflow-hidden transition-all duration-500 hover:shadow-md flex flex-col ${statusFilter === stat.id ? 'bg-[var(--bg-elevated)] border-indigo-500/20 shadow-md' : 'bg-[var(--bg-surface)] border-[var(--border-color)]'}`}
-                style={statusFilter === stat.id ? { borderColor: stat.hex, boxShadow: `0 8px 20px -4px ${stat.hex}15` } : undefined}
-                suppressHydrationWarning
-              >
-                <div className={`absolute inset-0 bg-gradient-to-br transition-opacity pointer-events-none ${statusFilter === stat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} style={{ backgroundImage: `linear-gradient(to bottom right, ${stat.hex}${statusFilter === stat.id ? '15' : '05'}, transparent)` }} />
+              {
+                id: 'all',
+                label: 'Total Models',
+                value: stats.all,
+                iconStyle: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+                badgeStyle: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+                sparklineColor: 'text-[#364954] dark:text-zinc-400',
+                icon: <Cpu size={17} />,
+                points: sparklines.all,
+                badge: 'All Models'
+              },
+              {
+                id: 'show',
+                label: 'Show',
+                value: stats.show,
+                iconStyle: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
+                badgeStyle: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
+                sparklineColor: 'text-[#3c5748] dark:text-emerald-400',
+                icon: <CheckCircle2 size={17} />,
+                points: sparklines.show,
+                badge: 'Active'
+              },
+              {
+                id: 'draft',
+                label: 'Draft',
+                value: stats.draft,
+                iconStyle: 'text-[#5b4375] bg-[#f7f3f9] border-[#e6deed] dark:text-purple-400 dark:bg-purple-500/10 dark:border-purple-500/20',
+                badgeStyle: 'bg-[#f7f3f9] text-[#5b4375] border-[#e6deed] dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20',
+                sparklineColor: 'text-[#5b4375] dark:text-purple-400',
+                icon: <FileText size={17} />,
+                points: sparklines.draft,
+                badge: 'Draft'
+              },
+              {
+                id: 'archived',
+                label: 'Archived',
+                value: stats.archived,
+                iconStyle: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
+                badgeStyle: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
+                sparklineColor: 'text-[#6e5e50] dark:text-violet-400',
+                icon: <Archive size={17} />,
+                points: sparklines.archived,
+                badge: 'Archived'
+              },
+              {
+                id: 'hide',
+                label: 'Hide',
+                value: stats.hide,
+                iconStyle: 'text-[#474c50] bg-[#f3f4f5] border-[#dbdddf] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+                badgeStyle: 'bg-[#f3f4f5] text-[#474c50] border-[#dbdddf] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+                sparklineColor: 'text-[#474c50] dark:text-zinc-400',
+                icon: <EyeOff size={17} />,
+                points: sparklines.hide,
+                badge: 'Hidden'
+              },
+            ].map((stat) => {
+              const isSelected = statusFilter === stat.id;
+              return (
+                <button
+                  key={stat.id}
+                  onClick={() => { setStatusFilter(prev => prev === stat.id ? 'all' : stat.id); setCurrentPage(1); }}
+                  className={`group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col text-left rounded-2xl border shadow-2xs cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#ebe8e2] dark:bg-zinc-800/90 border-zinc-700 dark:border-zinc-500 shadow-xs'
+                      : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30'
+                  }`}
+                  suppressHydrationWarning
+                >
+                  <Sparkline
+                    color={stat.sparklineColor}
+                    points={stat.points}
+                    id={stat.id}
+                    isSelected={isSelected}
+                  />
 
-                <Sparkline color={stat.color} points={stat.points} id={stat.id} isSelected={statusFilter === stat.id} />
+                  <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${stat.iconStyle}`}>
+                      {stat.icon}
+                    </div>
+                    {isSelected ? (
+                      <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-zinc-800 text-zinc-100 border-zinc-700 dark:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-600 shadow-2xs">
+                        Selected
+                      </span>
+                    ) : (
+                      <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border shadow-2xs transition-colors ${stat.badgeStyle}`}>
+                        {stat.badge}
+                      </span>
+                    )}
+                  </div>
 
-                {statusFilter === stat.id && (
-                  <div className="absolute top-4 right-4 z-20 flex items-center justify-center">
-                    <div className="absolute w-1.5 h-1.5 rounded-full animate-ping opacity-75" style={{ backgroundColor: stat.hex }} />
-                    <div className="relative w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stat.hex, boxShadow: `0 0 6px ${stat.hex}` }} />
+                  <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
+                    <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
+                      {stat.label}
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
+                      <CountUp key={refreshKey} end={stat.value} />
+                    </div>
                   </div>
-                )}
-
-                <div className="p-5 pb-4 flex-1 relative z-10 w-full pointer-events-none">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105 ${stat.color} ${stat.bg}`}>
-                    {stat.icon}
-                  </div>
-                </div>
-
-                <div className="px-5 py-4 relative z-10 w-full space-y-1 pointer-events-none">
-                  <div className={`text-[10px] font-bold uppercase tracking-wider truncate ${statusFilter === stat.id ? stat.color : 'text-[var(--text-muted)]'}`}>
-                    {stat.label}
-                  </div>
-                  <div className="text-3xl font-extrabold text-[var(--text-primary)] tracking-tight leading-none">
-                    <CountUp key={refreshKey} end={stat.value} />
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
           {/* Control Bar */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1 flex gap-2">
               <Input
                 type="text"
@@ -344,22 +402,19 @@ export default function ModelsPage() {
                     setCurrentPage(1);
                   }
                 }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-                className="flex-1 h-11 px-4 text-sm font-medium"
+                className="flex-1 h-11 px-4 text-sm"
                 suppressHydrationWarning
               />
               <Button
-                type="button"
-                variant="default"
-                onClick={() => handleSearch()}
-                className="h-11 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md shadow-indigo-600/10 active:scale-95"
+                type="submit"
+                className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95"
                 suppressHydrationWarning
               >
                 Search
               </Button>
             </div>
 
-            <div className="w-full md:w-56">
+            <div className="flex gap-2">
               <Select
                 value={`${sortBy}-${sortOrder}`}
                 onChange={(val) => {
@@ -368,7 +423,7 @@ export default function ModelsPage() {
                   setSortOrder(newOrder);
                   setCurrentPage(1);
                 }}
-                className="h-11 font-semibold"
+                className="h-11 min-w-[180px]"
                 suppressHydrationWarning
               >
                 <option value="id-desc">Newest First</option>
@@ -377,7 +432,7 @@ export default function ModelsPage() {
                 <option value="name-desc">Name (Z-A)</option>
               </Select>
             </div>
-          </div>
+          </form>
 
           {/* Table */}
           <ModelTable
@@ -394,9 +449,9 @@ export default function ModelsPage() {
       ) : (
         <div className="animate-fade-in-up">
           <Button
-            variant="link"
+            variant="ghost"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-2 p-0 h-auto cursor-pointer"
+            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
           >
             ← Back to Database
           </Button>
@@ -413,3 +468,5 @@ export default function ModelsPage() {
     </div>
   );
 }
+
+

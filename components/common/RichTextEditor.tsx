@@ -794,7 +794,7 @@ const Dropdown = ({ label, icon: Icon, children, active }: { label?: string; ico
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 min-w-[120px] max-w-[220px] bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-50 p-1 animate-in fade-in zoom-in-95 duration-100 origin-top-left">
+        <div className="absolute top-full left-0 mt-2 min-w-[120px] max-w-[220px] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 p-1 animate-in fade-in zoom-in-95 duration-100 origin-top-left">
           <div onClick={() => setIsOpen(false)}>{children}</div>
         </div>
       )}
@@ -869,7 +869,7 @@ const MenuBar = ({
 
   return (
     <div className={`sticky top-0 z-30 flex flex-wrap items-center gap-0.5 p-2 rounded-t-xl border-b transition-colors duration-300 ${editorTheme === 'dark'
-      ? 'bg-[#161b22]/95 border-gray-800 text-gray-200 backdrop-blur-md'
+      ? 'dark:bg-zinc-900/95 dark:border-zinc-800 text-gray-200 backdrop-blur-md'
       : 'bg-[#f4f3ef]/95 border-[var(--border-color)] text-zinc-700 backdrop-blur-md'
       }`}>
       <button type="button" onClick={() => editor.chain().focus().undo().run()} className={btnClass(false)} title="Undo"><Undo size={15} /></button>
@@ -1086,7 +1086,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
       Image.configure({
         allowBase64: false,
         HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg my-4 shadow-sm border border-gray-200 dark:border-gray-800',
+          class: 'max-w-full h-auto rounded-lg my-4 shadow-sm border border-gray-200 dark:border-zinc-800',
         },
       }),
       Youtube.configure({ inline: false }),
@@ -1294,7 +1294,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
 
   return (
     <div id={name} data-field={name} className={`border rounded-xl shadow-2xs transition-colors duration-300 relative flex flex-col max-h-[680px] overflow-hidden ${editorTheme === 'dark'
-      ? 'dark bg-[#0d1117] text-gray-100 border-gray-800'
+      ? 'dark dark:bg-zinc-950 text-gray-100 dark:border-zinc-800'
       : 'bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]'
       }`}>
       <MenuBar
@@ -1305,15 +1305,15 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
         onOpenImageModal={() => setIsImageModalOpen(true)}
       />
       <div className="overflow-y-auto flex-1 rounded-b-xl max-h-[600px]">
-        <EditorContent editor={editor} className={`${editorTheme === 'dark' ? 'bg-[#0d1117] text-gray-100' : 'bg-white text-gray-900'}`} />
+        <EditorContent editor={editor} className={`${editorTheme === 'dark' ? 'dark:bg-zinc-950 text-gray-100' : 'bg-white text-gray-900'}`} />
       </div>
 
       {/* Insert Image Modal rendered via React Portal to document.body */}
       {isImageModalOpen && isMounted && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden text-left animate-in zoom-in-95 duration-200 relative z-[100000]">
+          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden text-left animate-in zoom-in-95 duration-200 relative z-[100000]">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <ImageIcon className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
                 <h3 className="text-base font-bold text-gray-900 dark:text-white">Insert Image</h3>
@@ -1335,7 +1335,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
                   type="button"
                   onClick={() => setImageTab('pc')}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${imageTab === 'pc'
-                    ? 'bg-white dark:bg-[#161b22] text-zinc-900 dark:text-zinc-100 shadow-sm'
+                    ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm'
                     : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-200'
                     }`}
                 >
@@ -1345,7 +1345,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
                   type="button"
                   onClick={() => setImageTab('url')}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${imageTab === 'url'
-                    ? 'bg-white dark:bg-[#161b22] text-zinc-900 dark:text-zinc-100 shadow-sm'
+                    ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm'
                     : 'text-gray-500 hover:text-gray-900 dark:hover:text-gray-200'
                     }`}
                 >
@@ -1365,7 +1365,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
                   />
 
                   {filePreview ? (
-                    <div className="relative group border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center p-4">
+                    <div className="relative group border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center p-4">
                       <img src={filePreview} alt="Preview" className="max-h-48 rounded-lg object-contain mb-3" />
                       <p className="text-xs font-medium text-gray-600 dark:text-gray-400 truncate max-w-xs">{selectedFile?.name}</p>
                       <button
@@ -1406,10 +1406,10 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
                     value={imageUrlInput}
                     onChange={(e) => setImageUrlInput(e.target.value)}
                     placeholder="https://example.com/image.png"
-                    className="w-full px-3 py-2.5 text-xs border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition-all"
+                    className="w-full px-3 py-2.5 text-xs border border-gray-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition-all"
                   />
                   {imageUrlInput.trim() && (
-                    <div className="p-2 border border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-900 flex justify-center">
+                    <div className="p-2 border border-gray-200 dark:border-zinc-800 rounded-xl bg-gray-50 dark:bg-gray-900 flex justify-center">
                       <img
                         src={imageUrlInput.trim()}
                         alt="URL Preview"
@@ -1423,7 +1423,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 dark:bg-gray-900/60 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 dark:bg-gray-900/60 border-t border-gray-200 dark:border-zinc-800">
               <button
                 type="button"
                 onClick={handleModalClose}
@@ -1562,3 +1562,4 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
     </div>
   );
 }
+

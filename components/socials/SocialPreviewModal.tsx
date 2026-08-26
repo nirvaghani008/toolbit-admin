@@ -146,7 +146,7 @@ function OembedRenderer({ html, platform }: { html: string; platform?: string })
   }, [html, platform]);
 
   return (
-    <div className="w-full rounded-xl overflow-hidden my-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+    <div className="w-full rounded-xl overflow-hidden my-2 border border-slate-200 dark:border-zinc-800 bg-white dark:bg-slate-900">
       <iframe
         ref={iframeRef}
         title="Social Post Embed"
@@ -182,7 +182,7 @@ function SocialMediaPreview({
   // If real image URL exists and hasn't errored out, render real img
   if (src && !hasError) {
     return (
-      <div className={`relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 flex items-center justify-center shadow-xs my-2 max-h-[300px] ${className}`}>
+      <div className={`relative rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-900 flex items-center justify-center shadow-xs my-2 max-h-[300px] ${className}`}>
         <img
           src={src}
           alt={alt}
@@ -433,11 +433,11 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg bg-white dark:bg-[#111827] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg bg-white dark:bg-zinc-950 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden my-auto flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Outer Card Header */}
-        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between gap-3 shrink-0">
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-zinc-800/80 bg-slate-50/60 dark:bg-slate-900/60 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
             {renderPlatformHeaderBadge()}
             {social.published_date && (
@@ -480,7 +480,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
         <div className="p-4 space-y-3 overflow-y-auto custom-scrollbar flex-1">
           {/* Main Title & Description Header */}
           <div className="space-y-1.5">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight leading-snug">
               {social.title}
             </h2>
 
@@ -506,7 +506,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
                   platform="twitter"
                 />
               ) : (
-                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161e2e] p-3 shadow-xs space-y-2">
+                <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 shadow-xs space-y-2">
                   {/* Author Row */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -514,7 +514,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
                         {authorName.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <div className="flex items-center gap-1 text-xs font-bold text-slate-900 dark:text-white">
+                        <div className="flex items-center gap-1 text-xs font-bold text-slate-900 dark:text-zinc-100">
                           {authorName}
                           <span className="text-sky-500 inline-block text-[10px]" title="Verified">✓</span>
                         </div>
@@ -523,7 +523,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
                         </div>
                       </div>
                     </div>
-                    <div className="text-slate-900 dark:text-white">
+                    <div className="text-slate-900 dark:text-zinc-100">
                       <TwitterBrandIcon size={16} />
                     </div>
                   </div>
@@ -545,7 +545,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                  <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
                     <div className="flex items-center gap-1 hover:text-rose-500 transition-colors cursor-pointer">
                       <Heart size={13} className="text-rose-500 fill-rose-500/20" />
                       <span>{social.view_counter ? social.view_counter.toLocaleString() : '552'}</span>
@@ -568,7 +568,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
                       href={social.source_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-sky-500 hover:bg-sky-500/10 text-[11px] font-bold flex items-center justify-center gap-1 transition-all text-center"
+                      className="w-full py-1.5 rounded-full border border-slate-200 dark:border-zinc-700 text-sky-500 hover:bg-sky-500/10 text-[11px] font-bold flex items-center justify-center gap-1 transition-all text-center"
                     >
                       Read full post on X
                     </a>
@@ -580,7 +580,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
 
           {/* 2. YOUTUBE EMBED CARD */}
           {isYoutube && (
-            <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-950 p-3 text-white shadow-xl space-y-2">
+            <div className="mt-2 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-950 p-3 text-white shadow-xl space-y-2">
               <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
                 <div className="flex items-center gap-1.5">
                   <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[9px] uppercase font-black tracking-wider">
@@ -647,19 +647,19 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
 
           {/* 3. REDDIT EMBED CARD */}
           {isReddit && (
-            <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#182030] p-3 shadow-xs space-y-2">
+            <div className="mt-2 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 shadow-xs space-y-2">
               {/* Reddit Subreddit Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center font-black text-xs shadow-xs shrink-0">
                     <RedditBrandIcon size={16} />
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
                         r/{subreddit}
                       </span>
-                      <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[9px] font-bold rounded-full border border-slate-200 dark:border-slate-700">
+                      <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[9px] font-bold rounded-full border border-slate-200 dark:border-zinc-700">
                         + Join
                       </span>
                     </div>
@@ -674,7 +674,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
               {/* Only show title/description inside card if oEmbed HTML is NOT present, avoiding duplication */}
               {!(jsonData.oembedHtml || jsonData.oembed_html || jsonData.html) && (
                 <>
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-white leading-snug">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 leading-snug">
                     {social.title}
                   </h3>
 
@@ -706,7 +706,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
               )}
 
               {/* Reddit Stats & Actions Bar */}
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
+              <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
                 <div className="flex items-center gap-1 text-orange-600 dark:text-orange-500 font-extrabold">
                   <ThumbsUp size={13} />
                   <span>{social.view_counter ? `${(social.view_counter / 1000).toFixed(1)}K` : '1.4K'} upvotes</span>
@@ -739,7 +739,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
 
           {/* 4. INSTAGRAM EMBED CARD */}
           {isInstagram && (
-            <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1a1f2e] p-3 shadow-xs space-y-2">
+            <div className="mt-2 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 shadow-xs space-y-2">
               {/* Instagram Profile Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -751,7 +751,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
                     </div>
                   </div>
                   <div>
-                    <div className="flex items-center gap-1 text-xs font-bold text-slate-900 dark:text-white">
+                    <div className="flex items-center gap-1 text-xs font-bold text-slate-900 dark:text-zinc-100">
                       {authorHandle}
                       <span className="text-sky-500 text-[10px]">✓</span>
                     </div>
@@ -796,7 +796,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
 
               {/* Caption */}
               <div className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
-                <span className="font-extrabold text-slate-900 dark:text-white mr-1">{authorHandle}</span>
+                <span className="font-extrabold text-slate-900 dark:text-zinc-100 mr-1">{authorHandle}</span>
                 {social.description || social.title}
               </div>
 
@@ -805,7 +805,7 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
                   href={social.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-bold flex items-center justify-center gap-1 transition-all text-center"
+                  className="w-full py-1.5 rounded-full border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-bold flex items-center justify-center gap-1 transition-all text-center"
                 >
                   View original post <ExternalLink size={11} />
                 </a>
@@ -815,14 +815,14 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
 
           {/* 5. DEFAULT / OTHER PLATFORM EMBED CARD */}
           {!isTwitter && !isYoutube && !isReddit && !isInstagram && (
-            <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#141b2d] p-3 shadow-xs space-y-2">
+            <div className="mt-2 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 shadow-xs space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/20">
                     <Sparkles size={14} />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-slate-900 dark:text-white">{authorName}</div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-zinc-100">{authorName}</div>
                     <div className="text-[10px] text-slate-400">{social.platform || 'Social Media'}</div>
                   </div>
                 </div>
@@ -870,3 +870,4 @@ export default function SocialPreviewModal({ social, onClose }: SocialPreviewMod
 
   return createPortal(modalContent, document.body);
 }
+

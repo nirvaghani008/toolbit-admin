@@ -66,68 +66,8 @@ interface ToolTableProps {
   isLoading?: boolean;
 }
 
-function ToolLogo({ tool, toolName }: { tool: any; toolName: string }) {
-  const info = tool.tool_info || {};
+import ToolLogo from '@/components/common/ToolLogo';
 
-  const candidateUrl =
-    (tool as any).favicon_url ||
-    (tool as any).icon_url ||
-    (tool as any).logo_url ||
-    (tool as any).image_url ||
-    (tool as any).featured_image_url ||
-    info.favicon_url ||
-    info.icon_url ||
-    info.logo_url ||
-    info.logo ||
-    info.icon ||
-    info.imageUrl;
-
-  let faviconApiUrl: string | null = null;
-  const siteUrl = tool.tool_site_url || (tool as any).website_url || info.websiteUrl || info.url || info.website_url;
-  if (siteUrl && typeof siteUrl === 'string') {
-    try {
-      const cleanUrl = siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`;
-      const hostname = new URL(cleanUrl).hostname.replace(/^www\./, '');
-      if (hostname) {
-        faviconApiUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=128`;
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  const primaryUrl = candidateUrl || faviconApiUrl;
-  const secondaryUrl = candidateUrl ? faviconApiUrl : null;
-
-  const [currentSrc, setCurrentSrc] = useState<string | null>(primaryUrl);
-  const [hasError, setHasError] = useState(false);
-
-  const handleError = () => {
-    if (currentSrc === candidateUrl && secondaryUrl) {
-      setCurrentSrc(secondaryUrl);
-    } else {
-      setHasError(true);
-    }
-  };
-
-  return (
-    <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 p-1 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden transition-all group-hover:scale-105">
-      {!hasError && currentSrc ? (
-        <img
-          src={currentSrc}
-          alt={toolName}
-          onError={handleError}
-          className="w-full h-full object-contain rounded-lg"
-          loading="lazy"
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center text-zinc-600 dark:text-zinc-300">
-          <Wrench size={16} />
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function ToolTable({
   tools,
@@ -314,7 +254,7 @@ export default function ToolTable({
                     onMouseLeave={() => setHoveredId(null)}
                     className={`transition-all duration-200 group cursor-pointer border-l-2 relative hover:z-[99] ${
                       hoveredId === tool.tool_id
-                        ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-white dark:bg-zinc-800/40'
+                        ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
                         : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                     }`}
                   >
@@ -326,7 +266,7 @@ export default function ToolTable({
                           <div className="flex items-center gap-1.5 min-w-0">
                             <button
                               onClick={() => setPreviewTool(tool)}
-                              className="text-xs font-semibold text-[var(--text-primary)] transition-colors line-clamp-1 text-left hover:text-zinc-900 dark:hover:text-white cursor-pointer"
+                              className="text-xs font-semibold text-[var(--text-primary)] transition-colors line-clamp-1 text-left hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
                               title="Click to preview"
                             >
                               {info.toolName || info.name || 'Unnamed Tool'}
@@ -523,7 +463,7 @@ export default function ToolTable({
                           variant="ghost"
                           size="icon"
                           onClick={() => onEdit(tool)}
-                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-white dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                           title="Edit Record"
                         >
                           <Edit2 size={13} />
@@ -562,7 +502,7 @@ export default function ToolTable({
             onClick={() => !isChangingStatus && setPendingStatusChange(null)}
           >
             <div
-              className="bg-white dark:bg-[#151c2c] border border-zinc-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-in zoom-in-95 duration-150"
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-in zoom-in-95 duration-150"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start gap-4">
@@ -570,7 +510,7 @@ export default function ToolTable({
                   <AlertCircle size={20} />
                 </div>
                 <div className="space-y-1 flex-1">
-                  <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                  <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
                     Confirm Status Change
                   </h3>
                   <p className="text-xs text-zinc-500 dark:text-slate-400 leading-relaxed">
@@ -584,7 +524,7 @@ export default function ToolTable({
               </div>
 
               {/* Visual Status Transition */}
-              <div className="flex items-center justify-center gap-3 p-3 bg-zinc-50 dark:bg-slate-900/60 rounded-xl border border-zinc-200/80 dark:border-slate-800">
+              <div className="flex items-center justify-center gap-3 p-3 bg-zinc-50 dark:bg-slate-900/60 rounded-xl border border-zinc-200/80 dark:border-zinc-800">
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-[9px] font-bold uppercase text-zinc-400 dark:text-slate-500 tracking-wider">Current</span>
                   <Badge variant={getStatusBadgeVariant(pendingStatusChange.tool.status)} className="text-[9px] px-2.5 py-0.5 font-bold tracking-wider uppercase">

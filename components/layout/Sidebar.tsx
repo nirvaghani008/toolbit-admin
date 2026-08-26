@@ -32,11 +32,10 @@ const navItems: NavItem[] = [
   {
     label: 'Tool Management',
     icon: Wrench,
-    module: 'tools',
     sub: [
       { label: 'Tools', href: '/admin/tools', module: 'tools' },
       { label: 'Categories', href: '/admin/tools/categories', module: 'categories' },
-      { label: 'Hashtags', href: '/admin/tools/hashtags', module: 'hashtags' },
+      { label: 'Tags', href: '/admin/tools/tags', module: 'tags' },
       { label: 'Reviews', href: '/admin/tools/reviews', module: 'reviews' },
       { label: 'Tool Reports', href: '/admin/tools/reports', module: 'reports' },
     ],
@@ -45,7 +44,6 @@ const navItems: NavItem[] = [
   {
     label: 'Updates Management',
     icon: RefreshCw,
-    module: 'updates',
     sub: [
       { label: 'Models', href: '/admin/updates/models', module: 'models' },
       { label: 'News', href: '/admin/updates/news', module: 'news' },
@@ -55,17 +53,15 @@ const navItems: NavItem[] = [
   {
     label: 'Submissions',
     icon: Inbox,
-    module: 'submissions',
     sub: [
       { label: 'Tool Submissions', href: '/admin/submissions/tools', module: 'submissions' },
-      { label: 'Advertise Tools', href: '/admin/submissions/advertise', module: 'submissions' },
+      { label: 'Advertise Tools', href: '/admin/submissions/advertise', module: 'advertise' },
       { label: 'Orders', href: '/admin/submissions/orders', module: 'orders' },
     ],
   },
   {
     label: 'Users & Community',
     icon: Users,
-    module: 'users',
     sub: [
       { label: 'Users', href: '/admin/users', module: 'users' },
       { label: 'Newsletter Subs', href: '/admin/newsletter', module: 'newsletter' },
@@ -101,13 +97,13 @@ export default function Sidebar({
     return navItems
       .filter((item) => {
         if (item.superAdminOnly && !isSuperAdmin) return false;
+        if (item.sub) {
+          return item.sub.some((sub) => {
+            if (sub.superAdminOnly && !isSuperAdmin) return false;
+            return !sub.module || hasPermission(sub.module, 'view');
+          });
+        }
         if (item.module && !hasPermission(item.module, 'view')) {
-          if (item.sub) {
-            return item.sub.some((sub) => {
-              if (sub.superAdminOnly && !isSuperAdmin) return false;
-              return !sub.module || hasPermission(sub.module, 'view');
-            });
-          }
           return false;
         }
         return true;
@@ -250,7 +246,7 @@ export default function Sidebar({
           <span
             className={`ml-auto text-[8px] font-bold tracking-widest px-1.5 py-0.5 rounded border uppercase shrink-0 ${
               isSuperAdmin
-                ? 'bg-zinc-100 text-zinc-800 border-zinc-200/80 dark:bg-indigo-500/10 dark:text-[#818cf8] dark:border-indigo-500/20'
+                ? 'bg-zinc-100 text-zinc-800 border-zinc-200/80 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700'
                 : 'bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
             }`}
           >
@@ -281,20 +277,20 @@ export default function Sidebar({
                   title={item.label}
                   className={`group relative w-full flex items-center gap-2.5 rounded-lg transition-all duration-200 p-2 cursor-pointer ${collapsed ? 'justify-center' : 'pl-3.5 pr-3'
                     } ${groupActive
-                      ? 'bg-zinc-100/90 text-zinc-950 font-semibold hover:bg-zinc-100 dark:bg-indigo-500/15 dark:text-[#818cf8] dark:hover:bg-indigo-500/25'
+                      ? 'bg-zinc-100/90 text-zinc-950 font-semibold hover:bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/80'
                       : 'text-zinc-600 font-medium hover:bg-zinc-50/90 hover:text-zinc-950 dark:text-[var(--text-secondary)] dark:hover:bg-[var(--bg-elevated)] dark:hover:text-[var(--text-primary)]'
                     }`}
                   suppressHydrationWarning
                 >
                   {/* Active/Hover Indicator Pill */}
-                  <div className={`absolute left-1 top-1/2 -translate-y-1/2 w-[3.5px] h-5 rounded-full bg-zinc-900 dark:bg-[#818cf8] transition-all duration-200 origin-center ${groupActive
+                  <div className={`absolute left-1 top-1/2 -translate-y-1/2 w-[3.5px] h-5 rounded-full bg-zinc-900 dark:bg-zinc-300 transition-all duration-200 origin-center ${groupActive
                     ? 'scale-y-100 opacity-100'
                     : 'scale-y-0 opacity-0 group-hover:opacity-60 group-hover:scale-y-100'
                     }`} />
 
                   <item.icon size={18} className={`shrink-0 transition-all duration-200 group-hover:scale-110 ${groupActive
-                    ? 'text-zinc-950 dark:text-[#818cf8] scale-105'
-                    : 'text-zinc-500 group-hover:text-zinc-950 dark:text-[var(--text-secondary)] dark:group-hover:text-[#818cf8]'
+                    ? 'text-zinc-950 dark:text-zinc-100 scale-105'
+                    : 'text-zinc-500 group-hover:text-zinc-950 dark:text-[var(--text-secondary)] dark:group-hover:text-[var(--text-primary)]'
                     }`} />
                   <span className={`flex-1 text-[13px] text-left whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0 pointer-events-none' : 'max-w-[150px] opacity-100'
                     }`}>
@@ -312,14 +308,14 @@ export default function Sidebar({
                         href={sub.href}
                         onClick={(e) => handleNavClick(e, sub.href)}
                         className={`group/sub flex items-center gap-2 p-1.5 px-3 rounded-lg text-[13px] transition-all duration-200 outline-none hover:translate-x-1.5 ${isActive(sub.href)
-                          ? 'font-semibold text-zinc-950 bg-zinc-100 hover:bg-zinc-100/90 dark:text-[#818cf8] dark:bg-indigo-500/15 dark:hover:bg-indigo-500/20'
+                          ? 'font-semibold text-zinc-950 bg-zinc-100 hover:bg-zinc-100/90 dark:text-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-800/80'
                           : 'text-zinc-600 font-medium hover:text-zinc-950 hover:bg-zinc-50 dark:text-[var(--text-secondary)] dark:hover:text-[var(--text-primary)] dark:hover:bg-[var(--bg-elevated)]'
                           }`}
                       >
                         {/* Active/Hover mini dot */}
                         <span className={`w-1.5 h-1.5 rounded-full transition-all duration-200 shrink-0 ${isActive(sub.href)
-                          ? 'bg-zinc-900 dark:bg-[#818cf8] scale-100 opacity-100'
-                          : 'bg-zinc-400/60 dark:bg-[#818cf8]/40 scale-0 opacity-0 group-hover/sub:scale-100 group-hover/sub:opacity-100'
+                          ? 'bg-zinc-900 dark:bg-zinc-200 scale-100 opacity-100'
+                          : 'bg-zinc-400/60 dark:bg-zinc-500/40 scale-0 opacity-0 group-hover/sub:scale-100 group-hover/sub:opacity-100'
                           }`} />
                         <span className="whitespace-nowrap overflow-hidden">{sub.label}</span>
                       </Link>
@@ -338,19 +334,19 @@ export default function Sidebar({
               title={collapsed ? item.label : undefined}
               className={`group relative flex items-center gap-2.5 rounded-lg transition-all duration-200 p-2 cursor-pointer ${collapsed ? 'justify-center' : 'pl-3.5 pr-3'
                 } ${isActive(item.href!)
-                  ? 'bg-zinc-100/90 text-zinc-950 font-semibold hover:bg-zinc-100 dark:bg-indigo-500/15 dark:text-[#818cf8] dark:hover:bg-indigo-500/20'
+                  ? 'bg-zinc-100/90 text-zinc-950 font-semibold hover:bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/80'
                   : 'text-zinc-600 font-medium hover:bg-zinc-50/90 hover:text-zinc-950 dark:text-[var(--text-secondary)] dark:hover:bg-[var(--bg-elevated)] dark:hover:text-[var(--text-primary)]'
                 }`}
             >
               {/* Active/Hover Indicator Pill */}
-              <div className={`absolute left-1 top-1/2 -translate-y-1/2 w-[3.5px] h-5 rounded-full bg-zinc-900 dark:bg-[#818cf8] transition-all duration-200 origin-center ${isActive(item.href!)
+              <div className={`absolute left-1 top-1/2 -translate-y-1/2 w-[3.5px] h-5 rounded-full bg-zinc-900 dark:bg-zinc-300 transition-all duration-200 origin-center ${isActive(item.href!)
                 ? 'scale-y-100 opacity-100'
                 : 'scale-y-0 opacity-0 group-hover:opacity-60 group-hover:scale-y-100'
                 }`} />
 
               <item.icon size={18} className={`shrink-0 transition-all duration-200 group-hover:scale-110 ${isActive(item.href!)
-                ? 'text-zinc-950 dark:text-[#818cf8] scale-105'
-                : 'text-zinc-500 group-hover:text-zinc-950 dark:text-[var(--text-secondary)] dark:group-hover:text-[#818cf8]'
+                ? 'text-zinc-950 dark:text-zinc-100 scale-105'
+                : 'text-zinc-500 group-hover:text-zinc-950 dark:text-[var(--text-secondary)] dark:group-hover:text-[var(--text-primary)]'
                 }`} />
               <span className={`text-[13px] whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0 pointer-events-none' : 'max-w-[150px] opacity-100'
                 }`}>

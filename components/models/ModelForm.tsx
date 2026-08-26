@@ -13,6 +13,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 interface ModelFormProps {
   initialData?: Model | null;
@@ -254,7 +255,7 @@ export default function ModelForm({
         .min(1, 'URL slug is required')
         .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase, numbers, and hyphens only'),
       provider: z.string().trim().min(1, 'Provider is required'),
-      context_length: z.string().trim().min(1, 'Context length is required').refine(val => !isNaN(Number(val)) && Number(val) > 0, 'Context length must be a valid number'),
+      context_length: z.string().trim().refine(val => !val || (!isNaN(Number(val)) && Number(val) > 0), 'Context length must be a valid number'),
       site_url: z.string().trim().url('Invalid official site URL').or(z.literal('')),
       news_url: z.string().trim().url('Invalid announcement URL').or(z.literal('')),
       favicon_url: z.string().trim().url('Invalid favicon logo URL').or(z.literal('')),
@@ -712,7 +713,7 @@ export default function ModelForm({
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1">
-                <label className={labelClass}>Context Length (Tokens) <span className="saas-label-required">*</span></label>
+                <label className={labelClass}>Context Length (Tokens)</label>
                 <Input
                   type="number"
                   name="context_length"
@@ -720,7 +721,6 @@ export default function ModelForm({
                   onChange={handleChange}
                   placeholder="e.g. 128000 or 1000000"
                   className={errors.context_length ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
-                  required
                   suppressHydrationWarning
                 />
                 {errors.context_length && (
@@ -844,7 +844,7 @@ export default function ModelForm({
                     type="button"
                     onClick={() => setBenchmarkTab('visual')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${benchmarkTab === 'visual'
-                      ? 'bg-indigo-600 text-white shadow-sm'
+                      ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                       }`}
                   >
@@ -854,7 +854,7 @@ export default function ModelForm({
                     type="button"
                     onClick={() => setBenchmarkTab('json')}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${benchmarkTab === 'json'
-                      ? 'bg-amber-500 text-white shadow-sm'
+                      ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                       }`}
                   >
@@ -866,10 +866,10 @@ export default function ModelForm({
               {formData.benchmarks.length > 0 && benchmarkTab === 'visual' && (
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="outline"
                   size="xs"
                   onClick={addBenchmarkVariant}
-                  className="h-7 px-3 text-indigo-500 hover:text-indigo-600 hover:bg-indigo-500/10 border-indigo-500/30 font-bold"
+                  className="h-7 px-3 text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 border-zinc-200 dark:border-zinc-700 font-bold"
                 >
                   <Plus size={14} /> Add Variant
                 </Button>
@@ -900,7 +900,7 @@ export default function ModelForm({
               <div className="space-y-6">
                 {formData.benchmarks.length === 0 ? (
                   <div className="p-8 text-center bg-[var(--bg-elevated)]/20 border border-dashed border-[var(--border-color)] rounded-2xl space-y-3">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mx-auto border border-indigo-500/20">
+                    <div className="w-10 h-10 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center mx-auto border border-zinc-200 dark:border-zinc-700">
                       <LayoutGrid size={20} />
                     </div>
                     <div>
@@ -909,10 +909,9 @@ export default function ModelForm({
                     </div>
                     <Button
                       type="button"
-                      variant="default"
                       size="sm"
                       onClick={addBenchmarkVariant}
-                      className="bg-indigo-600 hover:bg-indigo-700 font-bold text-xs uppercase tracking-wider"
+                      className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold text-xs uppercase tracking-wider"
                     >
                       <Plus size={14} /> Add First Variant
                     </Button>
@@ -931,10 +930,10 @@ export default function ModelForm({
                         </div>
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant="ghost"
                           size="xs"
                           onClick={() => removeBenchmarkVariant(idx)}
-                          className="h-7 px-2.5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 border-rose-500/30 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                          className="h-7 px-2.5 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 opacity-0 group-hover:opacity-100 transition-all duration-200 cursor-pointer"
                           title="Remove Variant"
                         >
                           <Trash2 size={13} /> Remove
@@ -1159,17 +1158,10 @@ export default function ModelForm({
         hideChevron={true}
         headerActions={
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setHasTopScores(prev => !prev)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-offset-2 ring-indigo-500 focus:ring-2 ${hasTopScores ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                }`}
-            >
-              <span
-                className={`${hasTopScores ? 'translate-x-6' : 'translate-x-1'
-                  } inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out shadow-sm`}
-              />
-            </button>
+            <Switch
+              checked={hasTopScores}
+              onCheckedChange={setHasTopScores}
+            />
           </div>
         }
       >
@@ -1239,10 +1231,10 @@ export default function ModelForm({
                       </div>
                       <Button
                         type="button"
-                        variant="secondary"
-                        size="xs"
+                        variant="ghost"
+                        size="icon"
                         onClick={() => removeCustomTopScore(entry.id)}
-                        className="h-8 w-8 p-0 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                        className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 opacity-0 group-hover:opacity-100 transition-all duration-200 cursor-pointer"
                         title="Delete Entry"
                       >
                         <Trash2 size={13} />
@@ -1337,18 +1329,18 @@ export default function ModelForm({
           variant="outline"
           onClick={handleCancel}
           disabled={isSubmitting || isLoading}
+          className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          variant="default"
           disabled={!isDirty || isSubmitting || isLoading}
-          className="min-w-[140px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
+          className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
           {isSubmitting || isLoading ? (
             <>
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin mr-1.5" />
               Saving...
             </>
           ) : (

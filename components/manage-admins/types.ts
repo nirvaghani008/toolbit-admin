@@ -23,13 +23,14 @@ export interface ModuleDefinition {
   name: string;
   description: string;
   badge: string;
-  category: 'Overview' | 'Content' | 'Catalog' | 'Operations' | 'Audience';
+  category: 'Overview' | 'Catalog' | 'Content' | 'Operations' | 'Audience' | 'Account';
   supportsInsert: boolean;
   supportsUpdate: boolean;
   supportsDelete: boolean;
 }
 
 export const ADMIN_MODULES: ModuleDefinition[] = [
+  // ── Overview ──────────────────────────────────────────────────────────────
   {
     key: 'dashboard',
     name: 'Dashboard & Analytics',
@@ -40,10 +41,12 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
     supportsUpdate: false,
     supportsDelete: false,
   },
+
+  // ── Catalog & Tools ───────────────────────────────────────────────────────
   {
     key: 'tools',
-    name: 'Tool Management',
-    description: 'Manage AI tools directory, categories, hashtags, user reviews, and tool issue reports.',
+    name: 'AI Tools Directory',
+    description: 'Primary AI tools listing, website links, pricing tags, descriptions, and media assets.',
     badge: '/admin/tools',
     category: 'Catalog',
     supportsInsert: true,
@@ -51,9 +54,51 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
     supportsDelete: true,
   },
   {
+    key: 'categories',
+    name: 'Tool Categories',
+    description: 'Tool classification taxonomy, category hierarchy, slugs, and icon definitions.',
+    badge: '/admin/tools/categories',
+    category: 'Catalog',
+    supportsInsert: true,
+    supportsUpdate: true,
+    supportsDelete: true,
+  },
+  {
+    key: 'tags',
+    name: 'Tags',
+    description: 'Directory discovery tags, trending tag keywords, and search filters.',
+    badge: '/admin/tools/tags',
+    category: 'Catalog',
+    supportsInsert: true,
+    supportsUpdate: true,
+    supportsDelete: true,
+  },
+  {
+    key: 'reviews',
+    name: 'User Reviews & Ratings',
+    description: 'Moderate community tool reviews, public ratings, approval statuses, and feedback.',
+    badge: '/admin/tools/reviews',
+    category: 'Catalog',
+    supportsInsert: false,
+    supportsUpdate: true,
+    supportsDelete: true,
+  },
+  {
+    key: 'reports',
+    name: 'Tool Issue Reports',
+    description: 'Investigate broken URLs, pricing discrepancies, outdated features, and DMCA reports.',
+    badge: '/admin/tools/reports',
+    category: 'Catalog',
+    supportsInsert: false,
+    supportsUpdate: true,
+    supportsDelete: true,
+  },
+
+  // ── Content & Editorial ───────────────────────────────────────────────────
+  {
     key: 'blog_posts',
-    name: 'Blog Posts',
-    description: 'Create, author, draft, and publish MDX blog articles, SEO tags, and categories.',
+    name: 'Blog Articles',
+    description: 'Create, author, draft, and publish MDX blog articles, SEO metadata, and authors.',
     badge: '/admin/content/blog-posts',
     category: 'Content',
     supportsInsert: true,
@@ -63,9 +108,9 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
   {
     key: 'models',
     name: 'AI Models Catalog',
-    description: 'Maintain LLMs, foundation models, benchmark scores, architectures, and release notes.',
+    description: 'Foundation LLMs, benchmark evaluations, model architectures, and release bulletins.',
     badge: '/admin/updates/models',
-    category: 'Catalog',
+    category: 'Content',
     supportsInsert: true,
     supportsUpdate: true,
     supportsDelete: true,
@@ -73,7 +118,7 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
   {
     key: 'news',
     name: 'News Stream',
-    description: 'Curate daily AI industry news, source links, summaries, and launch bulletins.',
+    description: 'Curate daily AI industry headlines, source links, summaries, and launch bulletins.',
     badge: '/admin/updates/news',
     category: 'Content',
     supportsInsert: true,
@@ -90,11 +135,23 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
     supportsUpdate: true,
     supportsDelete: true,
   },
+
+  // ── Operations & Submissions ──────────────────────────────────────────────
   {
     key: 'submissions',
-    name: 'Tool & Ad Submissions',
-    description: 'Review, approve, or reject user-submitted tools and paid promotion listings.',
-    badge: '/admin/submissions',
+    name: 'Tool Submissions',
+    description: 'Review and approve/reject creator-submitted AI tools for platform indexing.',
+    badge: '/admin/submissions/tools',
+    category: 'Operations',
+    supportsInsert: false,
+    supportsUpdate: true,
+    supportsDelete: true,
+  },
+  {
+    key: 'advertise',
+    name: 'Advertise & Sponsored',
+    description: 'Manage sponsored tool promotions, banner placements, billing orders, and scheduling.',
+    badge: '/admin/submissions/advertise',
     category: 'Operations',
     supportsInsert: true,
     supportsUpdate: true,
@@ -110,11 +167,23 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
     supportsUpdate: true,
     supportsDelete: true,
   },
+
+  // ── Audience & Community ──────────────────────────────────────────────────
   {
     key: 'users',
-    name: 'Users & Newsletter',
-    description: 'Registered platform users, bookmarked tools activity, and newsletter subscribers.',
+    name: 'User Accounts',
+    description: 'Registered platform users, authentication records, saved tools, and upvotes.',
     badge: '/admin/users',
+    category: 'Audience',
+    supportsInsert: false,
+    supportsUpdate: true,
+    supportsDelete: true,
+  },
+  {
+    key: 'newsletter',
+    name: 'Newsletter Subscribers',
+    description: 'Subscriber mailing list, active/unsubscribed statuses, and broadcast recipients.',
+    badge: '/admin/newsletter',
     category: 'Audience',
     supportsInsert: false,
     supportsUpdate: true,
@@ -129,5 +198,17 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
     supportsInsert: false,
     supportsUpdate: true,
     supportsDelete: true,
+  },
+
+  // ── Account & Settings ────────────────────────────────────────────────────
+  {
+    key: 'profiles',
+    name: 'My Profile & Security',
+    description: 'Administrator personal profile details, display name, avatar, and password changes.',
+    badge: '/admin/profiles',
+    category: 'Account',
+    supportsInsert: false,
+    supportsUpdate: true,
+    supportsDelete: false,
   },
 ];

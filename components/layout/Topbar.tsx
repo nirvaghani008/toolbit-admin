@@ -34,10 +34,10 @@ const typeIcons: Record<string, React.ComponentType<{ size?: number; className?:
 };
 
 const typeColors: Record<string, string> = {
-  submission: 'bg-zinc-100 text-zinc-900 border border-zinc-200/80 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
+  submission: 'bg-zinc-100 text-zinc-900 border border-zinc-200/80 dark:bg-zinc-800/80 dark:text-zinc-300 dark:border-zinc-700',
   contact: 'bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
   review: 'bg-amber-50 text-amber-700 border border-amber-200/60 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-  user: 'bg-zinc-100 text-zinc-700 border border-zinc-200/80 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20',
+  user: 'bg-zinc-100 text-zinc-700 border border-zinc-200/80 dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
 };
 
 export default function Topbar({ 
@@ -87,9 +87,9 @@ export default function Topbar({
       {/* Visit Live Site Link */}
       <div className="flex-1 max-w-[420px] flex items-center">
         <a href="https://www.toolbit.ai/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:opacity-80 transition-opacity group">
-          <span className="text-[12px] font-bold uppercase tracking-wider text-zinc-800 bg-zinc-100 hover:bg-zinc-200/80 border border-zinc-200/80 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-indigo-500 dark:to-violet-500 dark:border-indigo-500/20 dark:bg-indigo-500/5 px-3 py-1.5 rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors">
+          <span className="text-[12px] font-bold uppercase tracking-wider text-zinc-800 bg-zinc-100 hover:bg-zinc-200/80 border border-zinc-200/80 dark:text-zinc-300 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 dark:border-zinc-700 px-3 py-1.5 rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors">
             Visit Live Site 
-            <ExternalLink size={12} className="text-zinc-700 dark:text-indigo-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            <ExternalLink size={12} className="text-zinc-700 dark:text-zinc-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </span>
         </a>
       </div>
@@ -110,12 +110,12 @@ export default function Topbar({
           <button
             onClick={() => { setShowPanel((v) => !v); setShowProfile(false); }}
             className={`relative w-10 h-10 rounded-xl border cursor-pointer flex items-center justify-center transition-colors duration-150 shadow-2xs ${
-              showPanel ? 'bg-zinc-200/80 border-zinc-300 dark:bg-indigo-500/10 dark:border-transparent' : 'bg-zinc-100/80 hover:bg-zinc-200/70 border-zinc-200/60 dark:bg-[var(--bg-elevated)] dark:hover:bg-[var(--border-color)] dark:border-transparent'
+              showPanel ? 'bg-zinc-200/80 border-zinc-300 dark:bg-zinc-700/60 dark:border-transparent' : 'bg-zinc-100/80 hover:bg-zinc-200/70 border-zinc-200/60 dark:bg-[var(--bg-elevated)] dark:hover:bg-[var(--border-color)] dark:border-transparent'
             }`}
           >
-            <Bell size={18} className={showPanel ? 'text-zinc-950 dark:text-indigo-500' : 'text-zinc-700 dark:text-[var(--text-secondary)]'} />
+            <Bell size={18} className={showPanel ? 'text-zinc-950 dark:text-zinc-200' : 'text-zinc-700 dark:text-[var(--text-secondary)]'} />
             {unread > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-zinc-950 text-white dark:bg-rose-500 dark:text-white text-[9px] font-bold flex items-center justify-center border-2 border-white dark:border-[var(--bg-topbar)] animate-pulse">
+              <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-zinc-950 text-white dark:bg-zinc-200 dark:text-zinc-900 text-[9px] font-bold flex items-center justify-center border-2 border-white dark:border-[var(--bg-topbar)]">
                 {unread}
               </span>
             )}
@@ -128,13 +128,13 @@ export default function Topbar({
                 <div className="flex items-center gap-2">
                   <div className="font-bold text-sm text-zinc-950 dark:text-[var(--text-primary)]">Notifications</div>
                   {unread > 0 && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-700 dark:bg-indigo-500/10 dark:text-indigo-400 border border-zinc-200/80 dark:border-indigo-500/20">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700">
                       {unread} new
                     </span>
                   )}
                 </div>
                 {unread > 0 && (
-                  <button onClick={markAllRead} className="border-none bg-none text-zinc-700 hover:text-zinc-950 dark:text-indigo-500 dark:hover:text-indigo-400 text-xs font-semibold cursor-pointer hover:underline">
+                  <button onClick={markAllRead} className="border-none bg-none text-zinc-700 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100 text-xs font-semibold cursor-pointer hover:underline">
                     Mark all read
                   </button>
                 )}
@@ -144,8 +144,8 @@ export default function Topbar({
                   <div
                     key={n.id}
                     className={`flex gap-3 p-3 px-4 border-b border-[#e5e3df]/60 dark:border-[var(--border-color)] cursor-pointer transition-colors duration-150 ${
-                      n.read ? 'bg-transparent' : 'bg-zinc-50/60 dark:bg-indigo-500/[0.02]'
-                    } hover:bg-zinc-100/70 dark:hover:bg-indigo-500/5`}
+                      n.read ? 'bg-transparent' : 'bg-zinc-50/60 dark:bg-zinc-800/20'
+                    } hover:bg-zinc-100/70 dark:hover:bg-zinc-800/60`}
                   >
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${typeColors[n.type]}`}>
                       {(() => {
@@ -156,7 +156,7 @@ export default function Topbar({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className="font-semibold text-[13px] text-zinc-950 dark:text-[var(--text-primary)]">{n.title}</span>
-                        {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-zinc-900 dark:bg-[#6366f1] shrink-0" />}
+                        {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-zinc-900 dark:bg-zinc-300 shrink-0" />}
                       </div>
                       <div className="text-xs text-zinc-600 dark:text-[var(--text-secondary)] mb-1 truncate">{n.body}</div>
                       <div className="text-[11px] text-zinc-400 dark:text-[var(--text-muted)] font-medium">{n.time}</div>
@@ -165,7 +165,7 @@ export default function Topbar({
                 ))}
               </div>
               <div className="p-3 text-center border-t border-[#e5e3df] dark:border-[var(--border-color)] bg-zinc-50/50 dark:bg-transparent">
-                <button className="border-none bg-none text-zinc-700 hover:text-zinc-950 dark:text-indigo-500 dark:hover:text-indigo-400 text-xs font-semibold cursor-pointer hover:underline">View all notifications</button>
+                <button className="border-none bg-none text-zinc-700 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100 text-xs font-semibold cursor-pointer hover:underline">View all notifications</button>
               </div>
             </div>
           )}
@@ -176,10 +176,10 @@ export default function Topbar({
           <button
             onClick={() => { setShowProfile((v) => !v); setShowPanel(false); }}
             className={`flex items-center gap-2.5 p-1.5 pr-3 rounded-xl border cursor-pointer transition-colors duration-150 shadow-2xs ${
-              showProfile ? 'bg-zinc-200/80 border-zinc-300 dark:bg-indigo-500/10 dark:border-transparent' : 'bg-zinc-100/80 hover:bg-zinc-200/70 border-zinc-200/60 dark:bg-[var(--bg-elevated)] dark:hover:bg-[var(--border-color)] dark:border-transparent'
+              showProfile ? 'bg-zinc-200/80 border-zinc-300 dark:bg-zinc-700/60 dark:border-transparent' : 'bg-zinc-100/80 hover:bg-zinc-200/70 border-zinc-200/60 dark:bg-[var(--bg-elevated)] dark:hover:bg-[var(--border-color)] dark:border-transparent'
             }`}
           >
-            <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-zinc-200/80 dark:border-indigo-500/20 p-0.5 bg-zinc-900 dark:bg-gradient-to-br dark:from-[#6366f1] dark:to-[#8b5cf6] flex items-center justify-center font-bold text-xs text-white">
+            <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-zinc-200/80 dark:border-zinc-700 p-0.5 bg-zinc-800 dark:bg-zinc-700 flex items-center justify-center font-bold text-xs text-white dark:text-zinc-200">
               {adminData?.avatar_url ? (
                 <img 
                   src={adminData.avatar_url} 

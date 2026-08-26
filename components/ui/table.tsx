@@ -57,7 +57,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      'border-b border-[#e5e3df]/60 dark:border-[var(--border-color)] transition-colors hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.04] data-[state=selected]:bg-zinc-100/80 dark:data-[state=selected]:bg-[var(--bg-elevated)]',
+      'border-b border-[#e5e3df]/60 dark:border-[var(--border-color)] transition-colors hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 data-[state=selected]:bg-zinc-100/80 dark:data-[state=selected]:bg-[var(--bg-elevated)]',
       className
     )}
     {...props}
@@ -72,7 +72,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      'h-10 px-6 py-3 text-left align-middle text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] border-b border-[#e5e3df] dark:border-[var(--border-color)] [&:has([role=checkbox])]:pr-0',
+      'h-10 px-6 py-3 text-left align-middle text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-secondary)] border-b border-[#e5e3df] dark:border-[var(--border-color)] [&:has([role=checkbox])]:pr-0',
       className
     )}
     {...props}
@@ -98,7 +98,7 @@ const TableCaption = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <caption
     ref={ref}
-    className={cn('mt-4 text-xs text-zinc-500 dark:text-[var(--text-muted)]', className)}
+    className={cn('mt-4 text-xs text-zinc-500 dark:text-[var(--text-secondary)]', className)}
     {...props}
   />
 ));

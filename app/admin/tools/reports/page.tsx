@@ -292,61 +292,67 @@ export default function ToolReportsPage() {
       id: 'all',
       label: 'Total Reports',
       value: stats.all,
-      color: 'text-indigo-500',
-      bg: 'bg-indigo-500/10',
-      hex: '#6366f1',
-      icon: <Database size={18} />,
+      iconStyle: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+      badgeStyle: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+      sparklineColor: 'text-[#364954] dark:text-zinc-400',
+      icon: <Database size={17} />,
       points: sparklines.all,
+      badge: 'All Reports',
     },
     {
       id: 'not working',
       label: 'Not Working',
       value: stats.notWorking,
-      color: 'text-rose-500',
-      bg: 'bg-rose-500/10',
-      hex: '#f43f5e',
-      icon: <XCircle size={18} />,
+      iconStyle: 'text-[#824235] bg-[#faf2ef] border-[#edd6cf] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
+      badgeStyle: 'bg-[#faf2ef] text-[#824235] border-[#edd6cf] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
+      sparklineColor: 'text-[#824235] dark:text-rose-400',
+      icon: <XCircle size={17} />,
       points: sparklines.notWorking || [0, 0, 0, 0, 0, 0, 0],
+      badge: 'Critical',
     },
     {
       id: 'false info',
       label: 'False Info',
       value: stats.falseInfo,
-      color: 'text-orange-500',
-      bg: 'bg-orange-500/10',
-      hex: '#f97316',
-      icon: <AlertTriangle size={18} />,
+      iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
+      badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
+      sparklineColor: 'text-[#8a652a] dark:text-amber-400',
+      icon: <AlertTriangle size={17} />,
       points: sparklines.falseInfo || [0, 0, 0, 0, 0, 0, 0],
+      badge: 'Content',
     },
     {
       id: 'needs review',
       label: 'Needs Review',
       value: stats.needsReview,
-      color: 'text-amber-500',
-      bg: 'bg-amber-500/10',
-      hex: '#f59e0b',
-      icon: <Clock size={18} />,
+      iconStyle: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
+      badgeStyle: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
+      sparklineColor: 'text-[#3c5748] dark:text-emerald-400',
+      icon: <Clock size={17} />,
       points: sparklines.needsReview || [0, 0, 0, 0, 0, 0, 0],
+      badge: 'Review',
     },
     {
       id: 'detail mismatch',
       label: 'Detail Mismatch',
       value: stats.detailMismatch,
-      color: 'text-purple-500',
-      bg: 'bg-purple-500/10',
-      hex: '#a855f7',
-      icon: <Layers size={18} />,
+      iconStyle: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
+      badgeStyle: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
+      sparklineColor: 'text-[#6e5e50] dark:text-violet-400',
+      icon: <Layers size={17} />,
       points: sparklines.detailMismatch || [0, 0, 0, 0, 0, 0, 0],
+      badge: 'Mismatch',
     },
     {
       id: 'other issue',
       label: 'Other Issue',
       value: stats.otherIssue,
-      color: 'text-blue-500',
-      bg: 'bg-blue-500/10',
-      hex: '#3b82f6',
-      icon: <HelpCircle size={18} />,
+      iconStyle: 'text-[#474c50] bg-[#f3f4f5] border-[#dbdddf] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+      badgeStyle: 'bg-[#f3f4f5] text-[#474c50] border-[#dbdddf] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+      sparklineColor: 'text-[#474c50] dark:text-zinc-400',
+      icon: <HelpCircle size={17} />,
       points: sparklines.otherIssue || [0, 0, 0, 0, 0, 0, 0],
+      badge: 'Other',
     },
   ];
 
@@ -355,11 +361,10 @@ export default function ToolReportsPage() {
       <div className="animate-fade-in-up max-w-[1500px] mx-auto p-6 md:p-8">
         <Button
           variant="ghost"
-          size="sm"
           onClick={closeForm}
-          className="mb-6 text-sm font-bold text-indigo-500 hover:text-indigo-600 hover:bg-transparent p-0 h-auto flex items-center gap-2 cursor-pointer"
+          className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg cursor-pointer"
         >
-          <ArrowLeft size={16} /> Back to Tool Reports
+          ← Back to Tool Reports
         </Button>
         <ToolForm
           initialData={editingTool}
@@ -383,101 +388,91 @@ export default function ToolReportsPage() {
             Review and manage user-submitted tool issue reports.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="default"
-          onClick={() => fetchReports(true)}
-          disabled={isRefreshing}
-          className="font-semibold shadow-xs"
-          suppressHydrationWarning
-        >
-          <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-indigo-500' : ''} />
-          {isRefreshing ? 'Syncing...' : 'Refresh'}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => fetchReports(true)}
+            disabled={isRefreshing}
+            className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            suppressHydrationWarning
+          >
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
+            {isRefreshing ? 'Syncing...' : 'Refresh'}
+          </Button>
+        </div>
       </div>
 
       {/* Stats Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        {statCards.map((stat) => (
-          <button
-            key={stat.id}
-            onClick={() => {
-              setTypeFilter((prev) => (prev === stat.id ? 'all' : stat.id));
-              setCurrentPage(1);
-            }}
-            className={`professional-card text-left rounded-2xl shadow-sm border group relative overflow-hidden transition-all duration-500 hover:shadow-md flex flex-col cursor-pointer ${
-              typeFilter === stat.id
-                ? 'bg-[var(--bg-elevated)] shadow-md'
-                : 'bg-[var(--bg-surface)] border-[var(--border-color)]'
-            }`}
-            style={
-              typeFilter === stat.id
-                ? { borderColor: stat.hex, boxShadow: `0 8px 20px -4px ${stat.hex}15` }
-                : undefined
-            }
-            suppressHydrationWarning
-          >
-            <div
-              className={`absolute inset-0 bg-gradient-to-br transition-opacity pointer-events-none ${
-                typeFilter === stat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-              }`}
-              style={{
-                backgroundImage: `linear-gradient(to bottom right, ${stat.hex}${
-                  typeFilter === stat.id ? '15' : '05'
-                }, transparent)`,
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        {statCards.map((stat) => {
+          const isSelected = typeFilter === stat.id;
+          return (
+            <button
+              key={stat.id}
+              onClick={() => {
+                setTypeFilter((prev) => (prev === stat.id ? 'all' : stat.id));
+                setCurrentPage(1);
               }}
-            />
-            <Sparkline color={stat.color} points={stat.points} id={stat.id} isSelected={typeFilter === stat.id} />
-            {typeFilter === stat.id && (
-              <div className="absolute top-4 right-4 z-20 flex items-center justify-center">
-                <div className="absolute w-1.5 h-1.5 rounded-full animate-ping opacity-75" style={{ backgroundColor: stat.hex }} />
-                <div className="relative w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stat.hex, boxShadow: `0 0 6px ${stat.hex}` }} />
+              className={`group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col text-left rounded-2xl border shadow-2xs cursor-pointer ${
+                isSelected
+                  ? 'bg-[#ebe8e2] dark:bg-zinc-800/90 border-zinc-700 dark:border-zinc-500 shadow-xs'
+                  : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30'
+              }`}
+              suppressHydrationWarning
+            >
+              <Sparkline
+                color={stat.sparklineColor}
+                points={stat.points}
+                id={stat.id}
+                isSelected={isSelected}
+              />
+
+              <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${stat.iconStyle}`}
+                >
+                  {stat.icon}
+                </div>
+                {isSelected ? (
+                  <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-zinc-800 text-zinc-100 border-zinc-700 dark:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-600 shadow-2xs">
+                    Selected
+                  </span>
+                ) : (
+                  <span
+                    className={`px-2 py-0.5 text-[9px] font-bold rounded-full border shadow-2xs transition-colors ${stat.badgeStyle}`}
+                  >
+                    {stat.badge}
+                  </span>
+                )}
               </div>
-            )}
-            <div className="p-5 pb-4 flex-1 relative z-10 w-full pointer-events-none">
-              <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105 ${stat.color} ${stat.bg}`}
-              >
-                {stat.icon}
+
+              <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
+                <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
+                  {stat.label}
+                </div>
+                <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
+                  <CountUp key={refreshKey} end={stat.value} />
+                </div>
               </div>
-            </div>
-            <div className="px-5 py-4 relative z-10 w-full space-y-1 pointer-events-none">
-              <div
-                className={`text-[10px] font-bold uppercase tracking-wider truncate ${
-                  typeFilter === stat.id ? stat.color : 'text-[var(--text-muted)]'
-                }`}
-              >
-                {stat.label}
-              </div>
-              <div className="text-3xl font-extrabold text-[var(--text-primary)] tracking-tight leading-none">
-                <CountUp key={refreshKey} end={stat.value} />
-              </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       {/* Search & Filter */}
       <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="flex-1 flex gap-2">
-          <div className="relative flex-1">
-            <Search
-              size={16}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none"
-            />
-            <Input
-              type="text"
-              placeholder="Search by report type or description..."
-              value={searchInputValue}
-              onChange={(e) => setSearchInputValue(e.target.value)}
-              className="h-11 pl-10 shadow-xs"
-              suppressHydrationWarning
-            />
-          </div>
+          <Input
+            type="text"
+            placeholder="Search by report type or description..."
+            value={searchInputValue}
+            onChange={(e) => setSearchInputValue(e.target.value)}
+            className="flex-1 h-11 px-4 text-sm"
+            suppressHydrationWarning
+          />
           <Button
             type="submit"
-            variant="default"
-            className="h-11 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-md shadow-indigo-600/10 cursor-pointer"
+            className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95 cursor-pointer"
             suppressHydrationWarning
           >
             Search
@@ -490,7 +485,7 @@ export default function ToolReportsPage() {
               setTypeFilter(val);
               setCurrentPage(1);
             }}
-            className="h-11 shadow-xs min-w-[170px]"
+            className="h-11 min-w-[170px]"
             suppressHydrationWarning
           >
             <option value="all">All Issue Types</option>
@@ -503,7 +498,7 @@ export default function ToolReportsPage() {
           <Select
             value={`created_at-${sortOrder}`}
             onChange={(val) => setSortOrder(val.split('-')[1] as 'asc' | 'desc')}
-            className="h-11 shadow-xs min-w-[160px]"
+            className="h-11 min-w-[160px]"
             suppressHydrationWarning
           >
             <option value="created_at-desc">Newest First</option>
@@ -528,3 +523,5 @@ export default function ToolReportsPage() {
     </div>
   );
 }
+
+

@@ -72,14 +72,14 @@ const formatMarkdownToHTML = (text: string) => {
       .replace(/>/g, '&gt;');
     const placeholder = `___INLINE_CODE_${inlineCodes.length}___`;
     inlineCodes.push(
-      `<code class="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-mono text-[0.85em] border border-slate-200 dark:border-slate-700/60 font-semibold">${escaped}</code>`
+      `<code class="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-mono text-[0.85em] border border-slate-200 dark:border-zinc-700/60 font-semibold">${escaped}</code>`
     );
     return placeholder;
   });
 
   // STEP 3: Images ![alt](url "title")
   str = str.replace(/!\[(.*?)\]\((.*?)(?:\s+"(.*?)"|)\)/g, (_, alt, url, title) => {
-    return `<div class="my-8 flex flex-col items-center justify-center"><img src="${url}" alt="${alt || ''}" title="${title || ''}" class="rounded-2xl border border-slate-200 dark:border-slate-800 max-w-full shadow-md cursor-pointer hover:opacity-95 transition-opacity" /></div>`;
+    return `<div class="my-8 flex flex-col items-center justify-center"><img src="${url}" alt="${alt || ''}" title="${title || ''}" class="rounded-2xl border border-slate-200 dark:border-zinc-800 max-w-full shadow-md cursor-pointer hover:opacity-95 transition-opacity" /></div>`;
   });
 
   // STEP 4: Links [text](url "title")
@@ -89,7 +89,7 @@ const formatMarkdownToHTML = (text: string) => {
   const metaLabels = ['Pricing:', 'Current Pricing:', 'Best For:', 'Standout Feature:', 'Plan:', 'Price:', 'Key Features:'];
   metaLabels.forEach(label => {
     const regex = new RegExp(label, 'g');
-    str = str.replace(regex, `<span class="inline-block text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400 mr-2 py-0.5 px-2 bg-indigo-50 dark:bg-indigo-900/30 rounded border border-indigo-100 dark:border-indigo-800/50">${label}</span>`);
+    str = str.replace(regex, `<span class="inline-block text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400 mr-2 py-0.5 px-2 bg-indigo-50 dark:bg-zinc-700/20 rounded border border-indigo-100 dark:border-zinc-700/50">${label}</span>`);
   });
 
   // STEP 6: Headings
@@ -117,7 +117,7 @@ const formatMarkdownToHTML = (text: string) => {
   // STEP 9: Blockquotes
   str = str.replace(/(?:^>\s*(.*$)\n?)+/gm, (match) => {
     const innerText = match.replace(/^>\s?/gm, '').replace(/\n/g, '<br>');
-    return `<blockquote class="border-l-4 border-indigo-500 bg-indigo-50/30 dark:bg-indigo-900/10 p-6 rounded-2xl not-italic text-slate-700 dark:text-slate-300 my-6">${innerText}</blockquote>\n`;
+    return `<blockquote class="border-l-4 border-zinc-500 bg-indigo-50/30 dark:bg-zinc-800/30 p-6 rounded-2xl not-italic text-slate-700 dark:text-zinc-300 my-6">${innerText}</blockquote>\n`;
   });
 
   // STEP 10: Tables
@@ -152,19 +152,19 @@ const formatMarkdownToHTML = (text: string) => {
     const headHtml = header.length > 0 ? `
       <thead class="bg-slate-50 dark:bg-slate-800/60">
         <tr>
-          ${header.map((h, i) => `<th class="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-200 text-left align-middle bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 ${i === 0 ? 'rounded-tl-xl' : ''} ${i === header.length - 1 ? 'rounded-tr-xl' : ''}">${h}</th>`).join('')}
+          ${header.map((h, i) => `<th class="px-4 py-3.5 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-zinc-200 text-left align-middle bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-zinc-800 ${i === 0 ? 'rounded-tl-xl' : ''} ${i === header.length - 1 ? 'rounded-tr-xl' : ''}">${h}</th>`).join('')}
         </tr>
       </thead>` : '';
 
     return `
       <div class="my-5 overflow-x-auto custom-scrollbar">
-        <table class="w-full border-separate border-spacing-0 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden text-left text-sm align-middle">
+        <table class="w-full border-separate border-spacing-0 rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden text-left text-sm align-middle">
           ${headHtml}
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900">
             ${body.map(row => `
               <tr class="bg-white dark:bg-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
                 ${row.map(cell => `
-                  <td class="px-4 py-3 text-slate-700 dark:text-slate-300 text-xs md:text-sm leading-normal align-middle">
+                  <td class="px-4 py-3 text-slate-700 dark:text-zinc-300 text-xs md:text-sm leading-normal align-middle">
                     ${cell.replace(/•/g, '<br/>•')}
                   </td>
                 `).join('')}
@@ -361,11 +361,11 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
       onClick={onClose}
     >
       <div 
-        className="bg-[#f8fafc] dark:bg-[#0b0f19] w-full max-w-[1240px] max-h-[90vh] rounded-2xl md:rounded-[28px] shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200"
+        className="bg-[#f8fafc] dark:bg-zinc-950 w-full max-w-[1240px] max-h-[90vh] rounded-2xl md:rounded-[28px] shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Control Bar */}
-        <div className="px-6 py-3.5 bg-white dark:bg-[#151c2c] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 z-10 shadow-sm">
+        <div className="px-6 py-3.5 bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between shrink-0 z-10 shadow-sm">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
             <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
@@ -387,7 +387,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
         {/* Scrollable Main Article Container */}
         <div 
           ref={containerRef}
-          className="flex-1 overflow-y-auto custom-scrollbar bg-[#f8fafc] dark:bg-[#0b0f19] px-4 md:px-10 pt-8 md:pt-10 pb-12"
+          className="flex-1 overflow-y-auto custom-scrollbar bg-[#f8fafc] dark:bg-zinc-950 px-4 md:px-10 pt-8 md:pt-10 pb-12"
         >
           <main className="max-w-[1100px] mx-auto">
             
@@ -400,7 +400,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                     <Badge
                       key={i}
                       variant="secondary"
-                      className="px-3.5 py-1 bg-white dark:bg-[#151c2c] text-slate-700 dark:text-slate-200 text-[11px] font-bold rounded-full border border-slate-200 dark:border-slate-700 shadow-2xs"
+                      className="px-3.5 py-1 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 text-[11px] font-bold rounded-full border border-slate-200 dark:border-zinc-700 shadow-2xs"
                     >
                       {cat}
                     </Badge>
@@ -409,7 +409,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
               )}
 
               {/* Main Title */}
-              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[42px] font-black tracking-tight text-slate-900 dark:text-white leading-[1.2] max-w-4xl mx-auto">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[42px] font-black tracking-tight text-slate-900 dark:text-zinc-100 leading-[1.2] max-w-4xl mx-auto">
                 {blog.title || 'Untitled Article'}
               </h1>
 
@@ -443,7 +443,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
 
             {/* 2. Featured Image (Rounded with subtle border & shadow) */}
             {blog.featured_image_url && (
-              <div className="relative mb-10 group overflow-hidden rounded-2xl md:rounded-[24px] border border-slate-200/80 dark:border-slate-800 shadow-xl bg-slate-900/5">
+              <div className="relative mb-10 group overflow-hidden rounded-2xl md:rounded-[24px] border border-slate-200/80 dark:border-zinc-800 shadow-xl bg-slate-900/5">
                 <img
                   src={blog.featured_image_url}
                   alt={blog.title || 'Featured Image'}
@@ -464,12 +464,12 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
               
               {/* Sticky / Collapsible Table of Contents */}
               {headings.length > 0 && (
-                <div className="mb-10 p-5 bg-white dark:bg-[#151c2c] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="mb-10 p-5 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm">
                   <div 
                     onClick={() => setIsTocOpen(!isTocOpen)}
                     className="flex items-center justify-between cursor-pointer select-none"
                   >
-                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-zinc-200">
                       <List size={15} className="text-indigo-500" />
                       <span>Table of Contents</span>
                     </div>
@@ -479,7 +479,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                   </div>
 
                   {isTocOpen && (
-                    <nav className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                    <nav className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800/80 space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                       {headings.map((h) => {
                         const isActive = activeHeadingId === h.id;
                         return (
@@ -646,7 +646,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                 />
 
                 {/* Divider Line */}
-                <hr className="my-8 border-t border-slate-200/80 dark:border-slate-800" />
+                <hr className="my-8 border-t border-slate-200/80 dark:border-zinc-800" />
 
                 {/* Share Article Section */}
                 <div className="pt-2 text-center">
@@ -658,7 +658,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                     {/* 1. Copy Link */}
                     <button
                       onClick={handleCopyLink}
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-zinc-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                     >
                       {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} className="text-slate-400" />}
                       <span>{copied ? 'Copied!' : 'Copy Link'}</span>
@@ -669,9 +669,9 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                       href={`https://twitter.com/intent/tweet?text=${shareTitle}&url=${shareUrl}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-zinc-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-all shadow-sm"
                     >
-                      <svg className="w-3 h-3 text-slate-600 dark:text-slate-300 fill-current" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 text-slate-600 dark:text-zinc-300 fill-current" viewBox="0 0 24 24">
                         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
                       </svg>
                       <span>X Twitter</span>
@@ -682,7 +682,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                       href={`https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-zinc-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-all shadow-sm"
                     >
                       <svg className="w-3 h-3 text-[#0a66c2] fill-current" viewBox="0 0 24 24">
                         <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
@@ -695,7 +695,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                       href={`https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-zinc-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-all shadow-sm"
                     >
                       <svg className="w-3 h-3 text-[#1877f2] fill-current" viewBox="0 0 24 24">
                         <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
@@ -708,7 +708,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                       href={`https://reddit.com/submit?url=${shareUrl}&title=${shareTitle}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-zinc-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-all shadow-sm"
                     >
                       <svg className="w-3 h-3 text-[#ff4500] fill-current" viewBox="0 0 24 24">
                         <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.188-.491.96 0 1.743.784 1.743 1.744 0 .606-.307 1.14-.775 1.45.02.18.031.36.031.541 0 2.723-3.155 4.93-7.043 4.93-3.887 0-7.043-2.207-7.043-4.93 0-.18.012-.36.03-.541a1.74 1.74 0 0 1-.774-1.45c0-.96.783-1.744 1.743-1.744.458 0 .88.182 1.187.49 1.196-.855 2.85-1.417 4.673-1.487l.951-4.463 3.32.7a1.25 1.25 0 0 1 1.188-.744z"/>
@@ -721,7 +721,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                       href={`https://api.whatsapp.com/send?text=${shareTitle}%20${shareUrl}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-zinc-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-all shadow-sm"
                     >
                       <svg className="w-3 h-3 text-[#25d366] fill-current" viewBox="0 0 24 24">
                         <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
@@ -732,7 +732,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                     {/* 7. Email */}
                     <a
                       href={`mailto:?subject=${shareTitle}&body=${shareUrl}`}
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-all shadow-sm"
+                      className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-zinc-700/60 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1.5 transition-all shadow-sm"
                     >
                       <Mail size={13} className="text-slate-400" />
                       <span>Email</span>
@@ -773,3 +773,4 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
 
   return createPortal(modalJSX, document.body);
 }
+

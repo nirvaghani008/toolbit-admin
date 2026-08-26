@@ -48,14 +48,14 @@ function SubmitterAvatar({ avatarUrl }: { avatarUrl?: string | null }) {
         src={avatarUrl}
         alt="Avatar"
         onError={() => setHasError(true)}
-        className="w-8 h-8 rounded-full object-cover border border-[var(--border-color)] shrink-0 shadow-2xs"
+        className="w-8 h-8 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 shrink-0 shadow-2xs"
         loading="lazy"
       />
     );
   }
 
   return (
-    <div className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] flex items-center justify-center text-[var(--text-muted)] shrink-0 shadow-2xs">
+    <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-600 dark:text-zinc-300 shrink-0 shadow-2xs">
       <User size={14} />
     </div>
   );
@@ -89,7 +89,7 @@ function OrderToolLogo({ metadata }: { metadata: any }) {
   const [hasError, setHasError] = useState(false);
 
   return (
-    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/15 p-1 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 p-1 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden transition-all group-hover:scale-105">
       {!hasError && faviconUrl ? (
         <img
           src={faviconUrl}
@@ -99,7 +99,7 @@ function OrderToolLogo({ metadata }: { metadata: any }) {
           loading="lazy"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center text-indigo-500">
+        <div className="w-full h-full flex items-center justify-center text-zinc-600 dark:text-zinc-300">
           <Database size={14} />
         </div>
       )}
@@ -124,21 +124,21 @@ export default function OrderTable({
       <Table>
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[20%]">Tool Name</TableHead>
-            <TableHead className="w-[18%]">Submitted By</TableHead>
-            <TableHead className="w-[15%]">Order</TableHead>
-            <TableHead className="w-[12%]">Plan</TableHead>
-            <TableHead className="w-[12%]">Amount</TableHead>
-            <TableHead className="w-[10%] text-center">Status</TableHead>
-            <TableHead className="w-[13%]">Created</TableHead>
-            <TableHead className="w-[10%] text-center">Manage</TableHead>
+            <TableHead className="w-[20%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Name</TableHead>
+            <TableHead className="w-[18%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Submitted By</TableHead>
+            <TableHead className="w-[15%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Order</TableHead>
+            <TableHead className="w-[12%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Plan</TableHead>
+            <TableHead className="w-[12%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Amount</TableHead>
+            <TableHead className="w-[10%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
+            <TableHead className="w-[13%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Created</TableHead>
+            <TableHead className="w-[10%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading ? (
             Array.from({ length: 6 }).map((_, idx) => (
               <TableRow key={`skeleton-${idx}`} className="hover:bg-transparent">
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <div className="flex items-center gap-3">
                     <Skeleton className="w-8 h-8 rounded-lg shrink-0" />
                     <div className="space-y-1.5 flex-1">
@@ -147,7 +147,7 @@ export default function OrderTable({
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <div className="flex items-center gap-3">
                     <Skeleton className="w-8 h-8 rounded-full shrink-0" />
                     <div className="space-y-1.5 flex-1">
@@ -156,28 +156,28 @@ export default function OrderTable({
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <div className="space-y-1.5">
                     <Skeleton className="h-3.5 w-24 rounded" />
                     <Skeleton className="h-2.5 w-16 rounded" />
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <Skeleton className="h-5 w-20 rounded-md" />
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <div className="space-y-1.5">
                     <Skeleton className="h-3.5 w-16 rounded" />
                     <Skeleton className="h-2.5 w-12 rounded" />
                   </div>
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="px-2 py-4 text-center">
                   <Skeleton className="h-5 w-20 mx-auto rounded-md" />
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <Skeleton className="h-3.5 w-20 rounded" />
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="px-4 py-4 text-center">
                   <div className="flex items-center justify-center gap-1.5">
                     <Skeleton className="w-7 h-7 rounded-lg" />
                     <Skeleton className="w-7 h-7 rounded-lg" />
@@ -217,12 +217,12 @@ export default function OrderTable({
                   onMouseLeave={() => setHoveredId(null)}
                   className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
                     hoveredId === order.id
-                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:bg-indigo-500/[0.04] dark:border-l-[var(--primary)]'
-                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.02]'
+                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
+                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                   }`}
                 >
                   {/* Tool Column */}
-                  <TableCell>
+                  <TableCell className="px-4 py-4">
                     <div className="flex items-center gap-3">
                       <OrderToolLogo metadata={order.metadata} />
                       <div className="flex flex-col min-w-0">
@@ -239,7 +239,7 @@ export default function OrderTable({
                   </TableCell>
 
                   {/* Submitter Column */}
-                  <TableCell>
+                  <TableCell className="px-4 py-4">
                     <div className="flex items-center gap-3">
                       <SubmitterAvatar avatarUrl={order.submitter?.avatar_url} />
                       <div className="flex flex-col min-w-0">
@@ -254,7 +254,7 @@ export default function OrderTable({
                   </TableCell>
 
                   {/* Order Number Column */}
-                  <TableCell>
+                  <TableCell className="px-4 py-4">
                     <div>
                       <div className="text-xs font-mono font-bold text-[var(--text-primary)]">
                         {order.order_number}
@@ -266,14 +266,14 @@ export default function OrderTable({
                   </TableCell>
 
                   {/* Plan Badge Column */}
-                  <TableCell>
-                    <Badge variant="slate" className="font-semibold">
+                  <TableCell className="px-4 py-4">
+                    <Badge variant="slate" className="font-semibold text-[9px] px-2 py-0.5">
                       {formatPlanLabel(order.plan_id)}
                     </Badge>
                   </TableCell>
 
                   {/* Amount Column */}
-                  <TableCell>
+                  <TableCell className="px-4 py-4">
                     <div>
                       <div className="text-xs font-bold text-[var(--text-primary)]">
                         ${Number(order.amount_usd).toFixed(2)}{' '}
@@ -290,12 +290,12 @@ export default function OrderTable({
                   </TableCell>
 
                   {/* Status Column */}
-                  <TableCell className="text-center">
+                  <TableCell className="px-2 py-4 text-center">
                     {getStatusBadge(order.status)}
                   </TableCell>
 
                   {/* Created Column */}
-                  <TableCell>
+                  <TableCell className="px-4 py-4">
                     <span className="text-xs text-[var(--text-muted)] font-medium">
                       {new Date(order.created_at).toLocaleDateString('en-US', {
                         year: 'numeric',
@@ -306,16 +306,16 @@ export default function OrderTable({
                   </TableCell>
 
                   {/* Action Column */}
-                  <TableCell className="text-center">
-                    <div className="flex items-center justify-center gap-1">
+                  <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-1.5">
                       <Button
-                        variant="secondary"
-                        size="xs"
+                        variant="ghost"
+                        size="icon"
                         onClick={(e) => {
                           e.stopPropagation();
                           onViewDetails(order);
                         }}
-                        className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-indigo-500 hover:border-indigo-500/40 hover:bg-indigo-500/10"
+                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                         title="View Order Details"
                         aria-label={`View details for order ${order.order_number}`}
                       >
@@ -324,10 +324,10 @@ export default function OrderTable({
 
                       {order.invoice_url && (
                         <Button
-                          variant="secondary"
-                          size="xs"
+                          variant="ghost"
+                          size="icon"
                           asChild
-                          className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-indigo-500 hover:border-indigo-500/40 hover:bg-indigo-500/10"
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                           title="View Invoice"
                           aria-label={`View invoice for order ${order.order_number}`}
                         >
@@ -344,10 +344,10 @@ export default function OrderTable({
 
                       {order.receipt_url && (
                         <Button
-                          variant="secondary"
-                          size="xs"
+                          variant="ghost"
+                          size="icon"
                           asChild
-                          className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-emerald-500 hover:border-emerald-500/40 hover:bg-emerald-500/10"
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                           title="View Receipt"
                           aria-label={`View receipt for order ${order.order_number}`}
                         >
@@ -363,13 +363,13 @@ export default function OrderTable({
                       )}
 
                       <Button
-                        variant="secondary"
-                        size="xs"
+                        variant="ghost"
+                        size="icon"
                         onClick={(e) => {
                           e.stopPropagation();
                           onDelete(order.id);
                         }}
-                        className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-rose-500 hover:border-rose-500/40 hover:bg-rose-500/10"
+                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
                         title="Delete Order"
                         aria-label={`Delete order ${order.order_number}`}
                         suppressHydrationWarning
@@ -395,3 +395,4 @@ export default function OrderTable({
     </div>
   );
 }
+

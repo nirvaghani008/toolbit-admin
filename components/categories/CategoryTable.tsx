@@ -42,21 +42,21 @@ interface CategoryTableProps {
   isLoading?: boolean;
 }
 
-function CategoryStatusBadge({ status }: { status: string }) {
+export function CategoryStatusBadge({ status }: { status: string }) {
   const s = (status || '').toLowerCase();
   if (s === 'show') {
     return <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Show</Badge>;
   }
   if (s === 'hide') {
-    return <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
+    return <Badge variant="destructive" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
   }
   if (s === 'draft') {
     return <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Draft</Badge>;
   }
   if (s === 'archived') {
-    return <Badge variant="violet" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Archived</Badge>;
+    return <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Archived</Badge>;
   }
-  return <Badge variant="default" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">{status || 'Draft'}</Badge>;
+  return <Badge variant="default" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">{status || 'Show'}</Badge>;
 }
 
 export default function CategoryTable({
@@ -153,7 +153,7 @@ export default function CategoryTable({
                   onMouseLeave={() => setHoveredId(null)}
                   className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
                     hoveredId === catId
-                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-white dark:bg-zinc-800/40'
+                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
                       : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                   }`}
                 >
@@ -230,7 +230,7 @@ export default function CategoryTable({
                         variant="ghost"
                         size="icon"
                         onClick={() => onEdit(category)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-white dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                         title="Edit Record"
                         aria-label={`Edit category ${categoryName}`}
                       >
@@ -265,3 +265,4 @@ export default function CategoryTable({
     </div>
   );
 }
+

@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
 import { useAdmin } from '@/contexts/AdminContext';
+import { scrollToError } from '@/lib/form-utils';
 import LoadingOverlay from '@/components/common/LoadingOverlay';
 import {
   Shield,
@@ -40,6 +42,40 @@ import {
   AvatarImage,
   AvatarFallback,
 } from '@/components/ui/avatar';
+
+const profileSchema = z.object({
+  full_name: z.string().trim().min(1, 'Name is required'),
+  email: z.string().trim().min(1, 'Email is required').email('Valid email is required'),
+  avatar_url: z.string().trim().url('Invalid URL format').or(z.literal('')).optional(),
+  bio: z.string().optional(),
+  password: z.string().optional(),
+  confirmPassword: z.string().optional(),
+  showPasswordUpdate: z.boolean(),
+}).superRefine((data, ctx) => {
+  if (data.showPasswordUpdate) {
+    if (!data.password || data.password.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'New password is required',
+        path: ['password'],
+      });
+    } else if (data.password.length < 6) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Minimum 6 characters required',
+        path: ['password'],
+      });
+    }
+
+    if (data.password !== data.confirmPassword) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Passwords do not match',
+        path: ['confirmPassword'],
+      });
+    }
+  }
+});
 
 export default function ProfilePage() {
   const { refreshAdmin } = useAdmin();
@@ -101,23 +137,28 @@ export default function ProfilePage() {
   }, []);
 
   const validate = () => {
-    const newErrors: Record<string, string> = {};
-    if (!formData.full_name.trim()) newErrors.full_name = 'Name is required';
-    if (!formData.email.trim() || !formData.email.includes('@')) newErrors.email = 'Valid email is required';
+    const result = profileSchema.safeParse({
+      ...formData,
+      showPasswordUpdate,
+    });
 
-    if (showPasswordUpdate) {
-      if (!formData.password) {
-        newErrors.password = 'New password is required';
-      } else if (formData.password.length < 6) {
-        newErrors.password = 'Minimum 6 characters required';
-      }
-      if (formData.password !== formData.confirmPassword) {
-        newErrors.confirmPassword = 'Passwords do not match';
-      }
+    const newErrors: Record<string, string> = {};
+
+    if (!result.success) {
+      result.error.issues.forEach((issue) => {
+        const fieldName = issue.path[0] as string;
+        newErrors[fieldName] = issue.message;
+      });
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    if (Object.keys(newErrors).length > 0) {
+      scrollToError(newErrors);
+      return false;
+    }
+
+    return true;
   };
 
   const handleSave = async () => {
@@ -170,18 +211,20 @@ export default function ProfilePage() {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
         <div>
-          <Badge variant="default" className="gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider mb-3">
-            <Shield size={12} />
-            System Governance
-          </Badge>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Account Intelligence</h1>
-          <p className="text-sm text-[var(--text-muted)] font-medium mt-1">Manage your administrative identity and security clearance.</p>
+          <div className="flex items-center gap-2.5 mb-2">
+            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Account Intelligence</h1>
+            <Badge variant="slate" className="gap-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+              <Shield size={11} />
+              System Governance
+            </Badge>
+          </div>
+          <p className="text-sm text-[var(--text-muted)] font-medium">Manage your administrative identity and security clearance.</p>
         </div>
         {!isEditing && (
           <Button
             onClick={() => setIsEditing(true)}
             size="default"
-            className="gap-2 font-bold text-xs uppercase tracking-wider shadow-sm"
+            className="gap-2 font-bold text-xs bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 rounded-xl shadow-xs active:scale-95 cursor-pointer"
           >
             <Edit3 size={14} />
             Modify Profile
@@ -192,17 +235,15 @@ export default function ProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Identity Overview Card */}
         <div className="lg:col-span-4 space-y-8">
-          <Card className="relative overflow-hidden group border-[var(--border-color)] bg-[var(--bg-surface)] shadow-sm">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-500" />
-
+          <Card className="relative overflow-hidden group border-[var(--border-color)] bg-[var(--bg-surface)] shadow-sm rounded-3xl">
             <CardContent className="p-6 flex flex-col items-center text-center">
               <div className="relative mb-5 group/avatar">
-                <Avatar className="w-28 h-28 border-2 border-indigo-500/20 shadow-md ring-4 ring-[var(--bg-surface)] transition-transform duration-300 group-hover/avatar:scale-105">
+                <Avatar className="w-28 h-28 border-2 border-zinc-200 dark:border-zinc-700 shadow-sm ring-4 ring-[var(--bg-surface)] transition-transform duration-300 group-hover/avatar:scale-105">
                   <AvatarImage
                     src={isEditing ? formData.avatar_url : profile?.avatar_url}
                     alt={profile?.full_name || 'Admin'}
                   />
-                  <AvatarFallback className="text-3xl font-bold">
+                  <AvatarFallback className="text-3xl font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
                     {profile?.full_name?.substring(0, 1).toUpperCase() || 'A'}
                   </AvatarFallback>
                 </Avatar>
@@ -241,14 +282,14 @@ export default function ProfilePage() {
         {/* Right Column: Identity & Security */}
         <div className="lg:col-span-8 space-y-8">
           {/* Identity Card */}
-          <Card className="border-[var(--border-color)] bg-[var(--bg-surface)] shadow-sm">
+          <Card className="border-[var(--border-color)] bg-[var(--bg-surface)] shadow-sm rounded-3xl">
             <CardHeader className="flex flex-row items-center justify-between pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-1.5 h-5 bg-indigo-500 rounded-full" />
+                <div className="w-1.5 h-5 bg-zinc-900 dark:bg-zinc-100 rounded-full" />
                 <CardTitle className="text-lg">Identity</CardTitle>
               </div>
               {isEditing && (
-                <Badge variant="default" className="text-[9px] font-bold uppercase tracking-wider animate-pulse">
+                <Badge variant="slate" className="text-[9px] font-bold uppercase tracking-wider animate-pulse">
                   Protocol Active
                 </Badge>
               )}
@@ -284,6 +325,7 @@ export default function ProfilePage() {
                       <div className="relative">
                         <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" size={14} />
                         <Input
+                          name="full_name"
                           type="text"
                           value={formData.full_name}
                           onChange={(e) => {
@@ -310,6 +352,7 @@ export default function ProfilePage() {
                       <div className="relative">
                         <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" size={14} />
                         <Input
+                          name="email"
                           type="email"
                           value={formData.email}
                           onChange={(e) => {
@@ -342,19 +385,19 @@ export default function ProfilePage() {
           </Card>
 
           {/* Security Card */}
-          <Card className="border-[var(--border-color)] bg-[var(--bg-surface)] shadow-sm">
+          <Card className="border-[var(--border-color)] bg-[var(--bg-surface)] shadow-sm rounded-3xl">
             <CardHeader className="flex flex-row items-center justify-between pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-1.5 h-5 rounded-full bg-indigo-500" />
+                <div className="w-1.5 h-5 rounded-full bg-zinc-900 dark:bg-zinc-100" />
                 <CardTitle className="text-lg">Security</CardTitle>
               </div>
 
               {isEditing && !showPasswordUpdate && (
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   size="xs"
                   onClick={() => setShowPasswordUpdate(true)}
-                  className="gap-1.5 text-[10px] font-bold uppercase tracking-wider"
+                  className="gap-1.5 text-[10px] font-bold uppercase tracking-wider border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100"
                 >
                   <Key size={12} />
                   Rotate Keys
@@ -393,6 +436,7 @@ export default function ProfilePage() {
                       <div className="relative">
                         <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" size={14} />
                         <Input
+                          name="password"
                           type={showPasswordText ? 'text' : 'password'}
                           value={formData.password}
                           onChange={(e) => {
@@ -411,7 +455,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setShowPasswordText(!showPasswordText)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-indigo-500 transition-colors p-1 cursor-pointer"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-zinc-900 dark:hover:text-white transition-colors p-1 cursor-pointer"
                           tabIndex={-1}
                           title={showPasswordText ? 'Hide password' : 'Show password'}
                         >
@@ -428,6 +472,7 @@ export default function ProfilePage() {
                       <div className="relative">
                         <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" size={14} />
                         <Input
+                          name="confirmPassword"
                           type={showConfirmPasswordText ? 'text' : 'password'}
                           value={formData.confirmPassword}
                           onChange={(e) => {
@@ -446,7 +491,7 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => setShowConfirmPasswordText(!showConfirmPasswordText)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-indigo-500 transition-colors p-1 cursor-pointer"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-zinc-900 dark:hover:text-white transition-colors p-1 cursor-pointer"
                           tabIndex={-1}
                           title={showConfirmPasswordText ? 'Hide password' : 'Show password'}
                         >
@@ -457,16 +502,16 @@ export default function ProfilePage() {
                     </div>
                   </div>
 
-                  <Alert variant="info" className="border-indigo-500/20 bg-indigo-500/5 text-indigo-500 dark:border-indigo-500/30">
-                    <AlertCircle className="h-4 w-4 text-indigo-500" />
+                  <Alert variant="info" className="border-zinc-200 bg-zinc-50 dark:bg-zinc-800/40 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300">
+                    <AlertCircle className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
                     <AlertDescription className="text-xs text-[var(--text-secondary)] font-medium">
                       Updating your terminal key will require re-authentication on all secondary active sessions.
                     </AlertDescription>
                   </Alert>
                 </div>
               ) : (
-                <div className="flex items-center gap-4 p-4 rounded-xl bg-[var(--bg-elevated)]/50 border border-[var(--border-color)] border-dashed">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 shrink-0">
+                <div className="flex items-center gap-4 p-4 rounded-2xl bg-[var(--bg-elevated)]/50 border border-[var(--border-color)] border-dashed">
+                  <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-700 dark:text-zinc-300 shrink-0 shadow-2xs">
                     <Key size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -509,6 +554,7 @@ export default function ProfilePage() {
                   setErrors({});
                 }}
                 disabled={saving}
+                className="h-11 px-5 font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               >
                 Cancel
               </Button>
@@ -516,7 +562,7 @@ export default function ProfilePage() {
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="gap-2 min-w-[130px]"
+                className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs gap-2 min-w-[140px] rounded-xl active:scale-95 cursor-pointer"
               >
                 {saving ? (
                   <>
@@ -551,11 +597,11 @@ function DossierItem({
   value?: string | null;
   icon?: React.ReactNode;
   isBadge?: boolean;
-  badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info';
+  badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'slate';
 }) {
   return (
     <div className="space-y-1.5 group">
-      <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider group-hover:text-indigo-500 transition-colors">
+      <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
         {icon}
         {label}
       </div>
@@ -571,4 +617,5 @@ function DossierItem({
     </div>
   );
 }
+
 

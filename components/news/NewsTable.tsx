@@ -61,17 +61,19 @@ function NewsLogo({ item }: { item: NewsItem }) {
   const faviconUrl = getFaviconUrl();
 
   return (
-    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/10 to-orange-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20 shadow-2xs overflow-hidden">
+    <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden transition-all group-hover:scale-105">
       {!hasError && faviconUrl ? (
         <img
           src={faviconUrl}
           alt={item.source_name || item.title || 'News'}
           onError={() => setHasError(true)}
-          className="w-full h-full object-contain rounded-lg p-1.5"
+          className="w-full h-full object-contain rounded-lg p-1"
           loading="lazy"
         />
       ) : (
-        <Newspaper size={16} />
+        <div className="w-full h-full flex items-center justify-center text-zinc-600 dark:text-zinc-300">
+          <Newspaper size={16} />
+        </div>
       )}
     </div>
   );
@@ -92,9 +94,9 @@ export default function NewsTable({
   const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' => {
     const s = (status || 'show').toLowerCase();
     if (s === 'show' || s === 'published' || s === 'active') return 'success';
-    if (s === 'hide') return 'destructive';
+    if (s === 'hide') return 'slate';
     if (s === 'draft') return 'warning';
-    if (s === 'archived') return 'slate';
+    if (s === 'archived') return 'violet';
     return 'default';
   };
 
@@ -112,12 +114,12 @@ export default function NewsTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[42%] px-6 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Headline</TableHead>
-            <TableHead className="w-[18%] px-4 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Source</TableHead>
-            <TableHead className="w-[16%] px-4 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Categories</TableHead>
-            <TableHead className="w-[10%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
-            <TableHead className="w-[7%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
-            <TableHead className="w-[7%] px-4 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
+            <TableHead className="w-[42%] px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Headline</TableHead>
+            <TableHead className="w-[18%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Source</TableHead>
+            <TableHead className="w-[16%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Categories</TableHead>
+            <TableHead className="w-[10%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
+            <TableHead className="w-[7%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
+            <TableHead className="w-[7%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -167,8 +169,8 @@ export default function NewsTable({
                 onMouseLeave={() => setHoveredId(null)}
                 className={`transition-all duration-200 group cursor-pointer border-l-2 relative hover:z-[10] ${
                   hoveredId === item.news_id
-                    ? 'border-l-zinc-900 bg-zinc-100/70 dark:bg-[#0ea5e9]/[0.02] dark:border-l-white'
-                    : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-[#0ea5e9]/[0.02]'
+                    ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
+                    : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                 }`}
               >
                 {/* 1. Headline & Summary */}
@@ -178,7 +180,7 @@ export default function NewsTable({
                     <div className="w-full overflow-hidden">
                       <span
                         onClick={() => onEdit(item)}
-                        className="text-xs font-bold text-[var(--text-primary)] hover:text-indigo-600 dark:hover:text-[#0ea5e9] tracking-tight block truncate w-full transition-colors cursor-pointer"
+                        className="text-xs font-semibold text-[var(--text-primary)] hover:text-zinc-900 dark:hover:text-zinc-100 tracking-tight block truncate w-full transition-colors cursor-pointer"
                         title={item.title || 'Untitled Headline'}
                       >
                         {item.title || 'Untitled Headline'}
@@ -188,7 +190,7 @@ export default function NewsTable({
                           href={item.source_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[10px] text-[var(--text-muted)] font-medium hover:text-indigo-500 transition-colors inline-flex items-center gap-1 mt-0.5"
+                          className="text-[10px] text-[var(--text-muted)] font-medium hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors inline-flex items-center gap-1 mt-0.5"
                           onClick={(e) => e.stopPropagation()}
                         >
                           Visit Article <ExternalLink size={9} />
@@ -214,7 +216,7 @@ export default function NewsTable({
                 <TableCell className="px-4 py-4">
                   <div className="flex flex-wrap gap-1">
                     {(item.categories || ['AI']).slice(0, 2).map((cat, i) => (
-                      <Badge key={i} variant="secondary" className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                      <Badge key={i} variant="slate" className="px-2 py-0.5 text-[9px] font-semibold">
                         {cat}
                       </Badge>
                     ))}
@@ -232,39 +234,33 @@ export default function NewsTable({
 
                 {/* 5. Status */}
                 <TableCell className="px-3 py-4 text-center">
-                  <Badge variant={getStatusBadgeVariant(item.status)}>
+                  <Badge variant={getStatusBadgeVariant(item.status)} className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">
                     {formatStatus(item.status)}
                   </Badge>
                 </TableCell>
 
                 {/* 6. Manage Actions */}
-                <TableCell className="px-4 py-4 text-center">
-                  <div className="flex items-center justify-center gap-1">
+                <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-center gap-1.5">
                     <Button
-                      variant="secondary"
-                      size="xs"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEdit(item);
-                      }}
-                      className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-indigo-500 hover:border-indigo-500/40 hover:bg-indigo-500/10"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEdit(item)}
+                      className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                       title="Edit Record"
                       aria-label={`Edit news article ${item.title}`}
                     >
-                      <Edit2 size={12} />
+                      <Edit2 size={13} />
                     </Button>
                     <Button
-                      variant="secondary"
-                      size="xs"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(item.news_id);
-                      }}
-                      className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-rose-500 hover:border-rose-500/40 hover:bg-rose-500/10"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(item.news_id)}
+                      className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
                       title="Delete Record"
                       aria-label={`Delete news article ${item.title}`}
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={13} />
                     </Button>
                   </div>
                 </TableCell>
@@ -283,3 +279,4 @@ export default function NewsTable({
     </div>
   );
 }
+

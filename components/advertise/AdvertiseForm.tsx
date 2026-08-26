@@ -451,9 +451,9 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
                     <div
                       key={t.tool_id}
                       onClick={() => handleSelectTool(t)}
-                      className={`w-full px-4 py-3 border-b border-[var(--border-color)]/30 last:border-b-0 hover:bg-indigo-500/10 text-xs font-semibold cursor-pointer flex items-center justify-between transition-colors ${
+                      className={`w-full px-4 py-3 border-b border-[var(--border-color)]/30 last:border-b-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-semibold cursor-pointer flex items-center justify-between transition-colors ${
                         String(formData.tool_id) === String(t.tool_id)
-                          ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold'
+                          ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-bold'
                           : 'text-[var(--text-primary)]'
                       }`}
                     >
@@ -594,10 +594,10 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
                       type="checkbox"
                       checked={formData.featured_type.includes(option.id)}
                       onChange={() => handleCheckboxChange(option.id)}
-                      className="peer appearance-none w-5 h-5 rounded-md border-2 border-[var(--border-color)] bg-[var(--bg-elevated)] checked:bg-indigo-600 checked:border-indigo-600 transition-all cursor-pointer"
+                      className="peer appearance-none w-5 h-5 rounded-md border-2 border-[var(--border-color)] bg-[var(--bg-elevated)] checked:bg-zinc-900 checked:border-zinc-900 dark:checked:bg-zinc-100 dark:checked:border-zinc-100 transition-all cursor-pointer"
                     />
                     <svg
-                      className="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none"
+                      className="absolute w-3 h-3 text-white dark:text-zinc-900 opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -672,14 +672,14 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
           type="button"
           variant="outline"
           onClick={onCancel}
-          className="h-10 px-5 font-bold text-xs rounded-xl"
+          className="h-10 px-5 font-bold text-xs rounded-xl border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
           disabled={!isDirty || isSubmitting || isLoading}
-          className="h-10 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 active:scale-95"
+          className="h-10 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold text-xs rounded-xl shadow-xs active:scale-95"
         >
           {isSubmitting || isLoading ? (
             <span className="flex items-center gap-2">

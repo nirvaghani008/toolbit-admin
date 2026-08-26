@@ -41,7 +41,7 @@ export default function CategoriesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
   const [statusFilter, setStatusFilter] = useState<'all' | 'show' | 'hide' | 'draft' | 'archived'>('all');
-  const [sortBy, setSortBy] = useState<'updated_at' | 'created_at' | 'category_name'>('updated_at');
+  const [sortBy, setSortBy] = useState<'updated_at' | 'created_at' | 'name'>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
@@ -112,14 +112,14 @@ export default function CategoriesPage() {
     setLoading(true);
 
     try {
-      if (manual) fetchStats();
+      if (manual) await fetchStats();
       let query = supabase
         .from('categories')
         .select('*', { count: 'exact' });
 
-      // Apply Search
+      // Apply Search across name, slug, parent
       if (searchQuery) {
-        query = query.or(`name.ilike.%${searchQuery}%,slug.ilike.%${searchQuery}%,category_name.ilike.%${searchQuery}%,category_url.ilike.%${searchQuery}%`);
+        query = query.or(`name.ilike.%${searchQuery}%,slug.ilike.%${searchQuery}%,parent.ilike.%${searchQuery}%`);
       }
 
       // Apply Status Filter
@@ -177,9 +177,21 @@ export default function CategoriesPage() {
   const handleAddCategory = async (formData: any) => {
     setIsActionLoading(true);
     try {
+      const dbPayload = {
+        name: (formData.category_name || formData.name || '').trim(),
+        slug: (formData.category_url || formData.slug || '').trim(),
+        parent: (formData.parent_category || formData.parent || '').trim() || null,
+        status: formData.status || 'show',
+        meta_title: (formData.meta_title || '').trim() || null,
+        meta_description: (formData.meta_description || '').trim() || null,
+        meta_keywords: formData.meta_keywords ? (typeof formData.meta_keywords === 'string' ? formData.meta_keywords.trim() : formData.meta_keywords) : null,
+        description: (formData.description || '').trim() || null,
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from('categories')
-        .insert([{ ...formData, updated_at: new Date().toISOString() }]);
+        .insert([dbPayload]);
 
       if (error) throw error;
 
@@ -200,10 +212,25 @@ export default function CategoriesPage() {
   const handleUpdateCategory = async (formData: any) => {
     setIsActionLoading(true);
     try {
+      const targetId = editingCategory?.id ?? editingCategory?.category_id;
+      if (!targetId) throw new Error('Missing category ID for update.');
+
+      const dbPayload = {
+        name: (formData.category_name || formData.name || '').trim(),
+        slug: (formData.category_url || formData.slug || '').trim(),
+        parent: (formData.parent_category || formData.parent || '').trim() || null,
+        status: formData.status || 'show',
+        meta_title: (formData.meta_title || '').trim() || null,
+        meta_description: (formData.meta_description || '').trim() || null,
+        meta_keywords: formData.meta_keywords ? (typeof formData.meta_keywords === 'string' ? formData.meta_keywords.trim() : formData.meta_keywords) : null,
+        description: (formData.description || '').trim() || null,
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from('categories')
-        .update({ ...formData, updated_at: new Date().toISOString() })
-        .eq('category_id', editingCategory.category_id);
+        .update(dbPayload)
+        .eq('id', targetId);
 
       if (error) throw error;
 
@@ -229,7 +256,7 @@ export default function CategoriesPage() {
     if (!confirmed) return;
     setIsActionLoading(true);
     try {
-      const { error } = await supabase.from('categories').delete().eq('category_id', id);
+      const { error } = await supabase.from('categories').delete().eq('id', id);
       if (error) throw error;
 
       await fetchStats();
@@ -285,9 +312,9 @@ export default function CategoriesPage() {
                 id: 'all',
                 label: 'Total Categories',
                 value: stats.all,
-                iconStyle: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-indigo-400 dark:bg-indigo-500/10 dark:border-indigo-500/20',
-                badgeStyle: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
-                sparklineColor: 'text-[#eceae6] group-hover:text-[#d6d2ca] dark:text-zinc-800 dark:group-hover:text-zinc-700',
+                iconStyle: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+                badgeStyle: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+                sparklineColor: 'text-[#364954] dark:text-zinc-400',
                 icon: <Folder size={17} />,
                 points: sparklines.all,
                 badge: 'All Categories'
@@ -298,7 +325,7 @@ export default function CategoriesPage() {
                 value: stats.show,
                 iconStyle: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
                 badgeStyle: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
-                sparklineColor: 'text-[#eaf0ec] group-hover:text-[#d2ded6] dark:text-emerald-500/20 dark:group-hover:text-emerald-500/30',
+                sparklineColor: 'text-[#3c5748] dark:text-emerald-400',
                 icon: <Eye size={17} />,
                 points: sparklines.show,
                 badge: 'Active'
@@ -309,18 +336,18 @@ export default function CategoriesPage() {
                 value: stats.hide,
                 iconStyle: 'text-[#474c50] bg-[#f3f4f5] border-[#dbdddf] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
                 badgeStyle: 'bg-[#f3f4f5] text-[#474c50] border-[#dbdddf] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
-                sparklineColor: 'text-[#f3f4f5] group-hover:text-[#dbdddf] dark:text-zinc-800 dark:group-hover:text-zinc-700',
+                sparklineColor: 'text-[#474c50] dark:text-zinc-400',
                 icon: <EyeOff size={17} />,
                 points: sparklines.hide,
                 badge: 'Hidden'
               },
               {
                 id: 'draft',
-                label: 'Drafts',
+                label: 'Draft',
                 value: stats.draft,
                 iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
                 badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-                sparklineColor: 'text-[#fbf6ec] group-hover:text-[#ecdfc7] dark:text-amber-500/20 dark:group-hover:text-amber-500/30',
+                sparklineColor: 'text-[#8a652a] dark:text-amber-400',
                 icon: <FileText size={17} />,
                 points: sparklines.draft,
                 badge: 'Draft'
@@ -331,7 +358,7 @@ export default function CategoriesPage() {
                 value: stats.archived,
                 iconStyle: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
                 badgeStyle: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
-                sparklineColor: 'text-[#f7f4f0] group-hover:text-[#e4ded6] dark:text-zinc-800 dark:group-hover:text-zinc-700',
+                sparklineColor: 'text-[#6e5e50] dark:text-violet-400',
                 icon: <Archive size={17} />,
                 points: sparklines.archived,
                 badge: 'Archived'
@@ -344,8 +371,8 @@ export default function CategoriesPage() {
                   onClick={() => { setStatusFilter(prev => prev === stat.id ? 'all' : stat.id as any); setCurrentPage(1); }}
                   className={`group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col text-left rounded-2xl border shadow-2xs cursor-pointer ${
                     isSelected
-                      ? 'bg-[#fbfaf8] dark:bg-[var(--bg-elevated)] border-zinc-900 dark:border-zinc-400 ring-2 ring-zinc-900/10 dark:ring-zinc-400/20 shadow-xs'
-                      : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-600'
+                      ? 'bg-[#ebe8e2] dark:bg-zinc-800/90 border-zinc-700 dark:border-zinc-500 shadow-xs'
+                      : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30'
                   }`}
                   suppressHydrationWarning
                 >
@@ -356,12 +383,12 @@ export default function CategoriesPage() {
                     isSelected={isSelected}
                   />
 
-                  <div className="p-4 pb-2 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
+                  <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${stat.iconStyle}`}>
                       {stat.icon}
                     </div>
                     {isSelected ? (
-                      <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100 shadow-2xs">
+                      <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-zinc-800 text-zinc-100 border-zinc-700 dark:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-600 shadow-2xs">
                         Selected
                       </span>
                     ) : (
@@ -371,11 +398,11 @@ export default function CategoriesPage() {
                     )}
                   </div>
 
-                  <div className="px-4 pb-4 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
+                  <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
+                    <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
                       {stat.label}
                     </div>
-                    <div className="text-2xl xl:text-3xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-none">
+                    <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
                       <CountUp key={refreshKey} end={stat.value} />
                     </div>
                   </div>
@@ -458,3 +485,5 @@ export default function CategoriesPage() {
     </div>
   );
 }
+
+

@@ -10,7 +10,7 @@ interface KeywordTagInputProps {
   selectedKeywords: string[];
   onKeywordsChange: (keywords: string[]) => void;
   placeholder?: string;
-  type?: 'category' | 'hashtag' | 'audience' | 'generic' | 'parent-category' | 'parent-hashtag';
+  type?: 'category' | 'tag' | 'audience' | 'generic' | 'parent-category' | 'parent-tag';
   singleSelect?: boolean;
   name?: string;
 }
@@ -23,30 +23,42 @@ const DEFAULT_BLOG_CATEGORIES = [
   'Comparison',
   'Models & LLMs',
   'Automation',
-  'AI Agents',
-  'Guides & Tutorials',
-  'AI News',
-  'Tips & Tricks',
+  'Design & Creative',
+  'Audio & Video',
+  'Marketing & SEO',
+  'Finance & FinTech',
+  'Security & Safety',
+  'Case Studies',
+  'Tutorials',
+  'Industry News',
+  'Opinion',
+  'Product Updates'
 ];
 
 export const DEFAULT_PARENT_CATEGORIES = [
-  'Business',
-  'Career & HR',
-  'Chatbots & Assistants',
+  '3D & Architecture',
+  'Advertising & Marketing',
+  'AI Tools & Platforms',
+  'Art & Creative',
+  'Audio & Music',
+  'Avatars & Characters',
+  'Business & Enterprise',
   'Coding & Development',
-  'Detection & Safety',
-  'Ecommerce',
-  'Education & Translation',
-  'Entertainment & Games',
-  'Finance',
-  'Health & Wellness',
-  'Image & Design',
-  'Image Analysis',
-  'Interior & Architecture',
-  'Legal',
-  'Marketing & Ads',
-  'Music & Audio',
-  'Other',
+  'Customer Support & CRM',
+  'Data & Analytics',
+  'Design & UI/UX',
+  'E-commerce & Retail',
+  'Education & Learning',
+  'Email & Communication',
+  'Fashion & Beauty',
+  'Finance & Accounting',
+  'Gaming & Virtual Worlds',
+  'HR & Recruitment',
+  'Image Generation & Editing',
+  'Legal & Compliance',
+  'Life & Assistant',
+  'Medical & Healthcare',
+  'Photo & Photography',
   'Productivity',
   'Research & Data',
   'Social Media',
@@ -56,9 +68,7 @@ export const DEFAULT_PARENT_CATEGORIES = [
   'Writing & Editing'
 ];
 
-export const DEFAULT_PARENT_HASHTAGS = DEFAULT_PARENT_CATEGORIES.map(cat => 
-  cat.startsWith('#') ? cat : `#${cat}`
-);
+export const DEFAULT_PARENT_TAGS = DEFAULT_PARENT_CATEGORIES;
 
 export default function KeywordTagInput({
   selectedKeywords,
@@ -72,8 +82,8 @@ export default function KeywordTagInput({
   const [dbSuggestions, setDbSuggestions] = useState<string[]>(
     type === 'parent-category' 
       ? DEFAULT_PARENT_CATEGORIES 
-      : (type === 'parent-hashtag' || type === 'hashtag')
-        ? DEFAULT_PARENT_HASHTAGS
+      : (type === 'parent-tag' || type === 'tag')
+        ? DEFAULT_PARENT_TAGS
         : type === 'category' 
           ? DEFAULT_BLOG_CATEGORIES 
           : []
@@ -103,10 +113,11 @@ export default function KeywordTagInput({
   // Fetch recommendations from Supabase DB
   useEffect(() => {
     const loadDbSuggestions = async () => {
+      const isTagType = type === 'parent-tag' || type === 'tag';
       const defaultList = type === 'parent-category' 
         ? DEFAULT_PARENT_CATEGORIES 
-        : (type === 'parent-hashtag' || type === 'hashtag')
-          ? DEFAULT_PARENT_HASHTAGS
+        : isTagType
+          ? DEFAULT_PARENT_TAGS
           : type === 'category' 
             ? DEFAULT_BLOG_CATEGORIES 
             : [];
@@ -115,8 +126,8 @@ export default function KeywordTagInput({
       if (type === 'generic' || type === 'audience' || type === 'category') return;
 
       try {
-        if (type === 'hashtag' || type === 'parent-hashtag') {
-          const fetchedTags: string[] = [...DEFAULT_PARENT_HASHTAGS];
+        if (isTagType) {
+          const fetchedTags: string[] = [...DEFAULT_PARENT_TAGS];
 
           // 1. Fetch from 'tags' table
           try {
@@ -127,32 +138,18 @@ export default function KeywordTagInput({
 
             if (tData) {
               tData.forEach((row: any) => {
-                const tagName = row.name || row.hashtag_name || row.slug;
-                if (tagName) fetchedTags.push(tagName.startsWith('#') ? tagName : `#${tagName}`);
+                const rawName = row.name || row.slug;
+                if (rawName) {
+                  const cleanName = rawName.replace(/^#+/, '').trim();
+                  if (cleanName) fetchedTags.push(cleanName);
+                }
               });
             }
           } catch (e) {
             console.warn('Error fetching from tags table:', e);
           }
 
-          // 2. Fetch from 'hashtags' table
-          try {
-            const { data: hData } = await supabase
-              .from('hashtags')
-              .select('*')
-              .limit(1000);
-
-            if (hData) {
-              hData.forEach((row: any) => {
-                const tagName = row.hashtag_name || row.name || row.slug;
-                if (tagName) fetchedTags.push(tagName.startsWith('#') ? tagName : `#${tagName}`);
-              });
-            }
-          } catch (e) {
-            console.warn('Error fetching from hashtags table:', e);
-          }
-
-          // 3. Fetch from 'blog_posts' table tags column
+          // 2. Fetch from 'blog_posts' table tags column
           try {
             const { data: bData } = await supabase
               .from('blog_posts')
@@ -164,12 +161,15 @@ export default function KeywordTagInput({
               bData.forEach((row: any) => {
                 if (Array.isArray(row.tags)) {
                   row.tags.forEach((t: string) => {
-                    if (t) fetchedTags.push(t.startsWith('#') ? t : `#${t}`);
+                    if (t) {
+                      const cleanName = t.replace(/^#+/, '').trim();
+                      if (cleanName) fetchedTags.push(cleanName);
+                    }
                   });
                 } else if (typeof row.tags === 'string') {
                   row.tags.split(',').forEach((t: string) => {
-                    const trimmed = t.trim();
-                    if (trimmed) fetchedTags.push(trimmed.startsWith('#') ? trimmed : `#${trimmed}`);
+                    const cleanName = t.replace(/^#+/, '').trim();
+                    if (cleanName) fetchedTags.push(cleanName);
                   });
                 }
               });
@@ -178,7 +178,7 @@ export default function KeywordTagInput({
             console.warn('Error fetching from blog_posts tags:', e);
           }
 
-          const uniqueTags = Array.from(new Set(fetchedTags.filter(n => n && n !== '#' && n !== '#NULL' && n !== '#EMPTY')));
+          const uniqueTags = Array.from(new Set(fetchedTags.filter(n => n && n !== '#' && n !== 'NULL' && n !== 'EMPTY')));
           setDbSuggestions(uniqueTags);
           return;
         }
@@ -190,14 +190,15 @@ export default function KeywordTagInput({
           try {
             const { data: cData } = await supabase
               .from('categories')
-              .select('*')
+              .select('name, parent')
               .limit(1000);
 
             if (cData) {
               cData.forEach((row: any) => {
+                if (row.name) fetchedCats.push(row.name);
+                if (row.parent) fetchedCats.push(row.parent);
                 if (row.category_name) fetchedCats.push(row.category_name);
                 if (row.parent_category) fetchedCats.push(row.parent_category);
-                if (row.name) fetchedCats.push(row.name);
               });
             }
           } catch (e) {
@@ -238,8 +239,8 @@ export default function KeywordTagInput({
 
   // Compute filtered suggestions whenever inputValue or selectedKeywords changes
   useEffect(() => {
-    const selectedLower = selectedKeywords.map(k => k.toLowerCase());
-    const available = dbSuggestions.filter(kw => !selectedLower.includes(kw.toLowerCase()));
+    const selectedLower = selectedKeywords.map(k => k.toLowerCase().replace(/^#+/, ''));
+    const available = dbSuggestions.filter(kw => !selectedLower.includes(kw.toLowerCase().replace(/^#+/, '')));
     const searchVal = inputValue.trim().toLowerCase();
 
     if (!searchVal) {
@@ -272,7 +273,7 @@ export default function KeywordTagInput({
   }, [selectedIndex]);
 
   const addKeyword = async (keyword: string) => {
-    let trimmed = keyword.trim();
+    let trimmed = keyword.trim().replace(/^#+/, '');
     if (!trimmed) return;
 
     // Categories match existing or default
@@ -284,36 +285,24 @@ export default function KeywordTagInput({
       }
     }
 
-    if (type === 'hashtag' && !trimmed.startsWith('#')) {
-      trimmed = '#' + trimmed;
-    }
+    const isTagType = type === 'parent-tag' || type === 'tag';
 
     if (singleSelect) {
       onKeywordsChange([trimmed]);
       setInputValue('');
-    } else if (!selectedKeywords.some(k => k.toLowerCase() === trimmed.toLowerCase())) {
+    } else if (!selectedKeywords.some(k => k.replace(/^#+/, '').toLowerCase() === trimmed.toLowerCase())) {
       onKeywordsChange([...selectedKeywords, trimmed]);
       setInputValue('');
     }
 
     // Auto-create tag in DB if it's a new custom tag
-    if ((type === 'hashtag' || type === 'parent-hashtag') &&
-        !dbSuggestions.some(db => db.toLowerCase() === trimmed.toLowerCase())) {
-      const slugBase = trimmed.replace(/^#/, '');
-      const urlSlug = slugBase.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    if (isTagType && !dbSuggestions.some(db => db.toLowerCase() === trimmed.toLowerCase())) {
+      const urlSlug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       
       try {
         await supabase.from('tags').insert([{
           name: trimmed,
           slug: urlSlug,
-          status: 'show'
-        }]);
-      } catch {}
-
-      try {
-        await supabase.from('hashtags').insert([{
-          hashtag_name: trimmed,
-          hashtag_url: urlSlug,
           status: 'show'
         }]);
       } catch {}

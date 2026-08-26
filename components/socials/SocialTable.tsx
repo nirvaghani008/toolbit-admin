@@ -115,8 +115,8 @@ export default function SocialTable({
     if (p.includes('youtube')) {
       return (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0 border border-rose-500/20 shadow-2xs">
-            <YoutubeIcon size={18} className="fill-rose-500/20 stroke-rose-500" />
+          <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+            <YoutubeIcon size={18} className="fill-rose-500/20 stroke-rose-600 dark:stroke-rose-400" />
           </div>
           <span className="text-xs font-bold text-[var(--text-primary)] tracking-tight">YouTube</span>
         </div>
@@ -125,8 +125,8 @@ export default function SocialTable({
     if (p.includes('twitter') || p.includes('x')) {
       return (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center shrink-0 border border-sky-500/20 shadow-2xs">
-            <TwitterIcon size={18} className="fill-sky-500/20 stroke-sky-500" />
+          <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+            <TwitterIcon size={18} className="fill-sky-500/20 stroke-sky-600 dark:stroke-sky-400" />
           </div>
           <span className="text-xs font-bold text-[var(--text-primary)] tracking-tight">Twitter</span>
         </div>
@@ -135,8 +135,8 @@ export default function SocialTable({
     if (p.includes('reddit')) {
       return (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0 border border-orange-500/20 shadow-2xs">
-            <RedditIcon size={18} className="stroke-orange-500" />
+          <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+            <RedditIcon size={18} className="stroke-orange-600 dark:stroke-orange-400" />
           </div>
           <span className="text-xs font-bold text-[var(--text-primary)] tracking-tight">Reddit</span>
         </div>
@@ -145,8 +145,8 @@ export default function SocialTable({
     if (p.includes('instagram')) {
       return (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-pink-500/10 text-pink-500 flex items-center justify-center shrink-0 border border-pink-500/20 shadow-2xs">
-            <InstagramIcon size={18} className="stroke-pink-500" />
+          <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+            <InstagramIcon size={18} className="stroke-pink-600 dark:stroke-pink-400" />
           </div>
           <span className="text-xs font-bold text-[var(--text-primary)] tracking-tight">Instagram</span>
         </div>
@@ -154,8 +154,8 @@ export default function SocialTable({
     }
     return (
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0 border border-indigo-500/20 shadow-2xs">
-          <Share2 size={16} className="stroke-indigo-500" />
+        <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+          <Share2 size={16} className="stroke-zinc-600 dark:stroke-zinc-300" />
         </div>
         <span className="text-xs font-bold text-[var(--text-primary)] tracking-tight">{platform || 'Social'}</span>
       </div>
@@ -167,15 +167,15 @@ export default function SocialTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[14%] px-4 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Provider</TableHead>
-            <TableHead className="w-[26%] px-4 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Social Post / Update</TableHead>
-            <TableHead className="w-[13%] px-3 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Content Type</TableHead>
-            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Featured</TableHead>
-            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Trending</TableHead>
-            <TableHead className="w-[11%] px-3 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Engagement</TableHead>
-            <TableHead className="w-[10%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
-            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
-            <TableHead className="w-[10%] px-4 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
+            <TableHead className="w-[14%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Platform</TableHead>
+            <TableHead className="w-[26%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Social Post / Update</TableHead>
+            <TableHead className="w-[13%] px-3 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Content Type</TableHead>
+            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Featured</TableHead>
+            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Trending</TableHead>
+            <TableHead className="w-[11%] px-3 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Engagement</TableHead>
+            <TableHead className="w-[10%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
+            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
+            <TableHead className="w-[10%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -243,8 +243,8 @@ export default function SocialTable({
                 onMouseLeave={() => setHoveredId(null)}
                 className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
                   hoveredId === item.id
-                    ? 'border-l-zinc-900 bg-zinc-100/70 dark:bg-indigo-500/[0.04] dark:border-l-indigo-500'
-                    : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.02]'
+                    ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
+                    : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                 }`}
               >
                 {/* 1. Provider Logo */}
@@ -257,7 +257,7 @@ export default function SocialTable({
                   <div className="w-full overflow-hidden">
                     <button
                       onClick={() => setPreviewSocial(item)}
-                      className="text-xs font-bold text-[var(--text-primary)] hover:text-indigo-600 dark:hover:text-indigo-400 tracking-tight block truncate w-full text-left transition-colors cursor-pointer"
+                      className="text-xs font-semibold text-[var(--text-primary)] hover:text-zinc-900 dark:hover:text-zinc-100 tracking-tight block truncate w-full text-left transition-colors cursor-pointer"
                       title={item.title || 'Social Announcement'}
                     >
                       {item.title || 'Social Announcement'}
@@ -267,7 +267,7 @@ export default function SocialTable({
                         href={item.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[10px] text-[var(--text-muted)] font-medium hover:text-sky-500 transition-colors inline-flex items-center gap-1 mt-1 truncate max-w-full"
+                        className="text-[10px] text-[var(--text-muted)] font-medium hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors inline-flex items-center gap-1 mt-1 truncate max-w-full"
                       >
                         View Post <ExternalLink size={9} />
                       </a>
@@ -283,8 +283,8 @@ export default function SocialTable({
                       .map((type, idx) => (
                         <Badge
                           key={idx}
-                          variant="secondary"
-                          className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                          variant="slate"
+                          className="px-2 py-0.5 text-[9px] font-semibold"
                         >
                           {type}
                         </Badge>
@@ -295,11 +295,11 @@ export default function SocialTable({
                 {/* 4. Featured */}
                 <TableCell className="px-2 py-3.5 text-center">
                   {item.is_featured ? (
-                    <Badge variant="success" className="px-2 py-0.5 text-[9px] inline-flex items-center gap-1">
-                      <DollarSign size={10} className="stroke-[2.5]" /> TRUE
+                    <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">
+                      TRUE
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="px-2 py-0.5 text-[9px]">
+                    <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">
                       FALSE
                     </Badge>
                   )}
@@ -308,11 +308,11 @@ export default function SocialTable({
                 {/* 5. Trending */}
                 <TableCell className="px-2 py-3.5 text-center">
                   {item.is_trending ? (
-                    <Badge variant="success" className="px-2 py-0.5 text-[9px] inline-flex items-center gap-1">
-                      <DollarSign size={10} className="stroke-[2.5]" /> TRUE
+                    <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">
+                      TRUE
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="px-2 py-0.5 text-[9px]">
+                    <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">
                       FALSE
                     </Badge>
                   )}
@@ -323,11 +323,11 @@ export default function SocialTable({
                   <div className="flex items-center gap-3 text-[10px] font-semibold text-[var(--text-secondary)]">
                     <span className="inline-flex items-center gap-1" title="Views">
                       <Eye size={12} className="text-[var(--text-muted)]" />
-                      {item.view_counter || 0}
+                      {(item.view_counter || 0).toLocaleString()}
                     </span>
                     <span className="inline-flex items-center gap-1" title="Visits / Clicks">
                       <MousePointerClick size={12} className="text-[var(--text-muted)]" />
-                      {item.visit_counter || 0}
+                      {(item.visit_counter || 0).toLocaleString()}
                     </span>
                   </div>
                 </TableCell>
@@ -343,40 +343,43 @@ export default function SocialTable({
 
                 {/* 8. Status */}
                 <TableCell className="px-2 py-3.5 text-center">
-                  <Badge variant={getStatusBadgeVariant(item.status)} className="px-2.5 py-0.5">
+                  <Badge variant={getStatusBadgeVariant(item.status)} className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">
                     {formatStatus(item.status)}
                   </Badge>
                 </TableCell>
 
                 {/* 9. Manage */}
-                <TableCell className="px-4 py-3.5 text-center">
-                  <div className="flex items-center justify-center gap-1">
+                <TableCell className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-center gap-1.5">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => setPreviewSocial(item)}
-                      className="w-8 h-8 rounded-lg text-[var(--text-secondary)] hover:text-sky-500 hover:bg-sky-500/10"
+                      className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                       title="Preview Live Post Card"
+                      aria-label="Preview Post"
                     >
-                      <Eye size={14} />
+                      <Eye size={13} />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => onEdit(item)}
-                      className="w-8 h-8 rounded-lg text-[var(--text-secondary)] hover:text-indigo-500 hover:bg-indigo-500/10"
+                      className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                       title="Edit Record"
+                      aria-label="Edit Record"
                     >
-                      <Edit2 size={14} />
+                      <Edit2 size={13} />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => onDelete(item.id)}
-                      className="w-8 h-8 rounded-lg text-[var(--text-secondary)] hover:text-rose-500 hover:bg-rose-500/10"
+                      className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
                       title="Delete Record"
+                      aria-label="Delete Record"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={13} />
                     </Button>
                   </div>
                 </TableCell>
@@ -403,3 +406,4 @@ export default function SocialTable({
     </div>
   );
 }
+

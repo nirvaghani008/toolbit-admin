@@ -13,7 +13,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { AlertTriangle, AlertCircle } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Loader2 } from 'lucide-react';
 
 interface NewsFormProps {
   initialData?: NewsItem | null;
@@ -204,7 +204,7 @@ export default function NewsForm({
         description="Provide headline, category, source details, summary snippet, links, publication date, and visibility status."
         hasErrors={!!errors.title || !!errors.source_url || !!errors.favicon_url}
         headerActions={
-          <Badge variant={getFormStatusVariant(formData.status)} className="px-3 py-1">
+          <Badge variant={getFormStatusVariant(formData.status)} className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider">
             {formData.status}
           </Badge>
         }
@@ -219,7 +219,7 @@ export default function NewsForm({
               value={formData.title}
               onChange={handleChange}
               placeholder="e.g. OpenAI releases GPT-4o with real-time audio and vision"
-              className={errors.title ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+              className={errors.title ? 'saas-input-error' : ''}
               required
             />
             {errors.title && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.title}</p>}
@@ -252,7 +252,7 @@ export default function NewsForm({
                 value={formData.source_name}
                 onChange={handleChange}
                 placeholder="e.g. TechCrunch, Reuters, OpenAI Blog"
-                className={errors.source_name ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                className={errors.source_name ? 'saas-input-error' : ''}
                 required
               />
               {errors.source_name && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_name}</p>}
@@ -266,7 +266,7 @@ export default function NewsForm({
                 value={formData.source_url}
                 onChange={handleChange}
                 placeholder="https://techcrunch.com/2024/05/13/openai-launches-gpt-4o/"
-                className={errors.source_url ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                className={errors.source_url ? 'saas-input-error' : ''}
                 required
               />
               {errors.source_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_url}</p>}
@@ -295,7 +295,7 @@ export default function NewsForm({
               value={formData.favicon_url}
               onChange={handleChange}
               placeholder="https://techcrunch.com/favicon.ico"
-              className={errors.favicon_url ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+              className={errors.favicon_url ? 'saas-input-error' : ''}
             />
             {errors.favicon_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.favicon_url}</p>}
           </div>
@@ -309,7 +309,7 @@ export default function NewsForm({
                 name="published_date"
                 value={formData.published_date}
                 onChange={handleChange}
-                className={errors.published_date ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                className={errors.published_date ? 'saas-input-error' : ''}
                 required
               />
               {errors.published_date && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.published_date}</p>}
@@ -337,17 +337,26 @@ export default function NewsForm({
           type="button"
           variant="outline"
           onClick={handleCancel}
-          className="h-10 px-6 font-semibold rounded-xl"
+          disabled={isSubmitting || isLoading}
+          className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          variant="default"
           disabled={!isDirty || isSubmitting || isLoading}
-          className="h-10 px-6 font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 rounded-xl"
+          className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting || isLoading ? 'Saving...' : (initialData ? 'Update News Article' : 'Create News Article')}
+          {isSubmitting || isLoading ? (
+            <>
+              <Loader2 size={14} className="animate-spin mr-1.5" />
+              Saving...
+            </>
+          ) : initialData ? (
+            'Update News Article'
+          ) : (
+            'Create News Article'
+          )}
         </Button>
       </div>
 

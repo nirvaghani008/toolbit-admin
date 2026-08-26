@@ -14,38 +14,65 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 
-interface HashtagFormProps {
+export interface TagFormProps {
   initialData?: any;
+  availableStatuses?: string[];
   onSubmit: (data: any) => Promise<void> | void;
   onCancel: () => void;
 }
 
-function FormStatusBadge({ status }: { status: string }) {
+export function FormStatusBadge({ status }: { status: string }) {
   const s = (status || '').toLowerCase();
   if (s === 'show') {
-    return <Badge variant="success">Show</Badge>;
+    return <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Show</Badge>;
   }
   if (s === 'hide') {
-    return <Badge variant="destructive">Hide</Badge>;
+    return <Badge variant="destructive" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
   }
   if (s === 'draft') {
-    return <Badge variant="warning">Draft</Badge>;
+    return <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Draft</Badge>;
   }
-  return <Badge variant="slate">Archived</Badge>;
+  return <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Archived</Badge>;
 }
 
-export default function HashtagForm({ initialData, onSubmit, onCancel }: HashtagFormProps) {
+const getInitialTagName = (data: any) => {
+  if (!data) return '';
+  const raw = data.name || data.tag_name || '';
+  return String(raw).replace(/^#+/, '').trim();
+};
+
+const getInitialTagSlug = (data: any) => {
+  if (!data) return '';
+  return String(data.slug || data.tag_url || '').toLowerCase().trim();
+};
+
+const getInitialParentTag = (data: any) => {
+  if (!data) return '';
+  const raw = data.parent_tag || data.parent || '';
+  return String(raw).replace(/^#+/, '').trim();
+};
+
+export default function TagForm({ initialData, availableStatuses = ['show', 'hide'], onSubmit, onCancel }: TagFormProps) {
+  const defaultStatus = initialData?.status || availableStatuses[0] || 'show';
   const [formData, setFormData] = useState({
-    hashtag_name: '',
-    hashtag_url: '',
-    parent_hashtag: '',
-    status: 'draft', // Default for NEW records
-    meta_title: '',
-    meta_description: '',
-    description: '',
+    name: getInitialTagName(initialData),
+    slug: getInitialTagSlug(initialData),
+    parent_tag: getInitialParentTag(initialData),
+    status: defaultStatus,
+    meta_title: initialData?.meta_title || '',
+    meta_description: initialData?.meta_description || '',
+    description: initialData?.description || '',
   });
 
-  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>(() => {
+    if (initialData?.meta_keywords) {
+      return typeof initialData.meta_keywords === 'string'
+        ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
+        : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
+    }
+    return [];
+  });
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,27 +80,35 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
     if (!initialData) return true;
     const initialKeywords = typeof initialData.meta_keywords === 'string'
       ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
-      : [];
+      : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
+
+    const initName = getInitialTagName(initialData);
+    const initSlug = getInitialTagSlug(initialData);
+    const initParent = getInitialParentTag(initialData);
+    const initStatus = initialData.status || defaultStatus;
+    const initMetaTitle = initialData.meta_title || '';
+    const initMetaDesc = initialData.meta_description || '';
+    const initDesc = initialData.description || '';
 
     return (
-      formData.hashtag_name !== (initialData.hashtag_name || '') ||
-      formData.hashtag_url !== (initialData.hashtag_url || '') ||
-      formData.parent_hashtag !== (initialData.parent_hashtag || '') ||
-      formData.status !== (initialData.status || 'draft') ||
-      formData.meta_title !== (initialData.meta_title || '') ||
-      formData.meta_description !== (initialData.meta_description || '') ||
-      formData.description !== (initialData.description || '') ||
+      formData.name !== initName ||
+      formData.slug !== initSlug ||
+      formData.parent_tag !== initParent ||
+      formData.status !== initStatus ||
+      formData.meta_title !== initMetaTitle ||
+      formData.meta_description !== initMetaDesc ||
+      formData.description !== initDesc ||
       selectedKeywords.join(',') !== initialKeywords.join(',')
     );
-  }, [formData, selectedKeywords, initialData]);
+  }, [formData, selectedKeywords, initialData, defaultStatus]);
 
   useEffect(() => {
     if (initialData) {
       setFormData({
-        hashtag_name: initialData.hashtag_name || '',
-        hashtag_url: initialData.hashtag_url || '',
-        parent_hashtag: initialData.parent_hashtag || '',
-        status: initialData.status || 'draft', // Preserve existing status
+        name: getInitialTagName(initialData),
+        slug: getInitialTagSlug(initialData),
+        parent_tag: getInitialParentTag(initialData),
+        status: initialData.status || defaultStatus,
         meta_title: initialData.meta_title || '',
         meta_description: initialData.meta_description || '',
         description: initialData.description || '',
@@ -82,27 +117,25 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
       if (initialData.meta_keywords) {
         const keywords = typeof initialData.meta_keywords === 'string'
           ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
-          : [];
+          : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
         setSelectedKeywords(keywords);
       } else {
         setSelectedKeywords([]);
       }
     }
-  }, [initialData]);
+  }, [initialData, defaultStatus]);
 
   const validate = () => {
-    const hashtagSchema = z.object({
-      hashtag_name: z.string().trim()
-        .min(1, 'Hashtag name is required')
-        .refine(val => val.startsWith('#'), 'Hashtag name must start with #'),
-      hashtag_url: z.string().trim()
+    const tagSchema = z.object({
+      name: z.string().trim().min(1, 'Tag name is required'),
+      slug: z.string().trim()
         .min(1, 'URL slug is required')
         .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase, numbers, and hyphens only'),
       meta_title: z.string().trim().max(70, 'Meta title should be under 70 characters').or(z.literal('')),
       meta_description: z.string().trim().max(160, 'Meta description should be under 160 characters').or(z.literal('')),
     });
 
-    const result = hashtagSchema.safeParse(formData);
+    const result = tagSchema.safeParse(formData);
     const newErrors: Record<string, string> = {};
 
     if (!result.success) {
@@ -123,18 +156,21 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    const cleanVal = (name === 'name' || name === 'parent_tag') ? value.replace(/^#+/, '') : value;
+
     setFormData(prev => {
-      const nextData = { ...prev, [name]: value };
-      if (name === 'hashtag_name') {
-        nextData.hashtag_url = slugify(value);
+      const nextData = { ...prev, [name]: cleanVal };
+      if (name === 'name' && !initialData) {
+        nextData.slug = slugify(cleanVal);
       }
       return nextData;
     });
-    if (errors[name] || (name === 'hashtag_name' && errors['hashtag_url'])) {
+
+    if (errors[name] || (name === 'name' && errors['slug'])) {
       setErrors(prev => {
         const newErrs = { ...prev };
         delete newErrs[name];
-        if (name === 'hashtag_name') delete newErrs['hashtag_url'];
+        if (name === 'name') delete newErrs['slug'];
         return newErrs;
       });
     }
@@ -148,9 +184,19 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
     setIsSubmitting(true);
     try {
       setErrors({});
+      const cleanName = formData.name.trim().replace(/^#+/, '');
+      const cleanSlug = formData.slug.trim().toLowerCase();
+      const cleanParent = formData.parent_tag.trim().replace(/^#+/, '') || null;
+
       await onSubmit({
         ...formData,
-        meta_keywords: selectedKeywords.join(', '),
+        name: cleanName,
+        slug: cleanSlug,
+        parent_tag: cleanParent,
+        meta_title: formData.meta_title.trim() || null,
+        meta_description: formData.meta_description.trim() || null,
+        meta_keywords: selectedKeywords.length > 0 ? selectedKeywords.join(', ') : null,
+        description: formData.description.trim() || null,
         ...(initialData ? {} : { created_at: new Date().toISOString() }),
         updated_at: new Date().toISOString(),
       });
@@ -187,31 +233,31 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
         </Alert>
       )}
 
-      {/* Hashtag Details */}
+      {/* Tag Details */}
       <CollapsibleSection
-        id="hashtag_details_section"
-        title={initialData ? 'Edit Hashtag' : 'New Hashtag'}
-        description="Configure primary hashtag identity and organization."
-        hasErrors={!!(errors.hashtag_name || errors.hashtag_url)}
+        id="tag_details_section"
+        title={initialData ? 'Edit Tag' : 'New Tag'}
+        description="Configure primary tag identity and organization."
+        hasErrors={!!(errors.name || errors.slug)}
         headerActions={<FormStatusBadge status={formData.status} />}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-1.5">
             <label className={labelClass}>
-              Hashtag Name <span className="saas-label-required">*</span>
+              Tag Name <span className="saas-label-required">*</span>
             </label>
             <Input
-              name="hashtag_name"
-              value={formData.hashtag_name}
+              name="name"
+              value={formData.name}
               onChange={handleChange}
-              placeholder="e.g. #GenerativeAI"
-              className={errors.hashtag_name ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              placeholder="e.g. Generative AI"
+              className={errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
               required
               suppressHydrationWarning
             />
-            {errors.hashtag_name && (
+            {errors.name && (
               <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
-                <AlertTriangle size={11} /> {errors.hashtag_name}
+                <AlertTriangle size={11} /> {errors.name}
               </p>
             )}
           </div>
@@ -221,47 +267,48 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
               URL Slug <span className="saas-label-required">*</span>
             </label>
             <Input
-              name="hashtag_url"
-              value={formData.hashtag_url}
+              name="slug"
+              value={formData.slug}
               onChange={handleChange}
               placeholder="generative-ai"
-              className={errors.hashtag_url ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.slug ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
               required
               suppressHydrationWarning
             />
-            {errors.hashtag_url && (
+            {errors.slug && (
               <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
-                <AlertTriangle size={11} /> {errors.hashtag_url}
+                <AlertTriangle size={11} /> {errors.slug}
               </p>
             )}
           </div>
 
           <div className="space-y-1.5 relative focus-within:z-50">
-            <label className={labelClass}>Parent Hashtag</label>
+            <label className={labelClass}>Parent Tag</label>
             <KeywordTagInput
-              selectedKeywords={formData.parent_hashtag ? [formData.parent_hashtag] : []}
-              onKeywordsChange={(val) => setFormData(prev => ({ ...prev, parent_hashtag: val[0] || '' }))}
-              placeholder="Select Parent Hashtag..."
-              type="parent-hashtag"
+              selectedKeywords={formData.parent_tag ? [formData.parent_tag] : []}
+              onKeywordsChange={(val) => setFormData(prev => ({ ...prev, parent_tag: val[0] || '' }))}
+              placeholder="Select Parent Tag..."
+              type="parent-tag"
               singleSelect={true}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className={labelClass}>Visibility Status</label>
-            <Select
-              name="status"
-              value={formData.status}
-              onChange={(val) => handleChange({ target: { name: 'status', value: val } } as any)}
-              className="h-10"
-              suppressHydrationWarning
-            >
-              <option value="show">Show</option>
-              <option value="hide">Hide</option>
-              <option value="draft">Draft</option>
-              <option value="archived">Archived</option>
-            </Select>
-          </div>
+            <div className="space-y-1.5">
+              <label className={labelClass}>Visibility Status</label>
+              <Select
+                name="status"
+                value={formData.status}
+                onChange={(val) => handleChange({ target: { name: 'status', value: val } } as any)}
+                className="h-10"
+                suppressHydrationWarning
+              >
+                {Array.from(new Set([...availableStatuses, formData.status].filter(Boolean))).map((st) => (
+                  <option key={st} value={st}>
+                    {st.charAt(0).toUpperCase() + st.slice(1)}
+                  </option>
+                ))}
+              </Select>
+            </div>
         </div>
 
         <div className="space-y-1.5 mt-6">
@@ -271,7 +318,7 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
             value={formData.description}
             onChange={handleChange}
             rows={4}
-            placeholder="Provide a detailed description for this hashtag..."
+            placeholder="Provide a detailed description for this tag..."
             suppressHydrationWarning
           />
         </div>
@@ -279,9 +326,9 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
 
       {/* SEO & Metadata */}
       <CollapsibleSection
-        id="seo_hashtag_section"
+        id="seo_tag_section"
         title="SEO & Metadata"
-        description="Fine-tune how this hashtag appears in search result rankings."
+        description="Fine-tune how this tag appears in search result rankings."
         hasErrors={!!(errors.meta_title || errors.meta_description)}
       >
         <div className="space-y-6">
@@ -291,7 +338,7 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
               name="meta_title"
               value={formData.meta_title}
               onChange={handleChange}
-              placeholder="e.g. Explore Top #Hashtag Tools"
+              placeholder="e.g. Explore Top AI Tags & Categories"
               className={errors.meta_title ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
               suppressHydrationWarning
             />
@@ -309,7 +356,7 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
               value={formData.meta_description}
               onChange={handleChange}
               rows={3}
-              placeholder="Describe this hashtag for search engine indexing..."
+              placeholder="Describe this tag for search engine indexing..."
               className={errors.meta_description ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
               suppressHydrationWarning
             />
@@ -338,22 +385,22 @@ export default function HashtagForm({ initialData, onSubmit, onCancel }: Hashtag
           variant="outline"
           onClick={onCancel}
           disabled={isSubmitting}
+          className="h-11 px-5 font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          variant="default"
           disabled={!isDirty || isSubmitting}
-          className="min-w-[140px] font-bold shadow-md shadow-indigo-600/20"
+          className="min-w-[140px] h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs active:scale-95 rounded-xl cursor-pointer"
         >
           {isSubmitting ? (
             <>
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={15} className="animate-spin mr-2" />
               Saving...
             </>
           ) : (
-            initialData ? 'Update Hashtag' : 'Create Hashtag'
+            initialData ? 'Update Tag' : 'Create Tag'
           )}
         </Button>
       </div>

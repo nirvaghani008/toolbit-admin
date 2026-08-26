@@ -54,7 +54,7 @@ export default function Pagination({
         onClick={() => onPageChange(page)}
         className={`w-9 h-9 text-xs font-bold rounded-lg ${
           currentPage === page
-            ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 scale-105'
+            ? 'bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs scale-105'
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
         }`}
       >
@@ -129,7 +129,7 @@ export default function Pagination({
             type="submit"
             variant="secondary"
             size="sm"
-            className="h-9 px-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all border border-indigo-600/20"
+            className="h-9 px-3 text-[10px] font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 hover:bg-zinc-900 hover:text-white dark:hover:bg-zinc-100 dark:hover:text-zinc-900 transition-all border border-zinc-200 dark:border-zinc-700"
           >
             Go
           </Button>

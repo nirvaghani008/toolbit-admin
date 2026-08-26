@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, Send, Mail, User, Calendar, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Send, Mail, User, Calendar, MessageSquare, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
@@ -23,6 +23,7 @@ interface ContactReplyViewProps {
   onSaveReply: () => void;
   onClose: () => void;
   isActionLoading: boolean;
+  replyError?: string | null;
 }
 
 export default function ContactReplyView({
@@ -34,6 +35,7 @@ export default function ContactReplyView({
   onSaveReply,
   onClose,
   isActionLoading,
+  replyError,
 }: ContactReplyViewProps) {
   const formattedDate = contact.created_at
     ? new Date(contact.created_at).toLocaleDateString('en-US', {
@@ -58,10 +60,10 @@ export default function ContactReplyView({
           variant="ghost"
           size="sm"
           onClick={onClose}
-          className="text-sm font-semibold text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 hover:bg-indigo-500/10 gap-2 pl-2"
+          className="text-sm font-semibold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 gap-2 pl-2 rounded-lg"
         >
           <ArrowLeft size={16} />
-          Back to Inbox
+          Back to Inquiries
         </Button>
 
         <div className="flex items-center gap-2">
@@ -73,10 +75,10 @@ export default function ContactReplyView({
       {/* Two Column Detail & Response Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Left Column: Inquiry Detail */}
-        <Card className="shadow-sm">
+        <Card className="shadow-sm border-[var(--border-color)] bg-[var(--bg-surface)]">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
                 Inquiry Detail
               </span>
               {formattedDate && (
@@ -93,7 +95,7 @@ export default function ContactReplyView({
 
             <div className="flex items-center gap-2.5 pt-2 text-xs text-[var(--text-secondary)]">
               <div className="flex items-center gap-1.5 font-semibold text-[var(--text-primary)]">
-                <User size={13} className="text-indigo-500" />
+                <User size={13} className="text-zinc-500" />
                 <span>{contact.name || 'Anonymous'}</span>
               </div>
               <span className="text-[var(--text-muted)]">•</span>
@@ -112,7 +114,7 @@ export default function ContactReplyView({
             {contact.reply_message && (
               <div className="mt-5 pt-4 border-t border-[var(--border-color)]/60">
                 <div className="flex items-center gap-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
-                  <MessageSquare size={13} className="text-emerald-500" />
+                  <MessageSquare size={13} className="text-emerald-600 dark:text-emerald-400" />
                   <span>Previous Response</span>
                   {contact.replied_at && (
                     <span className="font-normal lowercase">
@@ -129,9 +131,9 @@ export default function ContactReplyView({
         </Card>
 
         {/* Right Column: Platform Response */}
-        <Card className="shadow-sm flex flex-col">
+        <Card className="shadow-sm border-[var(--border-color)] bg-[var(--bg-surface)] flex flex-col">
           <CardHeader className="pb-3">
-            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
               Platform Response
             </span>
             <CardTitle className="text-base font-bold text-[var(--text-primary)]">
@@ -145,12 +147,21 @@ export default function ContactReplyView({
           <CardContent className="space-y-4 pt-1 flex-1 flex flex-col">
             <div className="flex-1 flex flex-col">
               <Textarea
+                name="replyText"
+                id="replyText"
                 placeholder="Draft your reply here..."
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                className="flex-1 min-h-[190px] p-4 text-sm font-medium leading-relaxed bg-[var(--bg-elevated)] border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none"
+                className={`flex-1 min-h-[190px] p-4 text-sm font-medium leading-relaxed bg-[var(--bg-elevated)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none ${
+                  replyError ? 'border-rose-500 focus-visible:ring-rose-500/20 ring-2 ring-rose-500/20' : 'border-[var(--border-color)]'
+                }`}
                 suppressHydrationWarning
               />
+              {replyError && (
+                <p className="text-[11px] font-semibold text-rose-500 mt-1.5 ml-0.5 flex items-center gap-1">
+                  <AlertCircle size={13} className="shrink-0" /> {replyError}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -158,6 +169,7 @@ export default function ContactReplyView({
                 Visibility Status
               </label>
               <Select
+                name="selectedStatus"
                 value={selectedStatus}
                 onChange={(value) => setSelectedStatus(value)}
                 options={statusOptions}
@@ -168,7 +180,7 @@ export default function ContactReplyView({
             <Button
               onClick={onSaveReply}
               disabled={isActionLoading}
-              className="w-full h-11 text-xs font-bold shadow-md bg-indigo-600 hover:bg-indigo-700 text-white gap-2 transition-all mt-2"
+              className="w-full h-11 text-xs font-bold shadow-xs bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 gap-2 transition-all mt-2 rounded-xl active:scale-95"
               suppressHydrationWarning
             >
               <Send size={14} />

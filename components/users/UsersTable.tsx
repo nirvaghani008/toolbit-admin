@@ -57,37 +57,37 @@ export default function UsersTable({
       <Table>
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[28%]">User</TableHead>
-            <TableHead className="w-[26%]">Email</TableHead>
-            <TableHead className="w-[12%] text-center">Saved Tools</TableHead>
-            <TableHead className="w-[10%] text-center">Upvoted</TableHead>
-            <TableHead className="w-[12%]">Last Sign In</TableHead>
-            <TableHead className="w-[12%]">Joined</TableHead>
+            <TableHead className="w-[28%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">User</TableHead>
+            <TableHead className="w-[26%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Email</TableHead>
+            <TableHead className="w-[12%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Saved Tools</TableHead>
+            <TableHead className="w-[10%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Upvoted</TableHead>
+            <TableHead className="w-[12%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Last Sign In</TableHead>
+            <TableHead className="w-[12%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Joined</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading ? (
             Array.from({ length: 8 }).map((_, i) => (
               <TableRow key={`user-skeleton-${i}`} className="hover:bg-transparent">
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <div className="flex items-center gap-3">
                     <Skeleton className="w-9 h-9 rounded-full shrink-0" />
                     <Skeleton className="h-3.5 w-28 rounded" />
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <Skeleton className="h-3.5 w-44 rounded" />
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="px-2 py-4 text-center">
                   <Skeleton className="h-3.5 w-8 mx-auto rounded" />
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="px-2 py-4 text-center">
                   <Skeleton className="h-3.5 w-8 mx-auto rounded" />
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <Skeleton className="h-3.5 w-24 rounded" />
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <Skeleton className="h-3.5 w-24 rounded" />
                 </TableCell>
               </TableRow>
@@ -100,11 +100,11 @@ export default function UsersTable({
                 onMouseLeave={() => setHoveredId(null)}
                 className={`transition-colors duration-200 group cursor-pointer border-l-2 relative ${
                   hoveredId === user.id
-                    ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-indigo-600 dark:bg-indigo-500/[0.05]'
-                    : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.02]'
+                    ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
+                    : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                 }`}
               >
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <div className="flex items-center gap-3">
                     {user.avatar_url ? (
                       <img
@@ -117,11 +117,11 @@ export default function UsersTable({
                         }}
                       />
                     ) : (
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500/15 to-purple-500/15 border border-indigo-500/20 flex items-center justify-center text-xs font-bold text-indigo-500 shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-700 dark:text-zinc-300 shrink-0 shadow-2xs">
                         {(user.full_name || user.email || 'U').charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <span className="text-sm font-semibold text-[var(--text-primary)] truncate max-w-[160px]">
+                    <span className="text-xs font-semibold text-[var(--text-primary)] truncate max-w-[160px]">
                       {user.full_name || (
                         <span className="text-[var(--text-muted)] italic text-xs font-normal">
                           No name
@@ -130,34 +130,30 @@ export default function UsersTable({
                     </span>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <span className="text-xs font-medium text-[var(--text-secondary)] truncate max-w-[220px] block">
                     {user.email}
                   </span>
                 </TableCell>
-                <TableCell className="text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Bookmark size={13} className="text-emerald-500" />
-                    <span className="text-xs font-bold text-[var(--text-primary)]">
-                      {user.saved_count}
-                    </span>
+                <TableCell className="px-2 py-4 text-center">
+                  <div className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+                    <Bookmark size={13} className="text-zinc-500 dark:text-zinc-400" />
+                    <span>{user.saved_count}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <ThumbsUp size={13} className="text-amber-500" />
-                    <span className="text-xs font-bold text-[var(--text-primary)]">
-                      {user.upvoted_count}
-                    </span>
+                <TableCell className="px-2 py-4 text-center">
+                  <div className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
+                    <ThumbsUp size={13} className="text-zinc-500 dark:text-zinc-400" />
+                    <span>{user.upvoted_count}</span>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <div className="flex items-center gap-1.5">
                     <Clock
                       size={12}
                       className={
                         user.last_sign_in_at
-                          ? 'text-emerald-500'
+                          ? 'text-emerald-600 dark:text-emerald-400'
                           : 'text-[var(--text-muted)]'
                       }
                     />
@@ -166,7 +162,7 @@ export default function UsersTable({
                     </span>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-4 py-4">
                   <span className="text-xs text-[var(--text-muted)] font-medium">
                     {formatDate(user.created_at)}
                   </span>
@@ -202,3 +198,4 @@ export default function UsersTable({
     </div>
   );
 }
+

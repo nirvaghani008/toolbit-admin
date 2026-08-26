@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -81,8 +82,8 @@ const DialogPortal: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     () => false
   );
 
-  if (!mounted || !open) return null;
-  return <>{children}</>;
+  if (!mounted || !open || typeof document === 'undefined') return null;
+  return createPortal(<>{children}</>, document.body);
 };
 
 const DialogOverlay = React.forwardRef<
@@ -96,7 +97,7 @@ const DialogOverlay = React.forwardRef<
       ref={ref}
       onClick={() => onOpenChange(false)}
       className={cn(
-        'fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-fade-in',
+        'fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs transition-opacity animate-fade-in',
         className
       )}
       {...props}
@@ -135,7 +136,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
     return (
       <DialogPortal>
         <DialogOverlay />
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 pointer-events-none">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 pointer-events-none">
           <div
             ref={ref || contentRef}
             onClick={(e) => e.stopPropagation()}

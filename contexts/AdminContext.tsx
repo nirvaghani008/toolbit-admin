@@ -83,7 +83,7 @@ export const ALL_MODULES = [
   'dashboard',
   'tools',
   'categories',
-  'hashtags',
+  'tags',
   'reviews',
   'reports',
   'blog_posts',
@@ -91,6 +91,7 @@ export const ALL_MODULES = [
   'news',
   'socials',
   'submissions',
+  'advertise',
   'orders',
   'users',
   'newsletter',
@@ -157,8 +158,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const hasPermission = useCallback(
     (module: string, action: PermissionAction = 'view'): boolean => {
-      if (role === 'admin') return true;
-      if (!role || role !== 'subadmin') return false;
+      // manage_admins is strictly restricted to Super Admin role
+      if (module === 'manage_admins') {
+        return role === 'admin';
+      }
+
+      if (!role) return false;
 
       // Direct module check
       const modPerm = permissions[module];
@@ -169,8 +174,16 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         if (action === 'delete') return !!modPerm.can_delete;
       }
 
-      // Group fallback checks (e.g. tools contains categories, hashtags, reviews, reports)
-      if (['categories', 'hashtags', 'reviews', 'reports'].includes(module)) {
+      // Group fallback checks for sub-modules
+      if (['categories', 'tags', 'reviews', 'reports'].includes(module)) {
+        const directPerm = permissions[module];
+        if (directPerm) {
+          if (action === 'view') return !!directPerm.can_view;
+          if (action === 'insert') return !!directPerm.can_insert;
+          if (action === 'update') return !!directPerm.can_update;
+          if (action === 'delete') return !!directPerm.can_delete;
+        }
+
         const parentPerm = permissions['tools'];
         if (parentPerm) {
           if (action === 'view') return !!parentPerm.can_view;
@@ -198,6 +211,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
           if (action === 'update') return !!parentPerm.can_update;
           if (action === 'delete') return !!parentPerm.can_delete;
         }
+      }
+
+      // If Super Admin and no custom permissions object restricts this module, default to true
+      if (role === 'admin') {
+        return true;
       }
 
       return false;
@@ -263,11 +281,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
         let userPerms: Record<string, ModulePermission> = {};
 
-        if (currentRole === 'admin') {
+        if (roleData.permissions && Object.keys(roleData.permissions).length > 0) {
+          userPerms = roleData.permissions as Record<string, ModulePermission>;
+        } else if (currentRole === 'admin') {
           userPerms = getFullAdminPermissions();
         } else {
-          // Subadmin: Load permissions from admin_roles.permissions
-          userPerms = (roleData.permissions as Record<string, ModulePermission>) || {};
+          userPerms = {};
         }
 
         writeCache(session.user.id, profile, currentRole, userPerms);

@@ -22,6 +22,7 @@ import PermissionsMatrix from '@/components/manage-admins/PermissionsMatrix';
 import AddSubAdminModal from '@/components/manage-admins/AddSubAdminModal';
 import DeleteAdminDialog from '@/components/manage-admins/DeleteAdminDialog';
 import { AdminUser, ModulePermission, ADMIN_MODULES } from '@/components/manage-admins/types';
+import Sparkline from '@/components/common/Sparkline';
 
 export default function ManageAdminsPage() {
   const { isSuperAdmin, isAuthorized, role } = useAdmin();
@@ -110,11 +111,11 @@ export default function ManageAdminsPage() {
   if (isAuthorized && !isSuperAdmin) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-6">
-        <div className="max-w-md w-full p-8 rounded-3xl bg-[var(--bg-surface)] border border-rose-500/20 text-center shadow-xl space-y-4">
-          <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto shadow-md">
-            <Lock size={28} />
+        <div className="max-w-md w-full p-8 rounded-3xl bg-[var(--bg-surface)] border border-zinc-200 dark:border-zinc-800 text-center shadow-lg space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center justify-center mx-auto shadow-2xs">
+            <Lock size={24} />
           </div>
-          <h2 className="text-xl font-black text-[var(--text-primary)] tracking-tight uppercase">
+          <h2 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">
             Access Restricted
           </h2>
           <p className="text-xs text-[var(--text-muted)] leading-relaxed">
@@ -122,7 +123,7 @@ export default function ManageAdminsPage() {
           </p>
           <div className="pt-2">
             <Link href="/admin/dashboard">
-              <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-11 px-6 rounded-2xl shadow-md gap-2">
+              <Button className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold h-11 px-6 rounded-xl shadow-xs gap-2">
                 <ArrowLeft size={16} />
                 Return to Dashboard
               </Button>
@@ -145,24 +146,24 @@ export default function ManageAdminsPage() {
             <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">
               Manage Admins & Access
             </h1>
-            <Badge variant="default" className="text-xs font-semibold bg-indigo-600 text-white">
-              Super Admin Only
+            <Badge variant="slate" className="text-[10px] font-bold uppercase tracking-wider">
+              Admin Only
             </Badge>
           </div>
           <p className="text-sm text-[var(--text-muted)] font-medium mt-1">
-            Create sub-admins and configure granular page-by-page and action-by-action (View, Insert, Update, Delete) permissions.
+            Configure granular page-by-page and action-by-action (View, Insert, Update, Delete) permissions.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
-            size="default"
             onClick={() => fetchTeamMembers(true)}
             disabled={isRefreshing}
-            className="font-semibold shadow-xs gap-2 cursor-pointer"
+            className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            suppressHydrationWarning
           >
-            <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-indigo-500' : ''} />
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
             <span>{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
           </Button>
         </div>
@@ -170,43 +171,64 @@ export default function ManageAdminsPage() {
 
       {/* KPI Stats Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-[#6366f1] flex items-center justify-center shrink-0">
-            <Users size={22} />
+        {/* Total Team Size */}
+        <div className="group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col rounded-2xl border bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30 shadow-2xs">
+          <Sparkline color="text-[#364954] dark:text-zinc-400" id="team-size" />
+          <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700">
+              <Users size={17} />
+            </div>
+            <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border shadow-2xs bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700">
+              All Members
+            </span>
           </div>
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
+            <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
               Total Team Size
             </div>
-            <div className="text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">
+            <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
               {users.length}
             </div>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-500 flex items-center justify-center shrink-0">
-            <ShieldCheck size={22} />
+        {/* Admins */}
+        <div className="group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col rounded-2xl border bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30 shadow-2xs">
+          <Sparkline color="text-[#8a652a] dark:text-amber-400" id="super-admins" />
+          <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20">
+              <ShieldCheck size={17} />
+            </div>
+            <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border shadow-2xs bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">
+              Full Access
+            </span>
           </div>
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+          <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
+            <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
               Super Admins
             </div>
-            <div className="text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">
+            <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
               {superAdminsCount}
             </div>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-xs flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0">
-            <KeyRound size={22} />
-          </div>
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Restricted Sub-Admins
+        {/* Sub-Admins */}
+        <div className="group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col rounded-2xl border bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30 shadow-2xs">
+          <Sparkline color="text-[#3c5748] dark:text-emerald-400" id="sub-admins" />
+          <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20">
+              <KeyRound size={17} />
             </div>
-            <div className="text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">
+            <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border shadow-2xs bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
+              Custom Roles
+            </span>
+          </div>
+          <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
+            <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
+              Sub-Admins
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
               {subAdminsCount}
             </div>
           </div>
@@ -214,9 +236,9 @@ export default function ManageAdminsPage() {
       </div>
 
       {/* Main Split-View Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px] items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Team Directory List (5 Cols on large screens) */}
-        <div className="lg:col-span-5 h-[640px]">
+        <div className="lg:col-span-5 h-[800px]">
           <AdminUsersList
             users={users}
             selectedUser={selectedUser}
@@ -228,7 +250,7 @@ export default function ManageAdminsPage() {
         </div>
 
         {/* Right Column: Permissions Matrix (7 Cols on large screens) */}
-        <div className="lg:col-span-7 h-[640px]">
+        <div className="lg:col-span-7 h-[800px]">
           <PermissionsMatrix
             user={selectedUser}
             onPermissionsUpdated={() => fetchTeamMembers(false)}
@@ -256,3 +278,5 @@ export default function ManageAdminsPage() {
     </div>
   );
 }
+
+

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { scrollToError, slugify } from '@/lib/form-utils';
 import { supabase } from '@/lib/supabase';
 import CollapsibleSection from '../common/CollapsibleSection';
-import { Plus, Trash2, AlertTriangle, Check } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Check, Loader2 } from 'lucide-react';
 import KeywordTagInput from '../categories/KeywordTagInput';
 import LoadingOverlay from '../common/LoadingOverlay';
 import { SocialItem } from './SocialTable';
@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 interface SocialFormProps {
@@ -411,10 +412,10 @@ export default function SocialForm({
     return 'slate';
   };
 
-  const labelClass = "text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] block";
+  const labelClass = "saas-label";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 pb-10">
+    <form onSubmit={handleSubmit} className="saas-form space-y-8 pb-10">
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertTriangle className="h-4 w-4" />
@@ -443,21 +444,21 @@ export default function SocialForm({
         description="Configure social post title, description, platform, content type, and tags."
         hasErrors={!!(errors.title || errors.platform || errors.content_type || errors.tags || errors.source_url || errors.published_date)}
         headerActions={
-          <Badge variant={getStatusBadgeVariant(formData.status)} className="px-3 py-1 text-[10px]">
+          <Badge variant={getStatusBadgeVariant(formData.status)} className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider">
             {formData.status}
           </Badge>
         }
       >
         <div className="space-y-6">
           <div className="space-y-1.5">
-            <label className={labelClass}>Post Title <span className="text-rose-500">*</span></label>
+            <label className={labelClass}>Post Title <span className="saas-label-required">*</span></label>
             <Input
               type="text"
               name="title"
               value={formData.title}
               onChange={(e) => handleFieldChange('title', e.target.value)}
               placeholder="e.g. Major feature release announcement on X"
-              className={errors.title ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+              className={errors.title ? 'saas-input-error' : ''}
               required
             />
             {errors.title && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.title}</p>}
@@ -477,23 +478,23 @@ export default function SocialForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
-              <label className={labelClass}>Platform <span className="text-rose-500">*</span></label>
+              <label className={labelClass}>Platform <span className="saas-label-required">*</span></label>
               <Select
                 value={formData.platform}
                 onChange={(val) => handleFieldChange('platform', val)}
                 options={PLATFORM_OPTIONS}
-                className={errors.platform ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                className={errors.platform ? 'saas-input-error' : ''}
               />
               {errors.platform && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.platform}</p>}
             </div>
 
             <div className="space-y-1.5">
-              <label className={labelClass}>Content Type <span className="text-rose-500">*</span></label>
+              <label className={labelClass}>Content Type <span className="saas-label-required">*</span></label>
               <Select
                 value={formData.content_type}
                 onChange={(val) => handleFieldChange('content_type', val)}
                 options={CONTENT_TYPE_OPTIONS}
-                className={errors.content_type ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                className={errors.content_type ? 'saas-input-error' : ''}
               />
               {errors.content_type && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.content_type}</p>}
             </div>
@@ -501,7 +502,7 @@ export default function SocialForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
-              <label className={labelClass}>Tags <span className="text-rose-500">*</span></label>
+              <label className={labelClass}>Tags <span className="saas-label-required">*</span></label>
               <KeywordTagInput
                 selectedKeywords={selectedTags}
                 onKeywordsChange={(tags) => {
@@ -528,27 +529,27 @@ export default function SocialForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
-              <label className={labelClass}>Source URL <span className="text-rose-500">*</span></label>
+              <label className={labelClass}>Source URL <span className="saas-label-required">*</span></label>
               <Input
                 type="url"
                 name="source_url"
                 value={formData.source_url}
                 onChange={(e) => handleFieldChange('source_url', e.target.value)}
                 placeholder="https://x.com/username/status/123456789"
-                className={errors.source_url ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                className={errors.source_url ? 'saas-input-error' : ''}
                 required
               />
               {errors.source_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_url}</p>}
             </div>
 
             <div className="space-y-1.5">
-              <label className={labelClass}>Published Date <span className="text-rose-500">*</span></label>
+              <label className={labelClass}>Published Date <span className="saas-label-required">*</span></label>
               <Input
                 type="date"
                 name="published_date"
                 value={formData.published_date}
                 onChange={(e) => handleFieldChange('published_date', e.target.value)}
-                className={errors.published_date ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+                className={errors.published_date ? 'saas-input-error' : ''}
                 required
               />
               {errors.published_date && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.published_date}</p>}
@@ -568,19 +569,10 @@ export default function SocialForm({
         hideChevron={true}
         headerActions={
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setHasJsonData(prev => !prev)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-offset-2 ring-indigo-500 focus:ring-2 cursor-pointer ${
-                hasJsonData ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-              }`}
-            >
-              <span
-                className={`${
-                  hasJsonData ? 'translate-x-6' : 'translate-x-1'
-                } inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out shadow-sm`}
-              />
-            </button>
+            <Switch
+              checked={hasJsonData}
+              onCheckedChange={setHasJsonData}
+            />
           </div>
         }
       >
@@ -777,24 +769,31 @@ export default function SocialForm({
       </CollapsibleSection>
 
       {/* Form Controls */}
-      <div className="flex items-center justify-end gap-3 pt-6 border-t border-[var(--border-color)]">
+      <div className="saas-action-footer flex items-center justify-end gap-3 pt-6 border-t border-[var(--border-color)]">
         <Button
           type="button"
-          variant="secondary"
-          size="lg"
+          variant="outline"
           onClick={handleCancel}
-          className="h-11 px-6 rounded-xl font-bold"
+          disabled={isSubmitting || isLoading}
+          className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          variant="default"
-          size="lg"
           disabled={!isDirty || isSubmitting || isLoading}
-          className="h-11 px-8 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
+          className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting || isLoading ? 'Saving...' : (initialData ? 'Update Social Post' : 'Create Social Post')}
+          {isSubmitting || isLoading ? (
+            <>
+              <Loader2 size={14} className="animate-spin mr-1.5" />
+              Saving...
+            </>
+          ) : initialData ? (
+            'Update Social Post'
+          ) : (
+            'Create Social Post'
+          )}
         </Button>
       </div>
 

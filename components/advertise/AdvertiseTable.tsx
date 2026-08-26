@@ -32,69 +32,8 @@ interface AdvertiseTableProps {
   onRefresh?: () => void;
 }
 
-function AdvertiseToolLogo({ item, toolName }: { item: any; toolName: string }) {
-  const info = typeof item.tool_info === 'string'
-    ? (() => { try { return JSON.parse(item.tool_info); } catch { return {}; } })()
-    : (item.tool_info || {});
+import ToolLogo from '@/components/common/ToolLogo';
 
-  const candidateUrl =
-    item.favicon_url ||
-    item.icon_url ||
-    item.logo_url ||
-    item.image_url ||
-    info.favicon_url ||
-    info.icon_url ||
-    info.logo_url ||
-    info.logo ||
-    info.icon ||
-    info.imageUrl;
-
-  let faviconApiUrl: string | null = null;
-  const siteUrl = item.tool_site_url || item.url || info.websiteUrl || info.url || info.website_url;
-  if (siteUrl && typeof siteUrl === 'string') {
-    try {
-      const cleanUrl = siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`;
-      const hostname = new URL(cleanUrl).hostname.replace(/^www\./, '');
-      if (hostname) {
-        faviconApiUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=128`;
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  const primaryUrl = candidateUrl || faviconApiUrl;
-  const secondaryUrl = candidateUrl ? faviconApiUrl : null;
-
-  const [currentSrc, setCurrentSrc] = useState<string | null>(primaryUrl);
-  const [hasError, setHasError] = useState(false);
-
-  const handleError = () => {
-    if (currentSrc === candidateUrl && secondaryUrl) {
-      setCurrentSrc(secondaryUrl);
-    } else {
-      setHasError(true);
-    }
-  };
-
-  return (
-    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/15 p-1 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-      {!hasError && currentSrc ? (
-        <img
-          src={currentSrc}
-          alt={toolName}
-          onError={handleError}
-          className="w-full h-full object-contain rounded-lg"
-          loading="lazy"
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center text-indigo-500 font-bold text-xs">
-          {toolName.substring(0, 1).toUpperCase()}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function AdvertiseTable({
   data,
@@ -201,8 +140,8 @@ export default function AdvertiseTable({
                 </TableCell>
                 <TableCell className="px-6 py-4 text-center">
                   <div className="flex items-center justify-center gap-1.5">
-                    <Skeleton className="w-8 h-8 rounded-lg" />
-                    <Skeleton className="w-8 h-8 rounded-lg" />
+                    <Skeleton className="w-7 h-7 rounded-lg" />
+                    <Skeleton className="w-7 h-7 rounded-lg" />
                   </div>
                 </TableCell>
               </TableRow>
@@ -236,18 +175,19 @@ export default function AdvertiseTable({
               return (
                 <TableRow
                   key={item.id}
+                  onClick={() => onEdit(item)}
                   onMouseEnter={() => setHoveredId(item.id)}
                   onMouseLeave={() => setHoveredId(null)}
-                  className={`transition-all duration-200 group border-l-2 relative ${
+                  className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
                     hoveredId === item.id
-                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:bg-indigo-500/[0.04] dark:border-l-indigo-500'
-                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.02]'
+                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
+                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                   }`}
                 >
                   {/* Tool Info */}
                   <TableCell className="px-6 py-3.5">
                     <div className="flex items-center gap-3">
-                      <AdvertiseToolLogo item={item} toolName={toolName} />
+                      <ToolLogo tool={item} toolName={toolName} />
                       <div className="flex flex-col max-w-[200px]">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="text-xs font-bold text-[var(--text-primary)] truncate">
@@ -256,7 +196,7 @@ export default function AdvertiseTable({
                           {isPaid && (
                             <span className="inline-flex items-center justify-center shrink-0 self-center" title="Verified Paid Tool">
                               <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none">
-                                <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.79-4-4-4-.495 0-.965.084-1.4.238C14.55 2.475 13.18 1.6 11.6 1.6c-1.58 0-2.95.875-3.6 2.148-.435-.154-.905-.238-1.4-.238-2.21 0-4 1.79-4 4 0 .495.084.965.238 1.4C1.575 9.55.7 10.92.7 12.5c0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.79 4 4 4 .495 0 .965-.084 1.4-.238.65 1.273 2.02 2.148 3.6 2.148 1.58 0 2.95-.875 3.6-2.148.435.154.905.238 1.4.238 2.21 0 4-1.79 4-4 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6z" fill="#1d9bf0" />
+                                <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.79-4-4-4-.495 0-.965.084-1.4.238C14.55 2.475 13.18 1.6 11.6 1.6c-1.58 0-2.95.875-3.6 2.148-.435-.154-.905-.238-1.4-.238-2.21 0-4 1.79-4 4 4 .495 0 .965-.084 1.4-.238.65 1.273 2.02 2.148 3.6 2.148 1.58 0 2.95-.875 3.6-2.148.435.154.905.238 1.4.238 2.21 0 4-1.79 4-4 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6z" fill="#1d9bf0" />
                                 <path d="M9.86 16.5a1 1 0 0 1-.707-.293l-3.36-3.36a1 1 0 1 1 1.414-1.414l2.653 2.653 6.84-6.84a1 1 0 1 1 1.414 1.414l-7.547 7.547a1 1 0 0 1-.707.293z" fill="#ffffff" />
                               </svg>
                             </span>
@@ -267,7 +207,7 @@ export default function AdvertiseTable({
                             href={siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-[10px] text-[var(--text-muted)] hover:text-sky-500 hover:underline truncate flex items-center gap-1 mt-0.5 transition-colors"
+                            className="text-[10px] text-[var(--text-muted)] hover:text-zinc-900 dark:hover:text-zinc-200 hover:underline truncate flex items-center gap-1 mt-0.5 transition-colors"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {(() => {
@@ -289,7 +229,7 @@ export default function AdvertiseTable({
                   {/* Submitter Info */}
                   <TableCell className="px-6 py-3.5">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)] flex items-center justify-center text-[var(--text-muted)] shrink-0 shadow-2xs">
+                      <div className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-600 dark:text-zinc-300 shrink-0 shadow-2xs">
                         <User size={12} />
                       </div>
                       <div className="flex flex-col max-w-[160px]">
@@ -312,7 +252,7 @@ export default function AdvertiseTable({
                         item.featured_type.map((type: string) => (
                           <Badge
                             key={type}
-                            variant="default"
+                            variant="slate"
                             className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
                           >
                             {type}
@@ -320,7 +260,7 @@ export default function AdvertiseTable({
                         ))
                       ) : item.featured_type ? (
                         <Badge
-                          variant="default"
+                          variant="slate"
                           className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
                         >
                           {item.featured_type}
@@ -357,25 +297,25 @@ export default function AdvertiseTable({
                   </TableCell>
 
                   {/* Manage */}
-                  <TableCell className="px-6 py-3.5 text-center">
-                    <div className="flex items-center justify-center gap-1">
+                  <TableCell className="px-6 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-1.5">
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => onEdit(item)}
-                        className="w-8 h-8 rounded-lg text-[var(--text-secondary)] hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
+                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                         title="Edit Record"
                       >
-                        <Edit2 size={14} />
+                        <Edit2 size={13} />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => onDelete(item.id)}
-                        className="w-8 h-8 rounded-lg text-[var(--text-secondary)] hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
                         title="Delete Record"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={13} />
                       </Button>
                     </div>
                   </TableCell>
@@ -395,3 +335,4 @@ export default function AdvertiseTable({
     </div>
   );
 }
+

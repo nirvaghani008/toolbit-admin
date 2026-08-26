@@ -190,7 +190,7 @@ export default function OrderDetailsModal({
               Target Tool / Submission
             </div>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs">
                 {faviconUrl ? (
                   <img
                     src={faviconUrl}
@@ -201,7 +201,7 @@ export default function OrderDetailsModal({
                     }}
                   />
                 ) : (
-                  <Database className="h-5 w-5 text-indigo-500" />
+                  <Database className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
                 )}
               </div>
               <div className="min-w-0 flex-1">
@@ -213,7 +213,7 @@ export default function OrderDetailsModal({
                     href={siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:underline mt-0.5 truncate max-w-full"
+                    className="inline-flex items-center gap-1 text-xs text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 hover:underline mt-0.5 truncate max-w-full font-medium"
                   >
                     <Globe className="h-3 w-3 shrink-0" />
                     {domain || siteUrl}
@@ -230,7 +230,7 @@ export default function OrderDetailsModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-surface)] p-4 space-y-2">
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                <User className="h-3.5 w-3.5 text-indigo-500" />
+                <User className="h-3.5 w-3.5 text-zinc-500" />
                 Submitted By
               </div>
               <div className="text-sm font-semibold text-[var(--text-primary)]">
@@ -248,7 +248,7 @@ export default function OrderDetailsModal({
 
             <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-surface)] p-4 space-y-2">
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                <CreditCard className="h-3.5 w-3.5 text-emerald-500" />
+                <CreditCard className="h-3.5 w-3.5 text-zinc-500" />
                 Payment Method & Location
               </div>
               <div className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
@@ -268,7 +268,7 @@ export default function OrderDetailsModal({
           {/* Financial Breakdown */}
           <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-surface)] p-4 space-y-3">
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              <DollarSign className="h-3.5 w-3.5 text-indigo-500" />
+              <DollarSign className="h-3.5 w-3.5 text-zinc-500" />
               Financial Breakdown
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -292,11 +292,11 @@ export default function OrderDetailsModal({
                   {order.currency || 'USD'}
                 </div>
               </div>
-              <div className="bg-indigo-500/10 p-2.5 rounded-lg border border-indigo-500/20">
-                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+              <div className="bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700">
+                <div className="text-[10px] text-zinc-600 dark:text-zinc-400 font-medium">
                   Total Paid
                 </div>
-                <div className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                <div className="text-sm font-extrabold text-zinc-900 dark:text-zinc-100 mt-0.5">
                   $
                   {(
                     Number(order.amount_usd) +
@@ -318,7 +318,7 @@ export default function OrderDetailsModal({
                 {order.refund_amount != null && (
                   <div>
                     <span className="font-semibold text-[var(--text-primary)]">Amount: </span>
-                    ${Number(order.refund_amount).toFixed(2)} {order.currency || 'USD'}
+                    ${Number(order.refund_amount).toFixed(2)}
                   </div>
                 )}
                 {order.refund_reason && (
@@ -341,7 +341,7 @@ export default function OrderDetailsModal({
           {order.metadata && typeof order.metadata === 'object' && Object.keys(order.metadata).length > 0 && (
             <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-surface)] p-4 space-y-2">
               <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                Metadata Details
+                Metadata Attributes
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
                 {Object.entries(order.metadata).map(([key, val]) => {
@@ -374,7 +374,7 @@ export default function OrderDetailsModal({
         <DialogFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-color)]/60 pt-4 mt-2">
           <div className="flex items-center gap-2">
             {order.invoice_url && (
-              <Button variant="outline" size="sm" asChild>
+              <Button variant="outline" size="sm" asChild className="border-zinc-200 dark:border-zinc-700">
                 <a
                   href={order.invoice_url}
                   target="_blank"
@@ -388,7 +388,7 @@ export default function OrderDetailsModal({
               </Button>
             )}
             {order.receipt_url && (
-              <Button variant="outline" size="sm" asChild>
+              <Button variant="outline" size="sm" asChild className="border-zinc-200 dark:border-zinc-700">
                 <a
                   href={order.receipt_url}
                   target="_blank"
@@ -402,7 +402,7 @@ export default function OrderDetailsModal({
               </Button>
             )}
           </div>
-          <Button variant="secondary" size="sm" onClick={onClose}>
+          <Button variant="outline" size="sm" onClick={onClose} className="border-zinc-200 dark:border-zinc-700">
             Close
           </Button>
         </DialogFooter>
@@ -410,3 +410,4 @@ export default function OrderDetailsModal({
     </Dialog>
   );
 }
+

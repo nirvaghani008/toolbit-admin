@@ -20,18 +20,54 @@ interface CategoryFormProps {
   onCancel: () => void;
 }
 
+function FormStatusBadge({ status }: { status: string }) {
+  const s = (status || '').toLowerCase();
+  if (s === 'show') {
+    return <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Show</Badge>;
+  }
+  if (s === 'hide') {
+    return <Badge variant="destructive" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
+  }
+  if (s === 'draft') {
+    return <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Draft</Badge>;
+  }
+  return <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Archived</Badge>;
+}
+
+const getInitialCategoryName = (data: any) => {
+  if (!data) return '';
+  return String(data.name || data.category_name || '').trim();
+};
+
+const getInitialCategoryUrl = (data: any) => {
+  if (!data) return '';
+  return String(data.slug || data.category_url || '').toLowerCase().trim();
+};
+
+const getInitialParentCategory = (data: any) => {
+  if (!data) return '';
+  return String(data.parent || data.parent_category || '').trim();
+};
+
 export default function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormProps) {
   const [formData, setFormData] = useState({
-    category_name: '',
-    category_url: '',
-    parent_category: '',
-    status: 'draft', // Default for NEW records
-    meta_title: '',
-    meta_description: '',
-    description: '',
+    category_name: getInitialCategoryName(initialData),
+    category_url: getInitialCategoryUrl(initialData),
+    parent_category: getInitialParentCategory(initialData),
+    status: initialData?.status || 'show',
+    meta_title: initialData?.meta_title || '',
+    meta_description: initialData?.meta_description || '',
+    description: initialData?.description || '',
   });
 
-  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>(() => {
+    if (initialData?.meta_keywords) {
+      return typeof initialData.meta_keywords === 'string'
+        ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
+        : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
+    }
+    return [];
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -39,16 +75,24 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
     if (!initialData) return true;
     const initialKeywords = typeof initialData.meta_keywords === 'string'
       ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
-      : [];
+      : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
+
+    const initialCategoryName = getInitialCategoryName(initialData);
+    const initialCategoryUrl = getInitialCategoryUrl(initialData);
+    const initialParentCategory = getInitialParentCategory(initialData);
+    const initialStatus = initialData.status || 'show';
+    const initialMetaTitle = initialData.meta_title || '';
+    const initialMetaDesc = initialData.meta_description || '';
+    const initialDesc = initialData.description || '';
 
     return (
-      formData.category_name !== (initialData.category_name || '') ||
-      formData.category_url !== (initialData.category_url || '') ||
-      formData.parent_category !== (initialData.parent_category || '') ||
-      formData.status !== (initialData.status || 'draft') ||
-      formData.meta_title !== (initialData.meta_title || '') ||
-      formData.meta_description !== (initialData.meta_description || '') ||
-      formData.description !== (initialData.description || '') ||
+      formData.category_name !== initialCategoryName ||
+      formData.category_url !== initialCategoryUrl ||
+      formData.parent_category !== initialParentCategory ||
+      formData.status !== initialStatus ||
+      formData.meta_title !== initialMetaTitle ||
+      formData.meta_description !== initialMetaDesc ||
+      formData.description !== initialDesc ||
       selectedKeywords.join(',') !== initialKeywords.join(',')
     );
   }, [formData, selectedKeywords, initialData]);
@@ -56,10 +100,10 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
   useEffect(() => {
     if (initialData) {
       setFormData({
-        category_name: initialData.category_name || '',
-        category_url: initialData.category_url || '',
-        parent_category: initialData.parent_category || '',
-        status: initialData.status || 'draft', // Preserve existing status
+        category_name: getInitialCategoryName(initialData),
+        category_url: getInitialCategoryUrl(initialData),
+        parent_category: getInitialParentCategory(initialData),
+        status: initialData.status || 'show',
         meta_title: initialData.meta_title || '',
         meta_description: initialData.meta_description || '',
         description: initialData.description || '',
@@ -68,7 +112,7 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
       if (initialData.meta_keywords) {
         const keywords = typeof initialData.meta_keywords === 'string'
           ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
-          : [];
+          : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
         setSelectedKeywords(keywords);
       } else {
         setSelectedKeywords([]);
@@ -109,7 +153,7 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
     const { name, value } = e.target;
     setFormData(prev => {
       const nextData = { ...prev, [name]: value };
-      if (name === 'category_name') {
+      if (name === 'category_name' && !initialData) {
         nextData.category_url = slugify(value);
       }
       return nextData;
@@ -135,7 +179,10 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
       setErrors({});
       await onSubmit({
         ...formData,
-        meta_keywords: selectedKeywords.join(', '),
+        name: formData.category_name.trim(),
+        slug: formData.category_url.trim(),
+        parent: formData.parent_category.trim() || null,
+        meta_keywords: selectedKeywords.length > 0 ? selectedKeywords.join(', ') : null,
         ...(initialData ? {} : { created_at: new Date().toISOString() }),
         updated_at: new Date().toISOString(),
       });
@@ -186,24 +233,7 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
         title={initialData ? 'Edit Category' : 'New Category'}
         description="Define core identity and categorization rules."
         hasErrors={!!(errors.category_name || errors.category_url)}
-        headerActions={
-          <Badge
-            variant={
-              formData.status === 'show' ? 'success' :
-              formData.status === 'hide' ? 'slate' :
-              formData.status === 'draft' ? 'warning' :
-              formData.status === 'archived' ? 'violet' :
-              'slate'
-            }
-            className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider"
-          >
-            {formData.status === 'show' ? 'Show' :
-             formData.status === 'hide' ? 'Hide' :
-             formData.status === 'draft' ? 'Draft' :
-             formData.status === 'archived' ? 'Archived' :
-             (formData.status || 'Draft')}
-          </Badge>
-        }
+        headerActions={<FormStatusBadge status={formData.status} />}
       >
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

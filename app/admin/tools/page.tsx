@@ -328,9 +328,9 @@ export default function ToolsPage() {
                 id: 'all',
                 label: 'Total Tools',
                 value: stats.all,
-                iconStyle: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-indigo-400 dark:bg-indigo-500/10 dark:border-indigo-500/20',
-                badgeStyle: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
-                sparklineColor: 'text-[#eceae6] group-hover:text-[#d6d2ca] dark:text-zinc-800 dark:group-hover:text-zinc-700',
+                iconStyle: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+                badgeStyle: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+                sparklineColor: 'text-[#364954] dark:text-zinc-400',
                 icon: <Database size={17} />,
                 points: sparklines.all,
                 badge: 'All Tools'
@@ -341,7 +341,7 @@ export default function ToolsPage() {
                 value: stats.show,
                 iconStyle: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
                 badgeStyle: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
-                sparklineColor: 'text-[#eaf0ec] group-hover:text-[#d2ded6] dark:text-emerald-500/20 dark:group-hover:text-emerald-500/30',
+                sparklineColor: 'text-[#3c5748] dark:text-emerald-400',
                 icon: <CheckCircle2 size={17} />,
                 points: sparklines.show,
                 badge: 'Active'
@@ -352,7 +352,7 @@ export default function ToolsPage() {
                 value: stats.showInvalid,
                 iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
                 badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-                sparklineColor: 'text-[#fbf6ec] group-hover:text-[#ecdfc7] dark:text-amber-500/20 dark:group-hover:text-amber-500/30',
+                sparklineColor: 'text-[#8a652a] dark:text-amber-400',
                 icon: <AlertTriangle size={17} />,
                 points: sparklines['show:invalid'],
                 badge: 'Invalid'
@@ -363,7 +363,7 @@ export default function ToolsPage() {
                 value: stats.showError,
                 iconStyle: 'text-[#824235] bg-[#faf2ef] border-[#edd6cf] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
                 badgeStyle: 'bg-[#faf2ef] text-[#824235] border-[#edd6cf] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-                sparklineColor: 'text-[#faf2ef] group-hover:text-[#edd6cf] dark:text-rose-500/20 dark:group-hover:text-rose-500/30',
+                sparklineColor: 'text-[#824235] dark:text-rose-400',
                 icon: <AlertCircle size={17} />,
                 points: sparklines['show:error'],
                 badge: 'Error'
@@ -374,7 +374,7 @@ export default function ToolsPage() {
                 value: stats.showInactive,
                 iconStyle: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
                 badgeStyle: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
-                sparklineColor: 'text-[#f7f4f0] group-hover:text-[#e4ded6] dark:text-zinc-800 dark:group-hover:text-zinc-700',
+                sparklineColor: 'text-[#6e5e50] dark:text-violet-400',
                 icon: <PauseCircle size={17} />,
                 points: sparklines['show:inactive'],
                 badge: 'Inactive'
@@ -385,7 +385,7 @@ export default function ToolsPage() {
                 value: stats.hide,
                 iconStyle: 'text-[#474c50] bg-[#f3f4f5] border-[#dbdddf] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
                 badgeStyle: 'bg-[#f3f4f5] text-[#474c50] border-[#dbdddf] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
-                sparklineColor: 'text-[#f3f4f5] group-hover:text-[#dbdddf] dark:text-zinc-800 dark:group-hover:text-zinc-700',
+                sparklineColor: 'text-[#474c50] dark:text-zinc-400',
                 icon: <EyeOff size={17} />,
                 points: sparklines.hide,
                 badge: 'Hidden'
@@ -398,8 +398,8 @@ export default function ToolsPage() {
                   onClick={() => { setStatusFilter(prev => prev === stat.id ? 'all' : stat.id as any); setCurrentPage(1); }}
                   className={`group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col text-left rounded-2xl border shadow-2xs cursor-pointer ${
                     isSelected
-                      ? 'bg-[#fbfaf8] dark:bg-[var(--bg-elevated)] border-zinc-900 dark:border-zinc-400 ring-2 ring-zinc-900/10 dark:ring-zinc-400/20 shadow-xs'
-                      : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-600'
+                      ? 'bg-[#ebe8e2] dark:bg-zinc-800/90 border-zinc-700 dark:border-zinc-500 shadow-xs'
+                      : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30'
                   }`}
                   suppressHydrationWarning
                 >
@@ -410,12 +410,12 @@ export default function ToolsPage() {
                     isSelected={isSelected}
                   />
 
-                  <div className="p-4 pb-2 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
+                  <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${stat.iconStyle}`}>
                       {stat.icon}
                     </div>
                     {isSelected ? (
-                      <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100 shadow-2xs">
+                      <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-zinc-800 text-zinc-100 border-zinc-700 dark:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-600 shadow-2xs">
                         Selected
                       </span>
                     ) : (
@@ -425,11 +425,11 @@ export default function ToolsPage() {
                     )}
                   </div>
 
-                  <div className="px-4 pb-4 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
+                  <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
+                    <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
                       {stat.label}
                     </div>
-                    <div className="text-2xl xl:text-3xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-none">
+                    <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
                       <CountUp key={refreshKey} end={stat.value} />
                     </div>
                   </div>
@@ -508,3 +508,4 @@ export default function ToolsPage() {
     </div>
   );
 }
+

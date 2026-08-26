@@ -87,17 +87,17 @@ function ModelLogo({ model }: { model: Model }) {
   const [hasError, setHasError] = useState(false);
 
   return (
-    <div className="w-9 h-9 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-color)] flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+    <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden transition-all group-hover:scale-105">
       {!hasError && faviconUrl ? (
         <img
           src={faviconUrl}
           alt={model.name || 'Model'}
           onError={() => setHasError(true)}
-          className="w-full h-full object-contain rounded-lg p-1.5"
+          className="w-full h-full object-contain rounded-lg p-1"
           loading="lazy"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
+        <div className="w-full h-full flex items-center justify-center text-zinc-600 dark:text-zinc-300">
           <Cpu size={16} />
         </div>
       )}
@@ -124,10 +124,10 @@ export default function ModelTable({
     if (s === 'show:invalid') return 'warning';
     if (s === 'show:error' || s === 'error') return 'destructive';
     if (s === 'show:inactive') return 'info';
-    if (s === 'hide') return 'destructive';
+    if (s === 'hide') return 'slate';
     if (s === 'draft') return 'warning';
     if (s === 'archived') return 'violet';
-    return 'slate';
+    return 'default';
   };
 
   const formatStatus = (status: string) => {
@@ -186,14 +186,14 @@ export default function ModelTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[18%] px-4 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Provider</TableHead>
-            <TableHead className="w-[24%] px-4 py-3.5 text-left text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Model Name</TableHead>
-            <TableHead className="w-[11%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Release Date</TableHead>
-            <TableHead className="w-[9%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Context</TableHead>
-            <TableHead className="w-[11%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Input Token Price</TableHead>
-            <TableHead className="w-[11%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Output Token Price</TableHead>
-            <TableHead className="w-[8%] px-3 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
-            <TableHead className="w-[8%] px-4 py-3.5 text-center text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
+            <TableHead className="w-[18%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Provider</TableHead>
+            <TableHead className="w-[24%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Model Name</TableHead>
+            <TableHead className="w-[11%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Release Date</TableHead>
+            <TableHead className="w-[9%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Context</TableHead>
+            <TableHead className="w-[11%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Input Price (1M)</TableHead>
+            <TableHead className="w-[11%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Output Price (1M)</TableHead>
+            <TableHead className="w-[8%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
+            <TableHead className="w-[8%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -259,8 +259,8 @@ export default function ModelTable({
                   onMouseLeave={() => setHoveredId(null)}
                   className={`transition-all duration-200 group cursor-pointer border-l-2 relative hover:z-[10] ${
                     hoveredId === model.id
-                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:bg-[#0ea5e9]/[0.02] dark:border-l-white'
-                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-[#0ea5e9]/[0.02]'
+                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
+                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
                   }`}
                 >
                   {/* 1. Provider Logo & Name */}
@@ -278,7 +278,7 @@ export default function ModelTable({
                     <div className="w-full overflow-hidden">
                       <button
                         onClick={() => setPreviewModel(model)}
-                        className="text-xs font-bold text-[var(--text-primary)] hover:text-indigo-600 dark:hover:text-[#0ea5e9] tracking-tight block truncate w-full text-left transition-colors cursor-pointer"
+                        className="text-xs font-semibold text-[var(--text-primary)] hover:text-zinc-900 dark:hover:text-zinc-100 tracking-tight block truncate w-full text-left transition-colors cursor-pointer"
                         title={model.name || 'Unnamed Model'}
                       >
                         {model.name || 'Unnamed Model'}
@@ -288,7 +288,7 @@ export default function ModelTable({
                           href={model.news_url || model.site_url || '#'}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[10px] text-[var(--text-muted)] font-medium hover:text-indigo-500 transition-colors inline-flex items-center gap-1 mt-0.5"
+                          className="text-[10px] text-[var(--text-muted)] font-medium hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors inline-flex items-center gap-1 mt-0.5"
                         >
                           {(() => {
                             const url = model.news_url || model.site_url || '';
@@ -339,39 +339,33 @@ export default function ModelTable({
 
                   {/* 7. Status */}
                   <TableCell className="px-3 py-4 text-center">
-                    <Badge variant={getStatusBadgeVariant(model.status)}>
+                    <Badge variant={getStatusBadgeVariant(model.status)} className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">
                       {formatStatus(model.status)}
                     </Badge>
                   </TableCell>
 
                   {/* 8. Manage Actions */}
-                  <TableCell className="px-4 py-4 text-center">
-                    <div className="flex items-center justify-center gap-1">
+                  <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-1.5">
                       <Button
-                        variant="secondary"
-                        size="xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(model);
-                        }}
-                        className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-indigo-500 hover:border-indigo-500/40 hover:bg-indigo-500/10"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEdit(model)}
+                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
                         title="Edit Record"
                         aria-label={`Edit model ${model.name}`}
                       >
-                        <Edit2 size={12} />
+                        <Edit2 size={13} />
                       </Button>
                       <Button
-                        variant="secondary"
-                        size="xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(model.id);
-                        }}
-                        className="h-7 w-7 p-0 rounded-lg text-[var(--text-secondary)] hover:text-rose-500 hover:border-rose-500/40 hover:bg-rose-500/10"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(model.id)}
+                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
                         title="Delete Record"
                         aria-label={`Delete model ${model.name}`}
                       >
-                        <Trash2 size={12} />
+                        <Trash2 size={13} />
                       </Button>
                     </div>
                   </TableCell>
@@ -399,3 +393,4 @@ export default function ModelTable({
     </div>
   );
 }
+

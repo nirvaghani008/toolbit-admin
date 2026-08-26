@@ -391,15 +391,18 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
         description="Primary identification and publishing status."
         hasErrors={!!(errors.title || errors.slug || errors.content_mdx)}
         headerActions={
-          formData.status === 'published' ? (
-            <Badge variant="success">Published</Badge>
-          ) : formData.status === 'pending' ? (
-            <Badge variant="warning">Pending</Badge>
-          ) : formData.status === 'draft' ? (
-            <Badge variant="violet">Draft</Badge>
-          ) : (
-            <Badge variant="slate">Archived</Badge>
-          )
+          <Badge
+            variant={
+              formData.status === 'published' ? 'success' :
+              formData.status === 'pending' ? 'warning' :
+              formData.status === 'draft' ? 'violet' : 'slate'
+            }
+            className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider"
+          >
+            {formData.status === 'published' ? 'Published' :
+             formData.status === 'pending' ? 'Pending' :
+             formData.status === 'draft' ? 'Draft' : 'Archived'}
+          </Badge>
         }
       >
         {initialData?.ai_approved === false && initialData?.ai_denied_reason && (
@@ -420,7 +423,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
               value={formData.title}
               onChange={handleChange}
               placeholder="Article title..."
-              className={errors.title ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+              className={errors.title ? 'saas-input-error' : ''}
               required
             />
             {errors.title && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.title}</p>}
@@ -432,7 +435,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
               value={formData.slug}
               onChange={handleChange}
               placeholder="article-slug"
-              className={`font-mono text-sm ${errors.slug ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}`}
+              className={`font-mono text-sm ${errors.slug ? 'saas-input-error' : ''}`}
               required
             />
             {errors.slug && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.slug}</p>}
@@ -447,6 +450,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
             onChange={handleChange}
             placeholder="Brief description or teaser of the article..."
             rows={3}
+            className={errors.description ? 'saas-input-error' : ''}
           />
         </div>
 
@@ -547,6 +551,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
             value={formData.meta_title}
             onChange={handleChange}
             placeholder="Custom SEO Title"
+            className={errors.meta_title ? 'saas-input-error' : ''}
           />
         </div>
 
@@ -559,6 +564,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
             onChange={handleChange}
             placeholder="Custom SEO description for search engine previews..."
             rows={2}
+            className={errors.meta_description ? 'saas-input-error' : ''}
           />
         </div>
       </CollapsibleSection>
@@ -579,14 +585,14 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
                 value={formData.featured_image_url}
                 onChange={handleChange}
                 placeholder="https://..."
-                className={`flex-1 ${errors.featured_image_url ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}`}
+                className={`flex-1 ${errors.featured_image_url ? 'saas-input-error' : ''}`}
               />
               <Button
                 type="button"
-                variant="secondary"
+                variant="outline"
                 onClick={() => featuredFileInputRef.current?.click()}
                 disabled={isUploadingFeaturedImage}
-                className="shrink-0 h-10 px-4"
+                className="shrink-0 h-10 px-4 font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs gap-1.5"
               >
                 {isUploadingFeaturedImage ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                 <span>Browse</span>
@@ -609,7 +615,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
               value={formData.external_source_url}
               onChange={handleChange}
               placeholder="https://..."
-              className={errors.external_source_url ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}
+              className={errors.external_source_url ? 'saas-input-error' : ''}
             />
             {errors.external_source_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.external_source_url}</p>}
             <p className="text-[10px] text-[var(--text-muted)] font-medium mt-1">Unique URL where this post is originally sourced or syndicated.</p>
@@ -617,20 +623,20 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
         </div>
       </CollapsibleSection>
 
-      <div className="flex items-center justify-end gap-3 pt-6 border-t border-[var(--border-color)]">
+      <div className="saas-action-footer flex items-center justify-end gap-3 pt-6 border-t border-[var(--border-color)]">
         <Button
           type="button"
           variant="outline"
           onClick={onCancel}
-          className="px-5 h-10 text-xs font-bold"
+          disabled={isSubmitting}
+          className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          variant="default"
           disabled={!isDirty || isSubmitting}
-          className="px-6 h-10 text-xs font-bold shadow-md shadow-indigo-600/20"
+          className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
           {isSubmitting ? (
             <>

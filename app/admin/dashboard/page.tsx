@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import CountUp from '@/components/common/CountUp';
 import {
-  Activity, LayoutGrid, Hash, Star, TrendingUp,
+  Activity, LayoutGrid, Tag, Hash, Star, TrendingUp,
   ArrowUpRight, PackagePlus, FileText, Clock, RefreshCw,
   Cpu, Newspaper, Share2, Sparkles, ChevronRight, Layers
 } from 'lucide-react';
@@ -114,110 +114,110 @@ function StatCard({ label, value, change, positive, icon, color, refreshKey, poi
     ochre: {
       icon: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
       badge: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-amber-400',
+      svg: 'text-[#8a652a] dark:text-amber-400',
       hex: '#8a652a'
     },
     sage: {
       icon: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
       badge: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-emerald-400',
+      svg: 'text-[#3c5748] dark:text-emerald-400',
       hex: '#3c5748'
     },
     slate: {
-      icon: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-indigo-400 dark:bg-indigo-500/10 dark:border-indigo-500/20',
-      badge: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-indigo-400',
+      icon: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+      badge: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+      svg: 'text-[#364954] dark:text-zinc-400',
       hex: '#364954'
     },
     sand: {
       icon: 'text-[#7d6739] bg-[#fbf7ee] border-[#ede2ce] dark:text-cyan-400 dark:bg-cyan-500/10 dark:border-cyan-500/20',
       badge: 'bg-[#fbf7ee] text-[#7d6739] border-[#ede2ce] dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-cyan-400',
+      svg: 'text-[#7d6739] dark:text-cyan-400',
       hex: '#7d6739'
     },
     taupe: {
       icon: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
       badge: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-violet-400',
+      svg: 'text-[#6e5e50] dark:text-violet-400',
       hex: '#6e5e50'
     },
     cedar: {
       icon: 'text-[#824f2f] bg-[#fbf4ee] border-[#ebdacb] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
       badge: 'bg-[#fbf4ee] text-[#824f2f] border-[#ebdacb] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-amber-400',
+      svg: 'text-[#824f2f] dark:text-amber-400',
       hex: '#824f2f'
     },
     pine: {
       icon: 'text-[#325257] bg-[#eff5f6] border-[#cee0e3] dark:text-sky-400 dark:bg-sky-500/10 dark:border-sky-500/20',
       badge: 'bg-[#eff5f6] text-[#325257] border-[#cee0e3] dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-sky-400',
+      svg: 'text-[#325257] dark:text-sky-400',
       hex: '#325257'
     },
     terracotta: {
       icon: 'text-[#824235] bg-[#faf2ef] border-[#edd6cf] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
       badge: 'bg-[#faf2ef] text-[#824235] border-[#edd6cf] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-rose-400',
+      svg: 'text-[#824235] dark:text-rose-400',
       hex: '#824235'
     },
     plum: {
       icon: 'text-[#70495a] bg-[#f9f2f5] border-[#ead6de] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
       badge: 'bg-[#f9f2f5] text-[#70495a] border-[#ead6de] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-rose-400',
+      svg: 'text-[#70495a] dark:text-rose-400',
       hex: '#70495a'
     },
     clay: {
-      icon: 'text-[#474c50] bg-[#f3f4f5] border-[#dbdddf] dark:text-indigo-400 dark:bg-indigo-500/10 dark:border-indigo-500/20',
-      badge: 'bg-[#f3f4f5] text-[#474c50] border-[#dbdddf] dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-indigo-400',
+      icon: 'text-[#474c50] bg-[#f3f4f5] border-[#dbdddf] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+      badge: 'bg-[#f3f4f5] text-[#474c50] border-[#dbdddf] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+      svg: 'text-[#474c50] dark:text-zinc-400',
       hex: '#474c50'
     },
     // Fallbacks
     amber: {
       icon: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
       badge: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-amber-400',
+      svg: 'text-[#8a652a] dark:text-amber-400',
       hex: '#8a652a'
     },
     emerald: {
       icon: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
       badge: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-emerald-400',
+      svg: 'text-[#3c5748] dark:text-emerald-400',
       hex: '#3c5748'
     },
     indigo: {
-      icon: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-indigo-400 dark:bg-indigo-500/10 dark:border-indigo-500/20',
-      badge: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-indigo-400',
+      icon: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
+      badge: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
+      svg: 'text-[#364954] dark:text-indigo-400',
       hex: '#364954'
     },
     cyan: {
       icon: 'text-[#7d6739] bg-[#fbf7ee] border-[#ede2ce] dark:text-cyan-400 dark:bg-cyan-500/10 dark:border-cyan-500/20',
       badge: 'bg-[#fbf7ee] text-[#7d6739] border-[#ede2ce] dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-cyan-400',
+      svg: 'text-[#7d6739] dark:text-cyan-400',
       hex: '#7d6739'
     },
     violet: {
       icon: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
       badge: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-violet-400',
+      svg: 'text-[#6e5e50] dark:text-violet-400',
       hex: '#6e5e50'
     },
     rose: {
       icon: 'text-[#824235] bg-[#faf2ef] border-[#edd6cf] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
       badge: 'bg-[#faf2ef] text-[#824235] border-[#edd6cf] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-rose-400',
+      svg: 'text-[#824235] dark:text-rose-400',
       hex: '#824235'
     },
     sky: {
       icon: 'text-[#325257] bg-[#eff5f6] border-[#cee0e3] dark:text-sky-400 dark:bg-sky-500/10 dark:border-sky-500/20',
       badge: 'bg-[#eff5f6] text-[#325257] border-[#cee0e3] dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-sky-400',
+      svg: 'text-[#325257] dark:text-sky-400',
       hex: '#325257'
     },
     blue: {
       icon: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-blue-400 dark:bg-blue-500/10 dark:border-blue-500/20',
       badge: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20',
-      svg: 'text-[#e8e6e1] group-hover:text-[#b8b3a5] dark:text-blue-400',
+      svg: 'text-[#364954] dark:text-blue-400',
       hex: '#364954'
     },
   };
@@ -225,10 +225,10 @@ function StatCard({ label, value, change, positive, icon, color, refreshKey, poi
   const c = colorMap[color] || colorMap.ochre;
 
   return (
-    <Card className="group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col bg-white hover:bg-zinc-50/70 dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-indigo-500/30 shadow-2xs">
+    <Card className="group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30 shadow-2xs">
+      {/* Subtle neutral lift on hover — no color tint */}
       <div
-        className="absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none hidden dark:block"
-        style={{ backgroundImage: `linear-gradient(to bottom right, ${c.hex}15, transparent)` }}
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none hidden dark:block bg-zinc-700/10 rounded-2xl"
       />
 
       <Sparkline color={c.svg} points={points} id={label.toLowerCase().replace(/\s+/g, '-')} />
@@ -266,7 +266,7 @@ export default function DashboardPage() {
   const [dbStats, setDbStats] = useState({
     tools: 0,
     categories: 0,
-    hashtags: 0,
+    tags: 0,
     blogs: 0,
     models: 0,
     news: 0,
@@ -298,7 +298,7 @@ export default function DashboardPage() {
       const [
         { count: toolsCount },
         { count: categoriesCount },
-        { count: hashtagsCount },
+        { count: tagsCount },
         { count: blogsCount },
         { count: modelsCount },
         { count: newsCount },
@@ -356,7 +356,7 @@ export default function DashboardPage() {
       setDbStats({
         tools: toolsCount || 0,
         categories: categoriesCount || 0,
-        hashtags: hashtagsCount || 0,
+        tags: tagsCount || 0,
         blogs: blogsCount || 0,
         models: modelsCount || 0,
         news: newsCount || 0,
@@ -418,7 +418,7 @@ export default function DashboardPage() {
         pendingReviews: [8, 6, 5, 4, 3, 2, pendingReviewsCount || 0],
         activeTools: [40, 45, 52, 60, 68, 75, toolsCount || 0],
         categories: [10, 12, 14, 15, 16, 18, categoriesCount || 0],
-        hashtags: [20, 25, 30, 35, 40, 45, hashtagsCount || 0],
+        tags: [20, 25, 30, 35, 40, 45, tagsCount || 0],
         models: [5, 8, 12, 15, 18, 22, modelsCount || 0],
         news: [4, 7, 10, 14, 16, 20, newsCount || 0],
         socials: [8, 12, 16, 20, 25, 30, socialsCount || 0],
@@ -444,7 +444,7 @@ export default function DashboardPage() {
     { label: 'Active Tools', value: dbStats.tools, change: '+4.5%', positive: true, icon: <Activity size={20} />, color: 'sage', points: sparklineData.activeTools },
     { label: 'AI Models', value: dbStats.models, change: '+12%', positive: true, icon: <Cpu size={20} />, color: 'slate', points: sparklineData.models },
     { label: 'Categories', value: dbStats.categories, change: '+2.1%', positive: true, icon: <LayoutGrid size={20} />, color: 'sand', points: sparklineData.categories },
-    { label: 'Hashtags', value: dbStats.hashtags, change: '+8.3%', positive: true, icon: <Hash size={20} />, color: 'taupe', points: sparklineData.hashtags },
+    { label: 'Tags', value: dbStats.tags, change: '+8.3%', positive: true, icon: <Tag size={20} />, color: 'taupe', points: sparklineData.tags },
     { label: 'News Updates', value: dbStats.news, change: '+15%', positive: true, icon: <Newspaper size={20} />, color: 'cedar', points: sparklineData.news },
     { label: 'Social Posts', value: dbStats.socials, change: '+18%', positive: true, icon: <Share2 size={20} />, color: 'pine', points: sparklineData.socials },
     { label: 'Blogs Published', value: dbStats.blogs, change: '+6.2%', positive: true, icon: <FileText size={20} />, color: 'terracotta', points: sparklineData.blogs },
@@ -460,7 +460,7 @@ export default function DashboardPage() {
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl sm:text-2xl font-extrabold text-zinc-950 dark:text-[var(--text-primary)] tracking-tight">Dashboard</h1>
-              <Badge variant="secondary" className="gap-1 px-2.5 py-0.5 font-bold tracking-wider bg-zinc-100/90 text-zinc-800 border-zinc-200/80 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20">
+              <Badge variant="secondary" className="gap-1 px-2.5 py-0.5 font-bold tracking-wider bg-zinc-100/90 text-zinc-800 border-zinc-200/80 dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700">
                 <Sparkles size={11} /> Live Control
               </Badge>
             </div>
@@ -490,7 +490,7 @@ export default function DashboardPage() {
         {/* Main Operational Tables & Graphs Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Tools Table */}
-          <Card className="lg:col-span-2 overflow-hidden flex flex-col bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-indigo-500/30 shadow-2xs transition-all duration-300">
+          <Card className="lg:col-span-2 overflow-hidden flex flex-col bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 shadow-2xs transition-all duration-300">
             <div className="px-6 py-4 border-b border-[#e5e3df] dark:border-[var(--border-color)] flex items-center justify-between bg-zinc-50/70 dark:bg-[var(--bg-elevated)]/30">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center shrink-0 shadow-xs">
@@ -541,7 +541,7 @@ export default function DashboardPage() {
                         onMouseLeave={() => setHoveredRecentId(null)}
                         className={`cursor-pointer border-l-2 transition-colors ${hoveredRecentId === tool.id
                           ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-indigo-500 dark:bg-indigo-500/[0.05]'
-                          : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.02]'
+                          : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30'
                           }`}
                       >
                         <TableCell>
@@ -568,7 +568,7 @@ export default function DashboardPage() {
 
           {/* 5-Day Trend Graph - Neutral Graph Matching Toolbit Analytics Screenshot */}
           <div className="flex flex-col gap-6">
-            <Card className="p-6 space-y-5 flex flex-col h-full bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-indigo-500/30 shadow-2xs transition-all duration-300 justify-between">
+            <Card className="p-6 space-y-5 flex flex-col h-full bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 shadow-2xs transition-all duration-300 justify-between">
               {/* Header */}
               <div className="flex items-center justify-between gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-3.5">
                 <div className="flex items-center gap-3">
@@ -696,7 +696,7 @@ export default function DashboardPage() {
         {/* Submissions Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Latest Tool Submissions */}
-          <Card className="overflow-hidden flex flex-col bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-indigo-500/30 shadow-2xs transition-all duration-300">
+          <Card className="overflow-hidden flex flex-col bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 shadow-2xs transition-all duration-300">
             <div className="px-6 py-4 border-b border-[#e5e3df] dark:border-[var(--border-color)] flex items-center justify-between bg-zinc-50/70 dark:bg-[var(--bg-elevated)]/30">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center shrink-0 shadow-xs">
@@ -741,7 +741,7 @@ export default function DashboardPage() {
                     ))
                   ) : latestSubmissions.length > 0 ? (
                     latestSubmissions.map((s) => (
-                      <TableRow key={s.id} className="hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.02] transition-colors group">
+                      <TableRow key={s.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30 transition-colors group">
                         <TableCell>
                           <div className="text-xs font-semibold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight group-hover:text-zinc-700 dark:group-hover:text-indigo-400 transition-colors">{s.name}</div>
                         </TableCell>
@@ -767,7 +767,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Latest Blog Submissions */}
-          <Card className="overflow-hidden flex flex-col bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-indigo-500/30 shadow-2xs transition-all duration-300">
+          <Card className="overflow-hidden flex flex-col bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 shadow-2xs transition-all duration-300">
             <div className="px-6 py-4 border-b border-[#e5e3df] dark:border-[var(--border-color)] flex items-center justify-between bg-zinc-50/70 dark:bg-[var(--bg-elevated)]/30">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center shrink-0 shadow-xs">
@@ -812,7 +812,7 @@ export default function DashboardPage() {
                     ))
                   ) : latestBlogSubmissions.length > 0 ? (
                     latestBlogSubmissions.map((b) => (
-                      <TableRow key={b.id} className="hover:bg-zinc-50/80 dark:hover:bg-indigo-500/[0.02] transition-colors group">
+                      <TableRow key={b.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30 transition-colors group">
                         <TableCell>
                           <div className="text-xs font-semibold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight truncate max-w-[200px] group-hover:text-zinc-700 dark:group-hover:text-indigo-400 transition-colors">{b.name}</div>
                         </TableCell>
@@ -857,7 +857,7 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* AI Models Card */}
-            <Card className="rounded-2xl bg-[#f9f8f6] dark:bg-[var(--bg-elevated)]/30 border-[#e5e3df] dark:border-[var(--border-color)] p-5 space-y-4 flex flex-col justify-between hover:border-zinc-300 dark:hover:border-indigo-500/30 transition-all shadow-3xs">
+            <Card className="rounded-2xl bg-[#f9f8f6] dark:bg-[var(--bg-elevated)]/30 border-[#e5e3df] dark:border-[var(--border-color)] p-5 space-y-4 flex flex-col justify-between hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-3xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5 text-xs font-bold text-zinc-900 dark:text-[var(--text-primary)]">
                   <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center shrink-0 shadow-xs">
@@ -865,7 +865,7 @@ export default function DashboardPage() {
                   </div>
                   <span>AI Models Database</span>
                 </div>
-                <Badge variant="default" className="text-[10px] font-extrabold px-2.5 py-0.5 bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20">
+                <Badge variant="default" className="text-[10px] font-extrabold px-2.5 py-0.5 bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700">
                   {dbStats.models} Models
                 </Badge>
               </div>
@@ -876,7 +876,7 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-1.5 truncate max-w-[170px]">
                         <span className="font-semibold text-zinc-900 dark:text-[var(--text-primary)] truncate">{m.name || `Model #${m.id}`}</span>
                         {m.provider && (
-                          <Badge variant="secondary" className="text-[9px] font-bold px-1.5 py-0 shrink-0 bg-white text-zinc-700 border-zinc-200/80 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20">
+                          <Badge variant="secondary" className="text-[9px] font-bold px-1.5 py-0 shrink-0 bg-white text-zinc-700 border-zinc-200/80 dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700">
                             {m.provider}
                           </Badge>
                         )}
@@ -958,3 +958,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

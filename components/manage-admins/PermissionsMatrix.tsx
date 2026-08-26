@@ -5,13 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Shield,
-  ShieldCheck,
-  Check,
   Save,
   RotateCcw,
-  Sparkles,
-  Lock,
   Eye,
   PlusCircle,
   Edit3,
@@ -20,7 +15,6 @@ import {
   AlertCircle,
   Loader2,
   Layers,
-  FileCheck2,
 } from 'lucide-react';
 import { AdminUser, ADMIN_MODULES, ModulePermission } from './types';
 
@@ -42,7 +36,16 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
 
     const basePerms: Record<string, ModulePermission> = {};
     ADMIN_MODULES.forEach((mod) => {
-      if (user.role === 'admin') {
+      const userModPerm = user.permissions?.[mod.key];
+      if (userModPerm !== undefined) {
+        basePerms[mod.key] = {
+          can_view: !!userModPerm?.can_view,
+          can_insert: !!userModPerm?.can_insert && mod.supportsInsert,
+          can_update: !!userModPerm?.can_update && mod.supportsUpdate,
+          can_delete: !!userModPerm?.can_delete && mod.supportsDelete,
+        };
+      } else if (user.role === 'admin') {
+        // Default unconfigured admins to full access
         basePerms[mod.key] = {
           can_view: true,
           can_insert: mod.supportsInsert,
@@ -50,12 +53,12 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
           can_delete: mod.supportsDelete,
         };
       } else {
-        const userModPerm = user.permissions?.[mod.key];
+        // Default unconfigured sub-admins to no access
         basePerms[mod.key] = {
-          can_view: !!userModPerm?.can_view,
-          can_insert: !!userModPerm?.can_insert && mod.supportsInsert,
-          can_update: !!userModPerm?.can_update && mod.supportsUpdate,
-          can_delete: !!userModPerm?.can_delete && mod.supportsDelete,
+          can_view: false,
+          can_insert: false,
+          can_update: false,
+          can_delete: false,
         };
       }
     });
@@ -68,16 +71,16 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
 
   if (!user) {
     return (
-      <div className="h-full min-h-[500px] flex flex-col items-center justify-center p-8 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl text-center space-y-4">
-        <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 text-[#6366f1] flex items-center justify-center shadow-md">
-          <Layers size={28} />
+      <div className="h-full min-h-[500px] flex flex-col items-center justify-center p-8 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl text-center space-y-4 shadow-xs">
+        <div className="w-14 h-14 rounded-2xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center justify-center shadow-2xs">
+          <Layers size={24} />
         </div>
         <div className="max-w-md space-y-1">
           <h3 className="text-base font-bold text-[var(--text-primary)] tracking-tight">
             Select a Team Member
           </h3>
           <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-            Choose an Admin or Sub-Admin from the list on the left to view, configure, and grant granular page-by-page and action-by-action permissions.
+            Choose an Admin or Sub-Admin from the list on the left to configure and grant page-by-page (View, Insert, Update, Delete) permissions.
           </p>
         </div>
       </div>
@@ -87,17 +90,13 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
   const isSuperAdmin = user.role === 'admin';
 
   // Check if permissions were modified
-  const isDirty =
-    !isSuperAdmin &&
-    JSON.stringify(permissions) !== JSON.stringify(initialPermissions);
+  const isDirty = JSON.stringify(permissions) !== JSON.stringify(initialPermissions);
 
   // Toggle single action on a module
   const handleToggle = (
     moduleKey: string,
     action: 'can_view' | 'can_insert' | 'can_update' | 'can_delete'
   ) => {
-    if (isSuperAdmin) return;
-
     setPermissions((prev) => {
       const current = prev[moduleKey] || {
         can_view: false,
@@ -129,61 +128,8 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
     setSaveSuccess(false);
   };
 
-  // Apply Presets
-  const applyPreset = (type: 'full' | 'content' | 'moderator' | 'readonly' | 'clear') => {
-    if (isSuperAdmin) return;
-
-    const newPerms: Record<string, ModulePermission> = {};
-    ADMIN_MODULES.forEach((mod) => {
-      if (type === 'full') {
-        newPerms[mod.key] = {
-          can_view: true,
-          can_insert: mod.supportsInsert,
-          can_update: mod.supportsUpdate,
-          can_delete: mod.supportsDelete,
-        };
-      } else if (type === 'readonly') {
-        newPerms[mod.key] = {
-          can_view: true,
-          can_insert: false,
-          can_update: false,
-          can_delete: false,
-        };
-      } else if (type === 'content') {
-        const isContent = ['blog_posts', 'models', 'news', 'socials'].includes(mod.key);
-        newPerms[mod.key] = {
-          can_view: isContent || mod.key === 'dashboard' || mod.key === 'tools',
-          can_insert: isContent && mod.supportsInsert,
-          can_update: isContent && mod.supportsUpdate,
-          can_delete: isContent && mod.supportsDelete,
-        };
-      } else if (type === 'moderator') {
-        const isMod = ['submissions', 'contacts', 'tools'].includes(mod.key);
-        newPerms[mod.key] = {
-          can_view: isMod || mod.key === 'dashboard',
-          can_insert: isMod && mod.supportsInsert,
-          can_update: isMod && mod.supportsUpdate,
-          can_delete: isMod && mod.supportsDelete,
-        };
-      } else {
-        // Clear / Reset All
-        newPerms[mod.key] = {
-          can_view: false,
-          can_insert: false,
-          can_update: false,
-          can_delete: false,
-        };
-      }
-    });
-
-    setPermissions(newPerms);
-    setSaveSuccess(false);
-  };
-
   // Bulk column toggles
   const handleToggleColumn = (action: 'can_view' | 'can_insert' | 'can_update' | 'can_delete') => {
-    if (isSuperAdmin) return;
-
     const allChecked = ADMIN_MODULES.every((mod) => {
       if (action === 'can_insert' && !mod.supportsInsert) return true;
       if (action === 'can_update' && !mod.supportsUpdate) return true;
@@ -230,7 +176,7 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
 
   // Save changes to Supabase
   const handleSave = async () => {
-    if (isSuperAdmin || isSaving) return;
+    if (isSaving) return;
 
     setIsSaving(true);
     setErrorMessage(null);
@@ -244,7 +190,7 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
       });
 
       if (rpcError) {
-        // Fallback to direct update on admin_roles table if RPC is not used
+        // Fallback to direct update on admin_roles table if RPC is not used or legacy
         const { error: directError } = await supabase
           .from('admin_roles')
           .update({
@@ -284,21 +230,21 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
   return (
     <div className="flex flex-col h-full bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl overflow-hidden shadow-xs">
       {/* User Header Summary */}
-      <div className="p-6 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-5 md:p-6 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3.5">
-          <div className="shrink-0 w-12 h-12 rounded-2xl border border-indigo-500/20 p-0.5 overflow-hidden bg-gradient-to-br from-indigo-500/10 to-purple-500/10 flex items-center justify-center shadow-xs">
+          <div className="shrink-0 w-11 h-11 rounded-xl border border-zinc-200 dark:border-zinc-700 p-0.5 overflow-hidden bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shadow-2xs">
             {user.avatar_url ? (
               <img
                 src={user.avatar_url}
                 alt=""
-                className="w-full h-full object-cover rounded-2xl"
+                className="w-full h-full object-cover rounded-lg"
               />
             ) : (
               <div
-                className={`w-full h-full rounded-[14px] flex items-center justify-center text-sm font-black text-white ${
+                className={`w-full h-full rounded-lg flex items-center justify-center text-xs font-bold ${
                   isSuperAdmin
-                    ? 'bg-gradient-to-br from-indigo-600 to-purple-600'
-                    : 'bg-gradient-to-br from-emerald-600 to-teal-600'
+                    ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                    : 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200'
                 }`}
               >
                 {(user.full_name || user.email || 'A').substring(0, 2).toUpperCase()}
@@ -310,21 +256,18 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
               <h2 className="text-base font-bold text-[var(--text-primary)] tracking-tight">
                 {user.full_name || user.email.split('@')[0]}
               </h2>
-              <span
-                className={`text-[9px] font-bold tracking-wider px-2 py-0.5 rounded-md border uppercase shrink-0 ${
-                  isSuperAdmin
-                    ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
-                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                }`}
+              <Badge
+                variant={isSuperAdmin ? 'default' : 'slate'}
+                className="text-[8px] font-bold tracking-wider px-1.5 py-0.2 shrink-0 uppercase"
               >
-                {isSuperAdmin ? 'Super Admin' : 'Sub-Admin'}
-              </span>
+                {isSuperAdmin ? 'Admin' : 'Sub-Admin'}
+              </Badge>
             </div>
             <p className="text-xs text-[var(--text-muted)] font-medium mt-0.5">{user.email}</p>
           </div>
         </div>
 
-        {/* Status / Joined pill */}
+        {/* Status / Joined date */}
         <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
           <span className="font-semibold">Member since:</span>
           <Badge variant="outline" className="text-[11px] font-bold">
@@ -333,298 +276,229 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
         </div>
       </div>
 
-      {/* Super Admin Notice */}
-      {isSuperAdmin ? (
-        <div className="p-6">
-          <div className="p-5 rounded-2xl bg-indigo-500/[0.08] dark:bg-indigo-500/[0.12] border border-indigo-500/30 flex items-start gap-4 shadow-xs">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md">
-              <ShieldCheck size={22} />
-            </div>
-            <div className="space-y-1">
-              <h4 className="text-sm font-bold text-[var(--text-primary)]">
-                Unrestricted Master Governance
-              </h4>
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                Super Admins possess root-level authorization across the entire platform. They have permanent, full Insert, Update, Delete, and View capabilities for all sections, database operations, and role management.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* Presets & Tools Bar for Sub-Admin */
-        <div className="p-4 px-6 border-b border-[var(--border-color)] bg-[var(--bg-surface)] flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mr-1 flex items-center gap-1">
-              <Sparkles size={12} className="text-indigo-500" />
-              Presets:
-            </span>
-            <button
-              onClick={() => applyPreset('full')}
-              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] hover:bg-indigo-500/10 hover:text-indigo-500 hover:border-indigo-500/30 transition-all cursor-pointer"
-            >
-              Full Access
-            </button>
-            <button
-              onClick={() => applyPreset('content')}
-              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] hover:bg-indigo-500/10 hover:text-indigo-500 hover:border-indigo-500/30 transition-all cursor-pointer"
-            >
-              Content Editor
-            </button>
-            <button
-              onClick={() => applyPreset('moderator')}
-              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] hover:bg-indigo-500/10 hover:text-indigo-500 hover:border-indigo-500/30 transition-all cursor-pointer"
-            >
-              Moderator
-            </button>
-            <button
-              onClick={() => applyPreset('readonly')}
-              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] hover:bg-indigo-500/10 hover:text-indigo-500 hover:border-indigo-500/30 transition-all cursor-pointer"
-            >
-              View Only
-            </button>
-            <button
-              onClick={() => applyPreset('clear')}
-              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-rose-500/20 bg-rose-500/5 text-rose-500 hover:bg-rose-500/10 transition-all cursor-pointer"
-            >
-              Revoke All
-            </button>
-          </div>
-
-          <div className="text-[11px] text-[var(--text-muted)] font-medium">
-            {Object.values(permissions).filter((p) => p.can_view).length} of{' '}
-            {ADMIN_MODULES.length} sections allowed
-          </div>
+      {/* Notifications Banner (if any) */}
+      {errorMessage && (
+        <div className="p-3.5 px-6 bg-rose-50 dark:bg-rose-500/10 border-b border-rose-200 dark:border-rose-500/20 flex items-start gap-3 animate-in fade-in duration-200 shrink-0">
+          <AlertCircle className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" size={16} />
+          <p className="text-xs font-semibold text-rose-700 dark:text-rose-400 leading-relaxed">
+            {errorMessage}
+          </p>
         </div>
       )}
 
-      {/* Granular Matrix Table */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {errorMessage && (
-          <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-start gap-3 mb-5 animate-in fade-in duration-200">
-            <AlertCircle className="text-rose-500 shrink-0 mt-0.5" size={16} />
-            <p className="text-xs font-semibold text-rose-400 leading-relaxed">{errorMessage}</p>
-          </div>
-        )}
+      {saveSuccess && (
+        <div className="p-3.5 px-6 bg-emerald-50 dark:bg-emerald-500/10 border-b border-emerald-200 dark:border-emerald-500/20 flex items-center gap-3 animate-in fade-in duration-200 shrink-0">
+          <CheckCircle2 className="text-emerald-600 dark:text-emerald-400 shrink-0" size={16} />
+          <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+            Permissions successfully saved and synchronized!
+          </p>
+        </div>
+      )}
 
-        {saveSuccess && (
-          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3 mb-5 animate-in fade-in duration-200">
-            <CheckCircle2 className="text-emerald-500 shrink-0" size={16} />
-            <p className="text-xs font-bold text-emerald-400">
-              Permissions successfully updated and synchronized!
-            </p>
-          </div>
-        )}
+      {/* Minimal & Modern Permissions Table with Solid Sticky Header */}
+      <div className="flex-1 overflow-y-auto relative">
+        <table className="w-full text-left border-collapse">
+          {/* Sticky Table Header */}
+          <thead className="sticky top-0 z-20 shadow-xs">
+            <tr className="border-b border-[var(--border-color)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              <th className="py-3.5 px-5 bg-[#f6f5f2] dark:bg-zinc-950 min-w-[240px]">
+                Section / Page Module
+              </th>
+              <th className="py-3.5 px-3 bg-[#f6f5f2] dark:bg-zinc-950 text-center w-[100px]">
+                <button
+                  type="button"
+                  onClick={() => handleToggleColumn('can_view')}
+                  className="inline-flex items-center gap-1.5 hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  title="Toggle View for all modules"
+                >
+                  <Eye size={13} className="text-zinc-500" />
+                  <span>View</span>
+                </button>
+              </th>
+              <th className="py-3.5 px-3 bg-[#f6f5f2] dark:bg-zinc-950 text-center w-[100px]">
+                <button
+                  type="button"
+                  onClick={() => handleToggleColumn('can_insert')}
+                  className="inline-flex items-center gap-1.5 hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  title="Toggle Insert for all modules"
+                >
+                  <PlusCircle size={13} className="text-zinc-500" />
+                  <span>Insert</span>
+                </button>
+              </th>
+              <th className="py-3.5 px-3 bg-[#f6f5f2] dark:bg-zinc-950 text-center w-[100px]">
+                <button
+                  type="button"
+                  onClick={() => handleToggleColumn('can_update')}
+                  className="inline-flex items-center gap-1.5 hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  title="Toggle Update for all modules"
+                >
+                  <Edit3 size={13} className="text-zinc-500" />
+                  <span>Update</span>
+                </button>
+              </th>
+              <th className="py-3.5 px-3 bg-[#f6f5f2] dark:bg-zinc-950 text-center w-[100px]">
+                <button
+                  type="button"
+                  onClick={() => handleToggleColumn('can_delete')}
+                  className="inline-flex items-center gap-1.5 hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  title="Toggle Delete for all modules"
+                >
+                  <Trash2 size={13} className="text-zinc-500" />
+                  <span>Delete</span>
+                </button>
+              </th>
+            </tr>
+          </thead>
 
-        <div className="border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-xs bg-[var(--bg-surface)]">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-[var(--border-color)] bg-[var(--bg-elevated)] text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                <th className="py-3.5 px-4 min-w-[220px]">Section / Page Module</th>
-                <th className="py-3.5 px-3 text-center w-[110px]">
-                  <button
-                    type="button"
-                    disabled={isSuperAdmin}
-                    onClick={() => handleToggleColumn('can_view')}
-                    className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors cursor-pointer disabled:cursor-default"
-                    title="Toggle View for all modules"
-                  >
-                    <Eye size={13} className="text-indigo-500" />
-                    <span>View</span>
-                  </button>
-                </th>
-                <th className="py-3.5 px-3 text-center w-[110px]">
-                  <button
-                    type="button"
-                    disabled={isSuperAdmin}
-                    onClick={() => handleToggleColumn('can_insert')}
-                    className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors cursor-pointer disabled:cursor-default"
-                    title="Toggle Insert for all modules"
-                  >
-                    <PlusCircle size={13} className="text-emerald-500" />
-                    <span>Insert</span>
-                  </button>
-                </th>
-                <th className="py-3.5 px-3 text-center w-[110px]">
-                  <button
-                    type="button"
-                    disabled={isSuperAdmin}
-                    onClick={() => handleToggleColumn('can_update')}
-                    className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors cursor-pointer disabled:cursor-default"
-                    title="Toggle Update for all modules"
-                  >
-                    <Edit3 size={13} className="text-amber-500" />
-                    <span>Update</span>
-                  </button>
-                </th>
-                <th className="py-3.5 px-3 text-center w-[110px]">
-                  <button
-                    type="button"
-                    disabled={isSuperAdmin}
-                    onClick={() => handleToggleColumn('can_delete')}
-                    className="inline-flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors cursor-pointer disabled:cursor-default"
-                    title="Toggle Delete for all modules"
-                  >
-                    <Trash2 size={13} className="text-rose-500" />
-                    <span>Delete</span>
-                  </button>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border-color)]">
-              {ADMIN_MODULES.map((mod) => {
-                const perm = permissions[mod.key] || {
-                  can_view: false,
-                  can_insert: false,
-                  can_update: false,
-                  can_delete: false,
-                };
-                const isViewEnabled = perm.can_view || isSuperAdmin;
+          {/* Table Body */}
+          <tbody className="divide-y divide-[var(--border-color)]">
+            {ADMIN_MODULES.map((mod) => {
+              const perm = permissions[mod.key] || {
+                can_view: false,
+                can_insert: false,
+                can_update: false,
+                can_delete: false,
+              };
+              const isViewEnabled = perm.can_view;
 
-                return (
-                  <tr
-                    key={mod.key}
-                    className={`transition-colors duration-150 ${
-                      isViewEnabled
-                        ? 'hover:bg-[var(--bg-elevated)]/60'
-                        : 'opacity-60 bg-[var(--bg-elevated)]/20'
-                    }`}
-                  >
-                    {/* Module Details */}
-                    <td className="py-4 px-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-[var(--text-primary)]">
-                            {mod.name}
-                          </span>
-                          <span className="text-[9px] font-mono text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border-color)] px-1.5 py-0.5 rounded">
-                            {mod.badge}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[var(--text-muted)] leading-tight max-w-[380px]">
-                          {mod.description}
-                        </p>
+              return (
+                <tr
+                  key={mod.key}
+                  className={`transition-colors duration-150 ${
+                    isViewEnabled
+                      ? 'hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
+                      : 'opacity-60 bg-[var(--bg-elevated)]/20'
+                  }`}
+                >
+                  {/* Clean Page Title with Path Chip below */}
+                  <td className="py-3 px-5">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                        {mod.name}
                       </div>
-                    </td>
+                      <span className="inline-block text-[9px] font-mono text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border-color)] px-1.5 py-0.2 rounded">
+                        {mod.badge}
+                      </span>
+                    </div>
+                  </td>
 
-                    {/* Action 1: View */}
-                    <td className="py-4 px-3 text-center">
+                  {/* Action 1: View */}
+                  <td className="py-3 px-3 text-center">
+                    <label className="inline-flex items-center justify-center cursor-pointer p-1">
+                      <input
+                        type="checkbox"
+                        checked={perm.can_view}
+                        onChange={() => handleToggle(mod.key, 'can_view')}
+                        className="w-4 h-4 rounded text-zinc-900 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-zinc-900 focus:ring-2 cursor-pointer"
+                      />
+                    </label>
+                  </td>
+
+                  {/* Action 2: Insert */}
+                  <td className="py-3 px-3 text-center">
+                    {mod.supportsInsert ? (
                       <label className="inline-flex items-center justify-center cursor-pointer p-1">
                         <input
                           type="checkbox"
-                          disabled={isSuperAdmin}
-                          checked={isSuperAdmin ? true : perm.can_view}
-                          onChange={() => handleToggle(mod.key, 'can_view')}
-                          className="w-4 h-4 rounded text-indigo-600 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-indigo-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-80"
+                          disabled={!isViewEnabled}
+                          checked={perm.can_insert}
+                          onChange={() => handleToggle(mod.key, 'can_insert')}
+                          className="w-4 h-4 rounded text-zinc-900 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-zinc-900 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
                         />
                       </label>
-                    </td>
+                    ) : (
+                      <span className="text-[11px] text-[var(--text-muted)] font-mono opacity-40">—</span>
+                    )}
+                  </td>
 
-                    {/* Action 2: Insert */}
-                    <td className="py-4 px-3 text-center">
-                      {mod.supportsInsert ? (
-                        <label className="inline-flex items-center justify-center cursor-pointer p-1">
-                          <input
-                            type="checkbox"
-                            disabled={isSuperAdmin || !isViewEnabled}
-                            checked={isSuperAdmin ? true : perm.can_insert}
-                            onChange={() => handleToggle(mod.key, 'can_insert')}
-                            className="w-4 h-4 rounded text-emerald-600 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-emerald-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                          />
-                        </label>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-muted)] font-mono">—</span>
-                      )}
-                    </td>
+                  {/* Action 3: Update */}
+                  <td className="py-3 px-3 text-center">
+                    {mod.supportsUpdate ? (
+                      <label className="inline-flex items-center justify-center cursor-pointer p-1">
+                        <input
+                          type="checkbox"
+                          disabled={!isViewEnabled}
+                          checked={perm.can_update}
+                          onChange={() => handleToggle(mod.key, 'can_update')}
+                          className="w-4 h-4 rounded text-zinc-900 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-zinc-900 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
+                        />
+                      </label>
+                    ) : (
+                      <span className="text-[11px] text-[var(--text-muted)] font-mono opacity-40">—</span>
+                    )}
+                  </td>
 
-                    {/* Action 3: Update */}
-                    <td className="py-4 px-3 text-center">
-                      {mod.supportsUpdate ? (
-                        <label className="inline-flex items-center justify-center cursor-pointer p-1">
-                          <input
-                            type="checkbox"
-                            disabled={isSuperAdmin || !isViewEnabled}
-                            checked={isSuperAdmin ? true : perm.can_update}
-                            onChange={() => handleToggle(mod.key, 'can_update')}
-                            className="w-4 h-4 rounded text-amber-600 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-amber-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                          />
-                        </label>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-muted)] font-mono">—</span>
-                      )}
-                    </td>
-
-                    {/* Action 4: Delete */}
-                    <td className="py-4 px-3 text-center">
-                      {mod.supportsDelete ? (
-                        <label className="inline-flex items-center justify-center cursor-pointer p-1">
-                          <input
-                            type="checkbox"
-                            disabled={isSuperAdmin || !isViewEnabled}
-                            checked={isSuperAdmin ? true : perm.can_delete}
-                            onChange={() => handleToggle(mod.key, 'can_delete')}
-                            className="w-4 h-4 rounded text-rose-600 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-rose-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                          />
-                        </label>
-                      ) : (
-                        <span className="text-[11px] text-[var(--text-muted)] font-mono">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                  {/* Action 4: Delete */}
+                  <td className="py-3 px-3 text-center">
+                    {mod.supportsDelete ? (
+                      <label className="inline-flex items-center justify-center cursor-pointer p-1">
+                        <input
+                          type="checkbox"
+                          disabled={!isViewEnabled}
+                          checked={perm.can_delete}
+                          onChange={() => handleToggle(mod.key, 'can_delete')}
+                          className="w-4 h-4 rounded text-rose-600 bg-[var(--bg-surface)] border-[var(--border-color)] focus:ring-rose-500 focus:ring-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
+                        />
+                      </label>
+                    ) : (
+                      <span className="text-[11px] text-[var(--text-muted)] font-mono opacity-40">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {/* Footer Actions (Only for Sub-Admins) */}
-      {!isSuperAdmin && (
-        <div className="p-4 px-6 border-t border-[var(--border-color)] bg-[var(--bg-elevated)] flex items-center justify-between gap-4">
-          <div>
-            {isDirty ? (
-              <span className="text-xs font-bold text-amber-500 flex items-center gap-1.5 animate-in fade-in">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                Unsaved changes detected
-              </span>
-            ) : (
-              <span className="text-xs text-[var(--text-muted)]">All changes synchronized.</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!isDirty || isSaving}
-              onClick={handleReset}
-              className="h-10 px-4 font-semibold gap-1.5 cursor-pointer"
-            >
-              <RotateCcw size={14} />
-              Reset
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={!isDirty || isSaving}
-              onClick={handleSave}
-              className="h-10 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-md shadow-indigo-600/20 gap-2 cursor-pointer"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 size={15} className="animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save size={15} />
-                  Save Permissions
-                </>
-              )}
-            </Button>
-          </div>
+      {/* Sticky Bottom Actions Bar */}
+      <div className="p-4 px-6 border-t border-[var(--border-color)] bg-[var(--bg-elevated)] flex items-center justify-between gap-4 shrink-0">
+        <div>
+          {isDirty ? (
+            <span className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-in fade-in">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Unsaved changes detected
+            </span>
+          ) : (
+            <span className="text-xs text-[var(--text-muted)]">All changes synchronized with database.</span>
+          )}
         </div>
-      )}
+
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!isDirty || isSaving}
+            onClick={handleReset}
+            className="h-10 px-4 font-semibold gap-1.5 cursor-pointer border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
+          >
+            <RotateCcw size={14} />
+            Reset
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!isDirty || isSaving}
+            onClick={handleSave}
+            className="h-10 px-5 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs gap-2 cursor-pointer rounded-xl active:scale-95"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={15} />
+                Save Permissions
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
+

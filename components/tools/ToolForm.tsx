@@ -126,7 +126,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
 
   const [selectedBillingCycles, setSelectedBillingCycles] = useState<string[]>(parseBillingCycles(info.pricing?.billingCycles));
   const [selectedCategories, setSelectedCategories] = useState<string[]>(info.categories || []);
-  const [selectedTags, setSelectedTags] = useState<string[]>(modelType === 'new' ? (info.tags || []) : (info.hashtags || []));
+  const [selectedTags, setSelectedTags] = useState<string[]>(info.tags || info.hashtags || []);
   const [pros, setPros] = useState<string[]>(info.prosAndCons?.pros || []);
   const [cons, setCons] = useState<string[]>(info.prosAndCons?.cons || []);
   const [targetAudience, setTargetAudience] = useState<string[]>(info.targetAudience || []);
@@ -278,7 +278,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
       const loadedCategories = i.categories || [];
       const loadedBillingCycles = parseBillingCycles(i.pricing?.billingCycles);
       setSelectedBillingCycles(loadedBillingCycles);
-      const loadedTags = type === 'new' ? (i.tags || []) : (i.hashtags || []);
+      const loadedTags = i.tags || i.hashtags || [];
       const loadedPros = i.prosAndCons?.pros || [];
       const loadedCons = i.prosAndCons?.cons || [];
       const loadedTargetAudience = i.targetAudience || [];
@@ -540,14 +540,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
         ? z.string().trim().min(1, 'Full description is required')
         : z.string().optional(),
 
-      tags: modelType === 'new'
-        ? z.array(z.string()).min(1, 'At least one tag is required')
-        : z.array(z.string()).optional(),
-
-      hashtags: modelType !== 'new'
-        ? z.array(z.string()).min(1, 'At least one hashtag is required')
-        : z.array(z.string()).optional(),
-
+      tags: z.array(z.string()).min(1, 'At least one tag is required'),
       categories: z.array(z.string()).min(1, 'At least one category is required'),
 
       full_name: z.string().trim().optional().refine(val => !val || val.length >= 3, 'Full name must be at least 3 characters'),
@@ -562,7 +555,6 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
     const validationData = {
       ...formData,
       tags: selectedTags,
-      hashtags: selectedTags,
       categories: selectedCategories,
       socialLinks: socialLinks
     };
@@ -712,7 +704,8 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
         const cleanFullDesc = stripHtml(formData.fullDescription);
         tool_info.fullDescription = cleanFullDesc === '' ? null : cleanFullDesc;
         tool_info.shortDescription = toNull(formData.shortDescription);
-        tool_info.hashtags = toNull(selectedTags);
+        tool_info.tags = toNull(selectedTags);
+        delete tool_info.hashtags;
         tool_info.isAIToolOrRelatedSite = formData.isAIToolOrRelatedSite;
         tool_info.faq = toNull(faqs.map(({ question, answer }) => ({
           question: toNull(question),
@@ -723,11 +716,10 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
           description: toNull(description)
         })).filter(f => f.name || f.description));
         delete tool_info.overview;
-        delete tool_info.tags;
         delete tool_info.isAIWebsite;
       }
 
-      // Auto-create missing categories & hashtags/tags in DB tables
+      // Auto-create missing categories & tags in DB tables
       try {
         for (const cat of selectedCategories) {
           if (!cat || !cat.trim()) continue;
@@ -769,23 +761,6 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
               slug: slug,
               status: 'show',
               created_at: new Date().toISOString()
-            }]);
-          }
-
-          // Insert into hashtags table if missing
-          const { data: existingHashtag } = await supabase
-            .from('hashtags')
-            .select('id')
-            .or(`hashtag_name.ilike.${rawTag},slug.eq.${slug}`)
-            .limit(1);
-
-          if (!existingHashtag || existingHashtag.length === 0) {
-            await supabase.from('hashtags').insert([{
-              hashtag_name: rawTag,
-              hashtag_url: slug,
-              status: 'show',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
             }]);
           }
         }
@@ -1000,7 +975,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
         title="Reach & Audience"
         description="Define how the tool is discovered and who it's for."
         defaultOpen={!isSubmission}
-        hasErrors={!!(errors.categories || errors.tags || errors.hashtags)}
+        hasErrors={!!(errors.categories || errors.tags)}
       >
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1025,25 +1000,24 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
               {errors.categories && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.categories}</p>}
             </div>
             <div className="space-y-1">
-              <label className={labelClass}>{modelType === 'new' ? 'Tags' : 'Hashtags'} <span className="saas-label-required">*</span></label>
-              <div className={`relative focus-within:z-40 ${(errors.tags || errors.hashtags) ? 'p-1 bg-rose-500/10 border border-rose-500/20 rounded-xl' : ''}`}>
+              <label className={labelClass}>Tags <span className="saas-label-required">*</span></label>
+              <div className={`relative focus-within:z-40 ${errors.tags ? 'p-1 bg-rose-500/10 border border-rose-500/20 rounded-xl' : ''}`}>
                 <KeywordTagInput
                   selectedKeywords={selectedTags}
                   onKeywordsChange={(val) => {
                     setSelectedTags(val);
-                    if (errors.tags || errors.hashtags) setErrors(prev => {
+                    if (errors.tags) setErrors(prev => {
                       const n = { ...prev };
                       delete n.tags;
-                      delete n.hashtags;
                       return n;
                     });
                   }}
-                  placeholder={modelType === 'new' ? "tags" : "hashtags"}
-                  type="hashtag"
-                  name={modelType === 'new' ? "tags" : "hashtags"}
+                  placeholder="tags"
+                  type="tag"
+                  name="tags"
                 />
               </div>
-              {(errors.tags || errors.hashtags) && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tags || errors.hashtags}</p>}
+              {errors.tags && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tags}</p>}
             </div>
           </div>
           <div className="space-y-1">

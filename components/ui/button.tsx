@@ -3,22 +3,22 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] cursor-pointer select-none',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:focus-visible:ring-zinc-600 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] cursor-pointer select-none',
   {
     variants: {
       variant: {
         default:
-          'bg-[var(--primary)] text-white shadow-xs hover:bg-[var(--primary-dark)]',
+          'bg-zinc-900 text-white shadow-xs hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200',
         destructive:
           'bg-rose-500 text-white shadow-xs hover:bg-rose-600',
         outline:
           'border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-secondary)] shadow-2xs hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]',
         secondary:
-          'border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-2xs hover:text-[var(--text-primary)] hover:border-indigo-500/30',
+          'border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-2xs hover:text-[var(--text-primary)] hover:border-zinc-400 dark:hover:border-zinc-700',
         ghost:
           'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]',
         link:
-          'text-indigo-500 underline-offset-4 hover:underline p-0 h-auto font-bold',
+          'text-zinc-600 dark:text-zinc-400 underline-offset-4 hover:underline hover:text-zinc-950 dark:hover:text-zinc-100 p-0 h-auto font-bold',
       },
       size: {
         default: 'h-9 px-4 py-2',

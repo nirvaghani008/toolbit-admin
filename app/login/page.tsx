@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { scrollToError } from '@/lib/form-utils';
 import { useRouter } from 'next/navigation';
 import {
   Lock,
@@ -31,11 +33,17 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
+const loginSchema = z.object({
+  email: z.string().trim().min(1, 'Email address is required').email('Please enter a valid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -63,10 +71,35 @@ export default function LoginPage() {
     checkUser();
   }, [router]);
 
+  const validate = () => {
+    const result = loginSchema.safeParse({ email, password });
+    const newErrors: Record<string, string> = {};
+
+    if (!result.success) {
+      result.error.issues.forEach((issue) => {
+        const fieldName = issue.path[0] as string;
+        newErrors[fieldName] = issue.message;
+      });
+    }
+
+    setFieldErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      scrollToError(newErrors);
+      return false;
+    }
+    return true;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+
+    if (!validate()) {
+      return;
+    }
+
+    setLoading(true);
 
     try {
       // 1. Authenticate with Supabase
@@ -325,7 +358,7 @@ export default function LoginPage() {
             </CardHeader>
 
             <CardContent className="px-6 pb-6">
-              <form onSubmit={handleLogin} className="space-y-5 text-left">
+              <form onSubmit={handleLogin} noValidate className="space-y-5 text-left">
                 
                 {/* Error Alert using Shadcn Component */}
                 {error && (
@@ -342,49 +375,87 @@ export default function LoginPage() {
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-xs sm:text-sm font-semibold text-zinc-200 flex items-center gap-1.5">
                     <Mail className="h-3.5 w-3.5 text-zinc-400" />
-                    Email Address
+                    Email Address <span className="text-rose-500">*</span>
                   </Label>
                   <Input
                     id="email"
+                    name="email"
                     type="email"
-                    required
                     placeholder="admin@toolbit.ai"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="h-11 sm:h-12 px-4 rounded-xl bg-zinc-950/80 border-zinc-800 text-zinc-100 placeholder:text-zinc-500 focus-visible:border-zinc-400 focus-visible:ring-1 focus-visible:ring-zinc-400 text-sm transition-colors shadow-xs"
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (fieldErrors.email) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.email;
+                          return next;
+                        });
+                      }
+                      if (error) setError(null);
+                    }}
+                    className={`h-11 sm:h-12 px-4 rounded-xl bg-zinc-950/80 text-zinc-100 placeholder:text-zinc-500 text-sm transition-colors shadow-xs ${
+                      fieldErrors.email
+                        ? 'border-rose-500/80 focus-visible:border-rose-500 focus-visible:ring-1 focus-visible:ring-rose-500/20'
+                        : 'border-zinc-800 focus-visible:border-zinc-400 focus-visible:ring-1 focus-visible:ring-zinc-400'
+                    }`}
                     autoComplete="email"
                     disabled={loading}
                   />
+                  {fieldErrors.email && (
+                    <p className="text-xs font-semibold text-rose-400 mt-1 flex items-center gap-1">
+                      <AlertCircle size={13} className="shrink-0" /> {fieldErrors.email}
+                    </p>
+                  )}
                 </div>
 
                 {/* Password / Access Key Field */}
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-xs sm:text-sm font-semibold text-zinc-200 flex items-center gap-1.5">
                     <Lock className="h-3.5 w-3.5 text-zinc-400" />
-                    Password
+                    Password <span className="text-rose-500">*</span>
                   </Label>
                   <div className="relative">
                     <Input
                       id="password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
-                      required
                       placeholder="••••••••••••"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="h-11 sm:h-12 px-4 pr-11 rounded-xl bg-zinc-950/80 border-zinc-800 text-zinc-100 placeholder:text-zinc-500 focus-visible:border-zinc-400 focus-visible:ring-1 focus-visible:ring-zinc-400 text-sm transition-colors shadow-xs"
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (fieldErrors.password) {
+                          setFieldErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.password;
+                            return next;
+                          });
+                        }
+                        if (error) setError(null);
+                      }}
+                      className={`h-11 sm:h-12 px-4 pr-11 rounded-xl bg-zinc-950/80 text-zinc-100 placeholder:text-zinc-500 text-sm transition-colors shadow-xs ${
+                        fieldErrors.password
+                          ? 'border-rose-500/80 focus-visible:border-rose-500 focus-visible:ring-1 focus-visible:ring-rose-500/20'
+                          : 'border-zinc-800 focus-visible:border-zinc-400 focus-visible:ring-1 focus-visible:ring-zinc-400'
+                      }`}
                       autoComplete="current-password"
                       disabled={loading}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 transition-colors p-1 focus:outline-none"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 transition-colors p-1 focus:outline-none cursor-pointer"
                       tabIndex={-1}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                     </button>
                   </div>
+                  {fieldErrors.password && (
+                    <p className="text-xs font-semibold text-rose-400 mt-1 flex items-center gap-1">
+                      <AlertCircle size={13} className="shrink-0" /> {fieldErrors.password}
+                    </p>
+                  )}
                 </div>
 
                 {/* Action Submit Button using Shadcn Component */}
