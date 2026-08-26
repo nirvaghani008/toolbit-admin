@@ -185,10 +185,10 @@ const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
           aria-expanded={isOpen}
           className={cn(
             'flex h-10 w-full appearance-none items-center justify-between rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] shadow-2xs transition-all outline-none cursor-pointer',
-            'focus-visible:border-zinc-400 focus-visible:ring-2 focus-visible:ring-zinc-400/20 dark:focus-visible:border-zinc-500 dark:focus-visible:ring-zinc-500/20',
+            'focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus:border-zinc-400 dark:focus:border-zinc-300',
             'disabled:cursor-not-allowed disabled:opacity-50',
             'hover:bg-[var(--bg-elevated)]/60 hover:text-[var(--text-primary)]',
-            isOpen && 'border-zinc-400 ring-2 ring-zinc-400/20 dark:border-zinc-500 dark:ring-zinc-500/20',
+            isOpen && 'border-zinc-400 dark:border-zinc-300 ring-0',
             className
           )}
           {...props}

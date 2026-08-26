@@ -23,6 +23,7 @@ import AddSubAdminModal from '@/components/manage-admins/AddSubAdminModal';
 import DeleteAdminDialog from '@/components/manage-admins/DeleteAdminDialog';
 import { AdminUser, ModulePermission, ADMIN_MODULES } from '@/components/manage-admins/types';
 import Sparkline from '@/components/common/Sparkline';
+import { Spinner } from '@/components/ui/spinner';
 
 export default function ManageAdminsPage() {
   const { isSuperAdmin, isAuthorized, role } = useAdmin();
@@ -163,7 +164,7 @@ export default function ManageAdminsPage() {
             className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             suppressHydrationWarning
           >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
+            {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
             <span>{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
           </Button>
         </div>

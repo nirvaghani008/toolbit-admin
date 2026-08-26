@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ExternalLink, Edit2, Trash2, Wrench, Eye, ChevronDown, Check, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, Edit2, Trash2, Wrench, Eye } from 'lucide-react';
 import ToolPreviewModal from './ToolPreviewModal';
 import Pagination from '@/components/common/Pagination';
 import {
@@ -15,18 +15,19 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Portal } from '@/components/ui/portal';
-import PlanBadge from '@/components/common/PlanBadge';
+import PlanBadge, { getPlanCategory } from '@/components/common/PlanBadge';
+import StatusChangeControl from '@/components/common/StatusChangeControl';
 
+// Canonical ai_tools visibility statuses. The `ai_tools.status` column is
+// free-form text (DB default `hide`) with no CHECK constraint; these are the
+// distinct values in use and are shared by the tools table and the edit form.
 export const TOOL_STATUS_OPTIONS = [
   { value: 'show', label: 'Show' },
   { value: 'show:invalid', label: 'Show: Invalid' },
   { value: 'show:error', label: 'Show: Error' },
   { value: 'show:inactive', label: 'Show: Inactive' },
   { value: 'hide', label: 'Hide' },
-  { value: 'draft', label: 'Draft' },
   { value: 'archived', label: 'Archived' },
-  { value: 'pending', label: 'Pending' },
   { value: 'error', label: 'Error' },
 ] as const;
 
@@ -82,30 +83,6 @@ export default function ToolTable({
 }: ToolTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
   const [previewTool, setPreviewTool] = useState<Tool | null>(null);
-  const [openStatusDropdownId, setOpenStatusDropdownId] = useState<number | string | null>(null);
-  const [pendingStatusChange, setPendingStatusChange] = useState<{ tool: Tool; newStatus: string } | null>(null);
-  const [isChangingStatus, setIsChangingStatus] = useState(false);
-
-  // Close dropdown on outside click or escape
-  useEffect(() => {
-    const handleClickOutside = () => setOpenStatusDropdownId(null);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOpenStatusDropdownId(null);
-        if (!isChangingStatus) setPendingStatusChange(null);
-      }
-    };
-
-    if (openStatusDropdownId) {
-      document.addEventListener('click', handleClickOutside);
-    }
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [openStatusDropdownId, isChangingStatus]);
 
   const getStatusBadgeVariant = (status: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' => {
     const s = (status || '').toLowerCase();
@@ -135,22 +112,9 @@ export default function ToolTable({
     return status || 'Show';
   };
 
-  const formatPlanLabel = (val: any): string => {
-    if (!val) return 'Free';
-    if (typeof val === 'string') return val;
-    if (typeof val === 'number') return String(val);
-    if (typeof val === 'object') {
-      if (typeof val.pricingModel === 'string' && val.pricingModel) return val.pricingModel;
-      if (typeof val.pricing_type === 'string' && val.pricing_type) return val.pricing_type;
-      if (typeof val.plan === 'string' && val.plan) return val.plan;
-      if (typeof val.name === 'string' && val.name) return val.name;
-      if (typeof val.type === 'string' && val.type) return val.type;
-      if (val.hasFreePlan && val.hasPricing) return 'Freemium';
-      if (val.hasFreePlan) return 'Free';
-      if (val.hasPricing) return 'Paid';
-    }
-    return 'Free';
-  };
+  const isPaidValue = (value: unknown): boolean => (
+    value === true || value === 'true' || value === 1 || value === '1'
+  );
 
   const extractCategories = (t: any): string[] => {
     const info = t?.tool_info || {};
@@ -171,13 +135,12 @@ export default function ToolTable({
         <Table className="table-fixed">
           <TableHeader>
             <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-              <TableHead className="w-[24%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Details</TableHead>
+              <TableHead className="w-[28%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Details</TableHead>
               <TableHead className="w-[18%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Categories</TableHead>
               <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Views</TableHead>
-              <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Verified</TableHead>
               <TableHead className="w-[9%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Paid Status</TableHead>
               <TableHead className="w-[12%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">AI Moderation</TableHead>
-              <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Plan</TableHead>
+              <TableHead className="w-[9%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Pricing</TableHead>
               <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
               <TableHead className="w-[8%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
             </TableRow>
@@ -206,9 +169,6 @@ export default function ToolTable({
                     <Skeleton className="h-4 w-10 mx-auto rounded" />
                   </TableCell>
                   <TableCell className="px-2 py-4 text-center">
-                    <Skeleton className="h-5 w-12 mx-auto rounded-md" />
-                  </TableCell>
-                  <TableCell className="px-2 py-4 text-center">
                     <Skeleton className="h-5 w-14 mx-auto rounded-md" />
                   </TableCell>
                   <TableCell className="px-2 py-4 text-center">
@@ -230,7 +190,7 @@ export default function ToolTable({
               ))
             ) : tools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-12 text-center text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                <TableCell colSpan={8} className="px-6 py-12 text-center text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                   No tools found.
                 </TableCell>
               </TableRow>
@@ -239,10 +199,24 @@ export default function ToolTable({
                 const info = tool.tool_info || {};
                 const categories = extractCategories(tool);
 
-                const rawPricing = tool.pricing_type || tool.plan || info.pricing_type || info.plan || info.pricing?.model || info.pricing || 'Free';
-                const pricingType = formatPlanLabel(rawPricing);
-                const isPaidSubmission = tool.is_paid === true || tool.is_paid === 'true' || tool.is_paid === 1 || tool.is_paid === '1' || Boolean((tool as any).isPaid) || Boolean(info.is_paid) || Boolean(info.is_paid_submission);
-                const isVerified = Boolean(tool.is_verified || tool.verified || info.is_verified);
+                const rawPricing =
+                  info.pricing ||
+                  tool.pricing_type ||
+                  tool.plan ||
+                  info.pricing_type ||
+                  info.plan ||
+                  info.pricingModel ||
+                  'Free';
+                const pricingCategory = getPlanCategory(rawPricing);
+                const pricingLabel = pricingCategory.charAt(0).toUpperCase() + pricingCategory.slice(1);
+                const isPaidSubmission = [
+                  tool.is_paid,
+                  tool.isPaid,
+                  tool.is_paid_submission,
+                  info.is_paid,
+                  info.isPaid,
+                  info.is_paid_submission,
+                ].some(isPaidValue);
                 const viewCount = tool.view_counter ?? tool.visit_counter ?? info.view_counter ?? info.visit_counter ?? 0;
 
                 const siteUrl = tool.tool_site_url || tool.tool_url || info.websiteUrl || info.website_url || info.url || '';
@@ -272,7 +246,7 @@ export default function ToolTable({
                               {info.toolName || info.name || 'Unnamed Tool'}
                             </button>
                             {isPaidSubmission && (
-                              <span className="inline-flex items-center justify-center shrink-0" title="Verified Paid Tool">
+                              <span className="inline-flex items-center justify-center shrink-0" title="Paid Tool">
                                 <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none">
                                   <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.79-4-4-4-.495 0-.965.084-1.4.238C14.55 2.475 13.18 1.6 11.6 1.6c-1.58 0-2.95.875-3.6 2.148-.435-.154-.905-.238-1.4-.238-2.21 0-4 1.79-4 4 0 .495.084.965.238 1.4C1.575 9.55.7 10.92.7 12.5c0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.79 4 4 4 .495 0 .965-.084 1.4-.238.65 1.273 2.02 2.148 3.6 2.148 1.58 0 2.95-.875 3.6-2.148.435.154.905.238 1.4.238 2.21 0 4-1.79 4-4 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6z" fill="#1d9bf0" />
                                   <path d="M9.86 16.5a1 1 0 0 1-.707-.293l-3.36-3.36a1 1 0 1 1 1.414-1.414l2.653 2.653 6.84-6.84a1 1 0 1 1 1.414 1.414l-7.547 7.547a1 1 0 0 1-.707.293z" fill="#ffffff" />
@@ -322,26 +296,13 @@ export default function ToolTable({
                       </div>
                     </TableCell>
 
-                    {/* Verified */}
-                    <TableCell className="px-2 py-4 text-center">
-                      {isVerified ? (
-                        <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">
-                          TRUE
-                        </Badge>
-                      ) : (
-                        <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">
-                          FALSE
-                        </Badge>
-                      )}
-                    </TableCell>
-
                     {/* Paid Status */}
                     <TableCell className="px-2 py-4 text-center">
                       <div className="flex items-center justify-center">
                         {isPaidSubmission ? (
                           <div className="relative group/tier inline-block cursor-help whitespace-nowrap">
                             <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">
-                              $ Paid
+                              Paid
                             </Badge>
                             <div className={`hidden group-hover/tier:block absolute left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-900 text-white rounded-xl shadow-2xl text-[11px] leading-relaxed z-[9999] border border-slate-700 pointer-events-none whitespace-nowrap ${idx === 0 ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
                               <p className="text-slate-200 font-medium capitalize">
@@ -351,7 +312,7 @@ export default function ToolTable({
                           </div>
                         ) : (
                           <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">
-                            Unpaid
+                            Free
                           </Badge>
                         )}
                       </div>
@@ -386,74 +347,22 @@ export default function ToolTable({
                       </div>
                     </TableCell>
 
-                    {/* Plan */}
+                    {/* Tool Pricing */}
                     <TableCell className="px-2 py-4 text-center">
-                      <PlanBadge plan={rawPricing} />
+                      <PlanBadge category={pricingCategory} label={pricingLabel} />
                     </TableCell>
 
                     {/* Status with interactive dropdown */}
                     <TableCell className="px-2 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="relative inline-block text-left">
-                        <button
-                          type="button"
-                          onClick={() => setOpenStatusDropdownId(openStatusDropdownId === tool.tool_id ? null : tool.tool_id)}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer group/status focus:outline-none"
-                          title="Click to change status"
-                        >
-                          <Badge
-                            variant={getStatusBadgeVariant(tool.status)}
-                            className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase cursor-pointer"
-                          >
-                            {formatStatus(tool.status)}
-                          </Badge>
-                          <ChevronDown size={11} className={`text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)] transition-transform duration-200 ${openStatusDropdownId === tool.tool_id ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {openStatusDropdownId === tool.tool_id && (
-                          <div
-                            className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 mt-1.5 w-38 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-1 animate-in fade-in zoom-in-95 duration-150 text-left"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase px-2.5 py-1 tracking-wider border-b border-[var(--border-color)]/60 mb-1">
-                              Change Status
-                            </div>
-                            <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-0.5">
-                              {TOOL_STATUS_OPTIONS.map((opt) => {
-                                const isCurrent = (tool.status || '').toLowerCase() === opt.value.toLowerCase();
-                                return (
-                                  <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() => {
-                                      setOpenStatusDropdownId(null);
-                                      if (!isCurrent) {
-                                        setPendingStatusChange({ tool, newStatus: opt.value });
-                                      }
-                                    }}
-                                    className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                                      isCurrent
-                                        ? 'bg-zinc-100 dark:bg-zinc-800 font-bold text-zinc-900 dark:text-zinc-100'
-                                        : 'text-[var(--text-secondary)] hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100'
-                                    }`}
-                                  >
-                                    <span className="flex items-center gap-1.5 truncate">
-                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                        opt.value === 'show' ? 'bg-emerald-500' :
-                                        opt.value.startsWith('show:') ? 'bg-amber-500' :
-                                        opt.value === 'archived' ? 'bg-violet-500' :
-                                        opt.value === 'error' || opt.value === 'show:error' ? 'bg-rose-500' :
-                                        'bg-zinc-400'
-                                      }`} />
-                                      <span className="text-[11px] truncate">{opt.label}</span>
-                                    </span>
-                                    {isCurrent && <Check size={12} className="text-zinc-900 dark:text-zinc-100 shrink-0 ml-1" />}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      <StatusChangeControl
+                        itemId={tool.tool_id}
+                        currentStatus={tool.status}
+                        options={TOOL_STATUS_OPTIONS}
+                        itemLabel={info.toolName || tool.tool_url || 'this tool'}
+                        onStatusChange={onStatusChange}
+                        getVariant={getStatusBadgeVariant}
+                        formatStatus={formatStatus}
+                      />
                     </TableCell>
 
                     {/* Manage */}
@@ -493,89 +402,6 @@ export default function ToolTable({
           onPageChange={onPageChange}
         />
       </div>
-
-      {/* Confirmation Dialog for Status Change wrapped in Portal */}
-      {pendingStatusChange && (
-        <Portal>
-          <div
-            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
-            onClick={() => !isChangingStatus && setPendingStatusChange(null)}
-          >
-            <div
-              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-in zoom-in-95 duration-150"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-800 dark:text-zinc-200 shrink-0 border border-zinc-200 dark:border-zinc-700 shadow-2xs">
-                  <AlertCircle size={20} />
-                </div>
-                <div className="space-y-1 flex-1">
-                  <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                    Confirm Status Change
-                  </h3>
-                  <p className="text-xs text-zinc-500 dark:text-slate-400 leading-relaxed">
-                    Are you sure you want to update the status of{' '}
-                    <span className="font-bold text-zinc-900 dark:text-zinc-100">
-                      {pendingStatusChange.tool.tool_info?.toolName || pendingStatusChange.tool.tool_url || 'this tool'}
-                    </span>
-                    ?
-                  </p>
-                </div>
-              </div>
-
-              {/* Visual Status Transition */}
-              <div className="flex items-center justify-center gap-3 p-3 bg-zinc-50 dark:bg-slate-900/60 rounded-xl border border-zinc-200/80 dark:border-zinc-800">
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-[9px] font-bold uppercase text-zinc-400 dark:text-slate-500 tracking-wider">Current</span>
-                  <Badge variant={getStatusBadgeVariant(pendingStatusChange.tool.status)} className="text-[9px] px-2.5 py-0.5 font-bold tracking-wider uppercase">
-                    {formatStatus(pendingStatusChange.tool.status)}
-                  </Badge>
-                </div>
-                <span className="text-zinc-400 dark:text-slate-600 font-bold text-lg px-2">→</span>
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-[9px] font-bold uppercase text-zinc-400 dark:text-slate-500 tracking-wider">New Status</span>
-                  <Badge variant={getStatusBadgeVariant(pendingStatusChange.newStatus)} className="text-[9px] px-2.5 py-0.5 font-bold tracking-wider uppercase">
-                    {formatStatus(pendingStatusChange.newStatus)}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isChangingStatus}
-                  onClick={() => setPendingStatusChange(null)}
-                  className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  disabled={isChangingStatus}
-                  onClick={async () => {
-                    if (!pendingStatusChange) return;
-                    setIsChangingStatus(true);
-                    try {
-                      if (onStatusChange) {
-                        await onStatusChange(pendingStatusChange.tool.tool_id, pendingStatusChange.newStatus);
-                      }
-                      setPendingStatusChange(null);
-                    } catch (err) {
-                      console.error('Failed to change status:', err);
-                    } finally {
-                      setIsChangingStatus(false);
-                    }
-                  }}
-                  className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs min-w-[130px] cursor-pointer"
-                >
-                  {isChangingStatus ? 'Updating...' : 'Confirm Change'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Portal>
-      )}
 
       {previewTool && (
         <ToolPreviewModal

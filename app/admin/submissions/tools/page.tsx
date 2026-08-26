@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
 import ToolForm from '@/components/tools/ToolForm';
 import ToolPreviewModal from '@/components/tools/ToolPreviewModal';
@@ -16,7 +17,6 @@ import {
   RefreshCw,
   FileText,
   Search,
-  ArrowLeft,
 } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -52,7 +52,8 @@ export default function ToolSubmissionsPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'draft' | 'rejected'>('all');
   const [sortBy, setSortBy] = useState<'updated_at' | 'created_at' | 'tool_name' | 'id'>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Keep the query used for fetching separate from the input draft.
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingTool, setEditingTool] = useState<any>(null);
   const [previewTool, setPreviewTool] = useState<any>(null);
@@ -141,8 +142,8 @@ export default function ToolSubmissionsPage() {
         query = query.eq('status', statusFilter);
       }
 
-      if (searchQuery) {
-        query = query.or(`full_name.ilike.%${searchQuery}%,business_email.ilike.%${searchQuery}%,tool_site_url.ilike.%${searchQuery}%`);
+      if (appliedSearchQuery) {
+        query = query.or(`full_name.ilike.%${appliedSearchQuery}%,business_email.ilike.%${appliedSearchQuery}%,tool_site_url.ilike.%${appliedSearchQuery}%`);
       }
 
       query = query.order(sortBy, { ascending: sortOrder === 'asc' }).order('id', { ascending: sortOrder === 'asc' });
@@ -171,12 +172,12 @@ export default function ToolSubmissionsPage() {
 
   useEffect(() => {
     fetchTools();
-  }, [currentPage, searchQuery, sortBy, sortOrder, statusFilter]);
+  }, [currentPage, appliedSearchQuery, sortBy, sortOrder, statusFilter]);
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (currentPage !== 1) setCurrentPage(1);
-    setSearchQuery(searchInputValue);
+    setAppliedSearchQuery(searchInputValue);
   };
 
   const handleUpdateTool = async (formData: any) => {
@@ -209,7 +210,7 @@ export default function ToolSubmissionsPage() {
       message: 'Are you sure you want to permanently delete this tool submission? This action cannot be undone.',
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('ai_tool_submissions').delete().eq('id', id);
       if (error) throw error;
@@ -219,7 +220,7 @@ export default function ToolSubmissionsPage() {
     } catch (err) {
       console.error('Error deleting tool submission:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -250,9 +251,9 @@ export default function ToolSubmissionsPage() {
       id: 'pending',
       label: 'Pending',
       value: stats.pending,
-      iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
-      badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-      sparklineColor: 'text-[#8a652a] dark:text-amber-400',
+      iconStyle: 'text-[#5a4833] bg-[#f7f4ee] border-[#e2dcd0] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
+      badgeStyle: 'bg-[#f7f4ee] text-[#5a4833] border-[#e2dcd0] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
+      sparklineColor: 'text-[#5a4833] dark:text-amber-400',
       icon: <Clock size={17} />,
       points: sparklines.pending,
       badge: 'Pending',
@@ -261,9 +262,9 @@ export default function ToolSubmissionsPage() {
       id: 'rejected',
       label: 'Rejected',
       value: stats.rejected,
-      iconStyle: 'text-[#824235] bg-[#faf2ef] border-[#edd6cf] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
-      badgeStyle: 'bg-[#faf2ef] text-[#824235] border-[#edd6cf] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-      sparklineColor: 'text-[#824235] dark:text-rose-400',
+      iconStyle: 'text-[#5c3838] bg-[#f6f1f1] border-[#e2d3d3] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
+      badgeStyle: 'bg-[#f6f1f1] text-[#5c3838] border-[#e2d3d3] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
+      sparklineColor: 'text-[#5c3838] dark:text-rose-400',
       icon: <XCircle size={17} />,
       points: sparklines.rejected,
       badge: 'Rejected',
@@ -286,8 +287,8 @@ export default function ToolSubmissionsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Tool Submissions Database</h1>
-          <p className="text-sm text-[var(--text-muted)] font-medium mt-1">Review and moderate new tool requests from the community.</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">AI Tool Submissions</h1>
+          <p className="text-sm text-[var(--text-muted)] font-medium mt-1">Review community tool submissions and publication requests.</p>
         </div>
         {!showForm && (
           <Button
@@ -297,8 +298,8 @@ export default function ToolSubmissionsPage() {
             className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             suppressHydrationWarning
           >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-            {isRefreshing ? 'Syncing...' : 'Refresh'}
+            {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+            Refresh
           </Button>
         )}
       </div>
@@ -365,7 +366,15 @@ export default function ToolSubmissionsPage() {
                 type="text"
                 placeholder="Search by name, email, or URL..."
                 value={searchInputValue}
-                onChange={(e) => setSearchInputValue(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setSearchInputValue(nextValue);
+
+                  if (nextValue.trim() === '') {
+                    setAppliedSearchQuery('');
+                    if (currentPage !== 1) setCurrentPage(1);
+                  }
+                }}
                 className="flex-1 h-11 px-4 text-sm"
                 suppressHydrationWarning
               />
@@ -399,28 +408,35 @@ export default function ToolSubmissionsPage() {
           </form>
 
           {/* Table */}
-          <ToolSubmissionTable
-            tools={tools}
-            totalCount={totalCount}
-            pageSize={pageSize}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onEdit={openForm}
-            onDelete={handleDeleteTool}
-            onPreview={setPreviewTool}
-            isLoading={loading}
-          />
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
+            <ToolSubmissionTable
+              tools={tools}
+              totalCount={totalCount}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onEdit={openForm}
+              onDelete={handleDeleteTool}
+              onPreview={setPreviewTool}
+              isLoading={loading}
+            />
+          </div>
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Database"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Database
-          </Button>
-          <ToolForm initialData={editingTool} onSubmit={handleUpdateTool} onCancel={closeForm} isSubmission={true} />
+            isLoading={isActionLoading}
+          />
+          <ToolForm initialData={editingTool} onSubmit={handleUpdateTool} onCancel={closeForm} isSubmission={true} isLoading={isActionLoading} />
         </div>
       )}
 
@@ -431,8 +447,6 @@ export default function ToolSubmissionsPage() {
           onClose={() => setPreviewTool(null)}
         />
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }

@@ -10,7 +10,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { AdminUser } from './types';
 
 interface DeleteAdminDialogProps {
@@ -59,7 +60,7 @@ export default function DeleteAdminDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-[460px] p-6 rounded-3xl" onClose={onClose}>
+      <DialogContent className={`max-w-[460px] p-6 rounded-3xl transition-opacity duration-200 ${loading ? 'opacity-50 pointer-events-none select-none' : ''}`} onClose={onClose}>
         <DialogHeader className="text-left space-y-3">
           <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shadow-2xs">
             <AlertTriangle size={20} />
@@ -102,7 +103,7 @@ export default function DeleteAdminDialog({
           >
             {loading ? (
               <>
-                <Loader2 size={16} className="animate-spin" />
+                <Spinner size={16} className="text-current shrink-0" />
                 Removing...
               </>
             ) : (

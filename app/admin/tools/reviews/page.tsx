@@ -5,9 +5,10 @@ import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
 import {
   RefreshCw, Folder, Clock, CheckCircle2, XCircle,
-  Search, ArrowLeft, Star
+  Search, Star
 } from 'lucide-react';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -217,7 +218,11 @@ export default function ReviewsPage() {
   };
 
   const handleStatusToggle = async (review: Review, forceStatus?: string) => {
-    setIsActionLoading(true);
+    if (selectedReview) {
+      setIsActionLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     let newStatus = '';
 
     if (forceStatus) {
@@ -245,7 +250,21 @@ export default function ReviewsPage() {
       console.error('Error updating status:', err);
     } finally {
       setIsActionLoading(false);
+      setIsRefreshing(false);
     }
+  };
+
+  // Direct status change from a table row (via the shared StatusChangeControl
+  // confirmation popup). Throws on error so the control can surface failures.
+  const handleStatusChange = async (id: number | string, newStatus: string) => {
+    const { error } = await supabase
+      .from('reviews')
+      .update({ status: newStatus })
+      .eq('review_id', id);
+    if (error) throw error;
+
+    await fetchStats();
+    await fetchReviews(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -254,7 +273,7 @@ export default function ReviewsPage() {
       message: 'Are you sure you want to permanently delete this review? This action cannot be undone.'
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('reviews').delete().eq('review_id', id);
       if (error) throw error;
@@ -263,7 +282,7 @@ export default function ReviewsPage() {
     } catch (err) {
       console.error('Error deleting review:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -284,8 +303,8 @@ export default function ReviewsPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
           </div>
         )}
@@ -435,27 +454,34 @@ export default function ReviewsPage() {
           </form>
 
           {/* Table */}
-          <ReviewTable
-            reviews={reviews}
-            totalCount={totalCount}
-            pageSize={pageSize}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onEdit={openReview}
-            onDelete={handleDelete}
-            onStatusToggle={handleStatusToggle}
-            isLoading={loading}
-          />
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
+            <ReviewTable
+              reviews={reviews}
+              totalCount={totalCount}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onEdit={openReview}
+              onDelete={handleDelete}
+              onStatusChange={handleStatusChange}
+              isLoading={loading}
+            />
+          </div>
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Overview"
             onClick={closeReview}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Overview
-          </Button>
+            isLoading={isActionLoading}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <Card className="rounded-2xl shadow-sm h-full flex flex-col">
@@ -535,11 +561,19 @@ export default function ReviewsPage() {
                       Visibility Status
                     </label>
                     <Select
-                      value={selectedReview.status === 'hide' || selectedReview.status === 'rejected' ? 'hide' : 'show'}
+                      value={
+                        selectedReview.status === 'hide' || selectedReview.status === 'rejected'
+                          ? 'hide'
+                          : selectedReview.status === 'pending'
+                          ? 'pending'
+                          : 'show'
+                      }
                       onChange={(val) => setSelectedReview({ ...selectedReview, status: val })}
+                      disabled={isActionLoading}
                       className="h-11"
                     >
                       <option value="show">Approved</option>
+                      <option value="pending">Pending</option>
                       <option value="hide">Rejected</option>
                     </Select>
                   </div>
@@ -548,25 +582,18 @@ export default function ReviewsPage() {
 
               <CardFooter className="pt-4 border-t border-[var(--border-color)] flex flex-col gap-3">
                 <Button
-                  onClick={() =>
-                    handleStatusToggle(
-                      selectedReview,
-                      selectedReview.status === 'hide' || selectedReview.status === 'rejected' ? 'hide' : 'show'
-                    )
-                  }
+                  onClick={() => handleStatusToggle(selectedReview, selectedReview.status)}
                   disabled={isActionLoading}
                   className="w-full h-11 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs active:scale-95 cursor-pointer"
                   suppressHydrationWarning
                 >
-                  {isActionLoading ? <RefreshCw size={14} className="animate-spin" /> : 'Update Status'}
+                  {isActionLoading ? <Spinner size={14} className="text-current shrink-0" /> : 'Update Status'}
                 </Button>
               </CardFooter>
             </Card>
           </div>
         </div>
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }

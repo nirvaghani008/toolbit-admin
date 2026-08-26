@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import StatusChangeControl from '@/components/common/StatusChangeControl';
 
 interface AdvertiseTableProps {
   data: any[];
@@ -23,6 +24,7 @@ interface AdvertiseTableProps {
   onPageChange: (page: number) => void;
   onEdit: (item: any) => void;
   onDelete: (id: number) => void;
+  onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
   statusFilter?: string;
   sortBy?: string;
@@ -34,6 +36,12 @@ interface AdvertiseTableProps {
 
 import ToolLogo from '@/components/common/ToolLogo';
 
+const ADVERTISEMENT_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'expired', label: 'Expired' },
+] as const;
+
 
 export default function AdvertiseTable({
   data,
@@ -43,6 +51,7 @@ export default function AdvertiseTable({
   onPageChange,
   onEdit,
   onDelete,
+  onStatusChange,
   isLoading = false
 }: AdvertiseTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
@@ -79,12 +88,12 @@ export default function AdvertiseTable({
     return getToolNameFromUrl(item.tool_site_url || item.url || '');
   };
 
-  const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'secondary' | 'default' => {
+  const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'default' => {
     const s = (status || '').toLowerCase();
     if (s === 'active') return 'success';
     if (s === 'inactive') return 'warning';
     if (s === 'expired') return 'destructive';
-    return 'secondary';
+    return 'default';
   };
 
   return (
@@ -190,13 +199,13 @@ export default function AdvertiseTable({
                       <ToolLogo tool={item} toolName={toolName} />
                       <div className="flex flex-col max-w-[200px]">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-xs font-bold text-[var(--text-primary)] truncate">
+                          <span className="min-w-0 flex-1 text-xs font-bold text-[var(--text-primary)] truncate">
                             {toolName}
                           </span>
                           {isPaid && (
                             <span className="inline-flex items-center justify-center shrink-0 self-center" title="Verified Paid Tool">
                               <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none">
-                                <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.79-4-4-4-.495 0-.965.084-1.4.238C14.55 2.475 13.18 1.6 11.6 1.6c-1.58 0-2.95.875-3.6 2.148-.435-.154-.905-.238-1.4-.238-2.21 0-4 1.79-4 4 4 .495 0 .965-.084 1.4-.238.65 1.273 2.02 2.148 3.6 2.148 1.58 0 2.95-.875 3.6-2.148.435.154.905.238 1.4.238 2.21 0 4-1.79 4-4 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6z" fill="#1d9bf0" />
+                                <path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.79-4-4-4-.495 0-.965.084-1.4.238C14.55 2.475 13.18 1.6 11.6 1.6c-1.58 0-2.95.875-3.6 2.148-.435-.154-.905-.238-1.4-.238-2.21 0-4 1.79-4 4 0 .495.084.965.238 1.4C1.575 9.55.7 10.92.7 12.5c0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.79 4 4 4 .495 0 .965-.084 1.4-.238.65 1.273 2.02 2.148 3.6 2.148 1.58 0 2.95-.875 3.6-2.148.435-.154.905-.238 1.4-.238 2.21 0 4-1.79 4-4 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6z" fill="#1d9bf0" />
                                 <path d="M9.86 16.5a1 1 0 0 1-.707-.293l-3.36-3.36a1 1 0 1 1 1.414-1.414l2.653 2.653 6.84-6.84a1 1 0 1 1 1.414 1.414l-7.547 7.547a1 1 0 0 1-.707.293z" fill="#ffffff" />
                               </svg>
                             </span>
@@ -288,12 +297,15 @@ export default function AdvertiseTable({
 
                   {/* Status */}
                   <TableCell className="px-6 py-3.5 text-center">
-                    <Badge
-                      variant={getStatusBadgeVariant(item.status)}
-                      className="px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider"
-                    >
-                      {item.status || 'inactive'}
-                    </Badge>
+                    <StatusChangeControl
+                      itemId={item.id}
+                      currentStatus={item.status || 'inactive'}
+                      options={ADVERTISEMENT_STATUS_OPTIONS}
+                      itemLabel={toolName}
+                      onStatusChange={onStatusChange}
+                      getVariant={getStatusBadgeVariant}
+                      formatStatus={(status) => status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Inactive'}
+                    />
                   </TableCell>
 
                   {/* Manage */}

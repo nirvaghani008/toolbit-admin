@@ -446,7 +446,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
                   <div className="flex items-center gap-2 mt-0.5">
                     {formattedReleaseDate && (
                       <span className="px-2.5 py-0.5 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 text-[10px] font-semibold rounded-md flex items-center gap-1 border border-slate-200 dark:border-zinc-700">
-                        <Calendar size={11} className="text-slate-400" /> Released {formattedReleaseDate}
+                        <Calendar size={11} className="text-zinc-600 dark:text-zinc-200" /> Released {formattedReleaseDate}
                       </span>
                     )}
                   </div>

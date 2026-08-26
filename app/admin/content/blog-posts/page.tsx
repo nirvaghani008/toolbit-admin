@@ -5,9 +5,10 @@ import { supabase } from '@/lib/supabase';
 import BlogTable from '@/components/blogs/BlogTable';
 import BlogPreviewModal from '@/components/blogs/BlogPreviewModal';
 import CountUp from '@/components/common/CountUp';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
-import { Database, CheckCircle2, FileText, Archive, RefreshCw, Plus, ArrowLeft, Search } from 'lucide-react';
+import { Database, CheckCircle2, FileText, Archive, XCircle, Clock, RefreshCw, Plus, Search } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import dynamic from 'next/dynamic';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -30,6 +31,7 @@ export default function BlogPostsPage() {
     published: 0,
     pending: 0,
     draft: 0,
+    rejected: 0,
     archived: 0
   });
   const [sparklines, setSparklines] = useState<Record<string, number[]>>({
@@ -37,6 +39,7 @@ export default function BlogPostsPage() {
     published: [0, 0, 0, 0, 0, 0, 0],
     pending: [0, 0, 0, 0, 0, 0, 0],
     draft: [0, 0, 0, 0, 0, 0, 0],
+    rejected: [0, 0, 0, 0, 0, 0, 0],
     archived: [0, 0, 0, 0, 0, 0, 0]
   });
 
@@ -48,7 +51,7 @@ export default function BlogPostsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'pending' | 'draft' | 'archived'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'pending' | 'draft' | 'rejected' | 'archived'>('all');
   const [authorFilter, setAuthorFilter] = useState<'all' | 'U' | 'A'>('all');
   const [sortBy, setSortBy] = useState<'updated_at' | 'created_at' | 'title'>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -89,7 +92,7 @@ export default function BlogPostsPage() {
 
   const fetchStats = async () => {
     try {
-      let all = 0, published = 0, pending = 0, draft = 0, archived = 0;
+      let all = 0, published = 0, pending = 0, draft = 0, rejected = 0, archived = 0;
 
       const { data: statusCounts, error: countError } = await supabase.rpc('get_status_counts', {
         tbl_name: 'blog_posts'
@@ -100,6 +103,7 @@ export default function BlogPostsPage() {
         published = statusCounts.published || 0;
         pending = statusCounts.pending || 0;
         draft = statusCounts.draft || 0;
+        rejected = statusCounts.rejected || 0;
         archived = statusCounts.archived || 0;
       } else {
         const [
@@ -107,12 +111,14 @@ export default function BlogPostsPage() {
           { count: cPub },
           { count: cPen },
           { count: cDraft },
+          { count: cRej },
           { count: cArc }
         ] = await Promise.all([
           supabase.from('blog_posts').select('*', { count: 'exact', head: true }),
           supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'published'),
           supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
           supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
+          supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
           supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'archived')
         ]);
 
@@ -120,15 +126,16 @@ export default function BlogPostsPage() {
         published = cPub || 0;
         pending = cPen || 0;
         draft = cDraft || 0;
+        rejected = cRej || 0;
         archived = cArc || 0;
       }
 
-      setStats({ all, published, pending, draft, archived });
+      setStats({ all, published, pending, draft, rejected, archived });
 
       try {
         const trends = await fetchSparklinesForStatuses(
           'blog_posts',
-          [null, 'published', 'pending', 'draft', 'archived'],
+          [null, 'published', 'pending', 'draft', 'rejected', 'archived'],
           'updated_at',
           7
         );
@@ -138,6 +145,7 @@ export default function BlogPostsPage() {
           published: trends['published'] || [],
           pending: trends['pending'] || [],
           draft: trends['draft'] || [],
+          rejected: trends['rejected'] || [],
           archived: trends['archived'] || []
         });
       } catch (trendErr) {
@@ -269,7 +277,7 @@ export default function BlogPostsPage() {
       message: 'Are you sure you want to permanently delete this blog post? This action cannot be undone.'
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('blog_posts').delete().eq('id', id);
       if (error) throw error;
@@ -279,7 +287,31 @@ export default function BlogPostsPage() {
     } catch (err) {
       console.error('Error deleting blog:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleBlogStatusChange = async (blogId: number, newStatus: string) => {
+    setIsRefreshing(true);
+    try {
+      const { error } = await supabase
+        .from('blog_posts')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', blogId);
+
+      if (error) throw error;
+
+      // Optimistically update blogs in local state
+      setBlogs(prev => prev.map(b => b.id === blogId ? { ...b, status: newStatus, updated_at: new Date().toISOString() } : b));
+      await fetchStats();
+    } catch (err: any) {
+      console.error('Error updating blog status:', err);
+      alert('Failed to update blog status: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -300,8 +332,8 @@ export default function BlogPostsPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
             <Button
               onClick={() => openForm()}
@@ -317,7 +349,7 @@ export default function BlogPostsPage() {
       {!showForm ? (
         <>
           {/* Stats Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
             {[
               {
                 id: 'all',
@@ -348,7 +380,7 @@ export default function BlogPostsPage() {
                 iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
                 badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
                 sparklineColor: 'text-[#8a652a] dark:text-amber-400',
-                icon: <Archive size={17} />,
+                icon: <Clock size={17} />,
                 points: sparklines.pending,
                 badge: 'Pending'
               },
@@ -362,6 +394,17 @@ export default function BlogPostsPage() {
                 icon: <FileText size={17} />,
                 points: sparklines.draft,
                 badge: 'Draft'
+              },
+              {
+                id: 'rejected',
+                label: 'Rejected',
+                value: stats.rejected,
+                iconStyle: 'text-[#7a3030] bg-[#fdf0f0] border-[#f5d0d0] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
+                badgeStyle: 'bg-[#fdf0f0] text-[#7a3030] border-[#f5d0d0] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
+                sparklineColor: 'text-[#7a3030] dark:text-rose-400',
+                icon: <XCircle size={17} />,
+                points: sparklines.rejected,
+                badge: 'Rejected'
               },
               {
                 id: 'archived',
@@ -479,7 +522,14 @@ export default function BlogPostsPage() {
           </form>
 
           {/* Table Container */}
-          <div>
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
             <BlogTable
               blogs={blogs}
               totalCount={totalCount}
@@ -489,28 +539,26 @@ export default function BlogPostsPage() {
               onEdit={(b) => openForm(b)}
               onDelete={handleDeleteBlog}
               onPreview={(b) => setPreviewBlog(b)}
+              onStatusChange={handleBlogStatusChange}
               isLoading={loading}
             />
           </div>
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Database"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Database
-          </Button>
+            isLoading={isActionLoading}
+          />
           <BlogForm
             initialData={editingBlog}
             onSubmit={editingBlog ? handleUpdateBlog : handleAddBlog}
             onCancel={closeForm}
+            isLoading={isActionLoading}
           />
         </div>
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
 
       {/* Article Live Preview Modal */}
       {previewBlog && (

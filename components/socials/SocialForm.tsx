@@ -5,11 +5,12 @@ import { z } from 'zod';
 import { scrollToError, slugify } from '@/lib/form-utils';
 import { supabase } from '@/lib/supabase';
 import CollapsibleSection from '../common/CollapsibleSection';
-import { Plus, Trash2, AlertTriangle, Check, Loader2 } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Check } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import KeywordTagInput from '../categories/KeywordTagInput';
-import LoadingOverlay from '../common/LoadingOverlay';
 import { SocialItem } from './SocialTable';
 import { Input } from '@/components/ui/input';
+import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ interface SocialFormProps {
   onCancel?: () => void;
   onClose?: () => void;
   isLoading?: boolean;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 const PLATFORM_OPTIONS = [
@@ -58,11 +60,10 @@ const CONTENT_TYPE_OPTIONS = [
   { value: 'Short Tip', label: 'Short Tip' }
 ];
 
+// The socials.status column has a DB CHECK constraint allowing only 'Show' / 'Hide'.
 const STATUS_OPTIONS = [
   { value: 'Show', label: 'Show' },
-  { value: 'Hide', label: 'Hide' },
-  { value: 'Draft', label: 'Draft' },
-  { value: 'Archived', label: 'Archived' }
+  { value: 'Hide', label: 'Hide' }
 ];
 
 const BOOLEAN_OPTIONS = [
@@ -100,7 +101,8 @@ export default function SocialForm({
   onSave,
   onCancel,
   onClose,
-  isLoading = false
+  isLoading = false,
+  onBusyChange
 }: SocialFormProps) {
   const handleCancel = onCancel || onClose || (() => { });
   const handleSave = onSubmit || onSave || (async () => { });
@@ -133,6 +135,11 @@ export default function SocialForm({
   const [thumbnails, setThumbnails] = useState<ThumbnailItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isBusy = isSubmitting || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   useEffect(() => {
     if (initialData) {
@@ -415,7 +422,7 @@ export default function SocialForm({
   const labelClass = "saas-label";
 
   return (
-    <form onSubmit={handleSubmit} className="saas-form space-y-8 pb-10">
+    <form onSubmit={handleSubmit} noValidate className={`saas-form space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}>
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertTriangle className="h-4 w-4" />
@@ -428,7 +435,7 @@ export default function SocialForm({
             ) : (
               <>
                 There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:
-                <span className="font-bold ml-1 uppercase tracking-tight">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </>
@@ -461,7 +468,7 @@ export default function SocialForm({
               className={errors.title ? 'saas-input-error' : ''}
               required
             />
-            {errors.title && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.title}</p>}
+            {errors.title && <p className="saas-error-message">{errors.title}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -485,7 +492,7 @@ export default function SocialForm({
                 options={PLATFORM_OPTIONS}
                 className={errors.platform ? 'saas-input-error' : ''}
               />
-              {errors.platform && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.platform}</p>}
+              {errors.platform && <p className="saas-error-message">{errors.platform}</p>}
             </div>
 
             <div className="space-y-1.5">
@@ -496,25 +503,33 @@ export default function SocialForm({
                 options={CONTENT_TYPE_OPTIONS}
                 className={errors.content_type ? 'saas-input-error' : ''}
               />
-              {errors.content_type && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.content_type}</p>}
+              {errors.content_type && <p className="saas-error-message">{errors.content_type}</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className={labelClass}>Tags <span className="saas-label-required">*</span></label>
-              <KeywordTagInput
-                selectedKeywords={selectedTags}
-                onKeywordsChange={(tags) => {
-                  setSelectedTags(tags);
-                  if (errors.tags && tags.length > 0) {
-                    setErrors(prev => { const n = { ...prev }; delete n.tags; return n; });
-                  }
-                }}
-                placeholder="Type or select tags from database..."
-                type="generic"
-              />
-              {errors.tags && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tags}</p>}
+              <div className={`relative focus-within:z-50 ${errors.tags ? 'saas-error-wrapper' : ''}`}>
+                <KeywordTagInput
+                  selectedKeywords={selectedTags}
+                  onKeywordsChange={(tags) => {
+                    setSelectedTags(tags);
+                    if (errors.tags) {
+                      setErrors(prev => { const n = { ...prev }; delete n.tags; return n; });
+                    }
+                  }}
+                  onClearError={() => {
+                    if (errors.tags) {
+                      setErrors(prev => { const n = { ...prev }; delete n.tags; return n; });
+                    }
+                  }}
+                  placeholder="Type or select tags from database..."
+                  type="generic"
+                  name="tags"
+                />
+              </div>
+              {errors.tags && <p className="saas-error-message">{errors.tags}</p>}
             </div>
 
             <div className="space-y-1.5">
@@ -539,20 +554,19 @@ export default function SocialForm({
                 className={errors.source_url ? 'saas-input-error' : ''}
                 required
               />
-              {errors.source_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_url}</p>}
+              {errors.source_url && <p className="saas-error-message">{errors.source_url}</p>}
             </div>
 
             <div className="space-y-1.5">
               <label className={labelClass}>Published Date <span className="saas-label-required">*</span></label>
-              <Input
-                type="date"
+              <DateField
                 name="published_date"
                 value={formData.published_date}
-                onChange={(e) => handleFieldChange('published_date', e.target.value)}
-                className={errors.published_date ? 'saas-input-error' : ''}
+                onChange={(value) => handleFieldChange('published_date', value)}
+                error={!!errors.published_date}
                 required
               />
-              {errors.published_date && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.published_date}</p>}
+              {errors.published_date && <p className="saas-error-message">{errors.published_date}</p>}
             </div>
           </div>
         </div>
@@ -636,10 +650,9 @@ export default function SocialForm({
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Video Publish Date</label>
-                  <Input
-                    type="date"
+                  <DateField
                     value={presetJsonData.publish_date || ''}
-                    onChange={(e) => setPresetJsonData(prev => ({ ...prev, publish_date: e.target.value }))}
+                    onChange={(value) => setPresetJsonData(prev => ({ ...prev, publish_date: value }))}
                   />
                 </div>
 
@@ -774,20 +787,20 @@ export default function SocialForm({
           type="button"
           variant="outline"
           onClick={handleCancel}
-          disabled={isSubmitting || isLoading}
+          disabled={isBusy}
           className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting || isLoading}
+          disabled={!isDirty || isBusy}
           className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting || isLoading ? (
+          {isBusy ? (
             <>
-              <Loader2 size={14} className="animate-spin mr-1.5" />
-              Saving...
+              <Spinner size={14} className="mr-1.5 text-current shrink-0" />
+              <span>{initialData ? 'Updating Post...' : 'Creating Post...'}</span>
             </>
           ) : initialData ? (
             'Update Social Post'
@@ -796,8 +809,6 @@ export default function SocialForm({
           )}
         </Button>
       </div>
-
-      {(isSubmitting || isLoading) && <LoadingOverlay message="Synchronizing with database..." />}
     </form>
   );
 }

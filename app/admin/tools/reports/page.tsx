@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Database, RefreshCw, AlertTriangle, HelpCircle, XCircle, Clock, Layers, Search, ArrowLeft } from 'lucide-react';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Database, RefreshCw, AlertTriangle, HelpCircle, XCircle, Clock, Layers, Search } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import Sparkline from '@/components/common/Sparkline';
 import CountUp from '@/components/common/CountUp';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -274,7 +275,7 @@ export default function ToolReportsPage() {
       message: 'Are you sure you want to permanently delete this tool report? This action cannot be undone.',
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('tool_reports').delete().eq('id', id);
       if (error) throw error;
@@ -283,7 +284,7 @@ export default function ToolReportsPage() {
     } catch (err) {
       console.error('Error deleting report:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -359,19 +360,17 @@ export default function ToolReportsPage() {
   if (showForm) {
     return (
       <div className="animate-fade-in-up max-w-[1500px] mx-auto p-6 md:p-8">
-        <Button
-          variant="ghost"
+        <StickyFormBackButton
+          label="Back to Tool Reports"
           onClick={closeForm}
-          className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg cursor-pointer"
-        >
-          ← Back to Tool Reports
-        </Button>
+          isLoading={isActionLoading}
+        />
         <ToolForm
           initialData={editingTool}
           onSubmit={handleUpdateTool}
           onCancel={closeForm}
+          isLoading={isActionLoading}
         />
-        {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
       </div>
     );
   }
@@ -396,8 +395,8 @@ export default function ToolReportsPage() {
             className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             suppressHydrationWarning
           >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-            {isRefreshing ? 'Syncing...' : 'Refresh'}
+            {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+            Refresh
           </Button>
         </div>
       </div>
@@ -508,18 +507,25 @@ export default function ToolReportsPage() {
       </form>
 
       {/* Reports Table with Shadcn UI */}
-      <ReportTable
-        reports={reports}
-        totalCount={totalCount}
-        pageSize={pageSize}
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-        onEditTool={handleEditTool}
-        onDelete={handleDelete}
-        isLoading={loading}
-      />
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
+      <div className="relative">
+        {isRefreshing && (
+          <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+            <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+              <Spinner size={20} />
+            </div>
+          </div>
+        )}
+        <ReportTable
+          reports={reports}
+          totalCount={totalCount}
+          pageSize={pageSize}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          onEditTool={handleEditTool}
+          onDelete={handleDelete}
+          isLoading={loading}
+        />
+      </div>
     </div>
   );
 }

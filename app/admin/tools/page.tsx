@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import ToolTable from '@/components/tools/ToolTable';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
 import { Database, CheckCircle2, AlertTriangle, AlertCircle, EyeOff, PauseCircle, RefreshCw } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
@@ -245,7 +246,7 @@ export default function ToolsPage() {
   };
 
   const handleStatusChange = async (toolId: number | string, newStatus: string) => {
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase
         .from('ai_tools')
@@ -261,10 +262,12 @@ export default function ToolsPage() {
       setTools(prev => prev.map(t => t.tool_id === toolId ? { ...t, status: newStatus, updated_at: new Date().toISOString() } : t));
       await fetchStats();
     } catch (err: any) {
-      console.error('Error updating tool status:', err);
-      alert('Failed to update tool status: ' + (err?.message || 'Unknown error'));
+      const errorMsg = err?.message || err?.error_description || 'Unknown error';
+      console.error('Error updating tool status:', errorMsg, err?.details || '', err?.hint || '');
+      alert('Failed to update tool status: ' + errorMsg);
+      throw err;
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -274,7 +277,7 @@ export default function ToolsPage() {
       message: 'Are you sure you want to permanently delete this AI tool? This action cannot be undone.'
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('ai_tools').delete().eq('tool_id', id);
       if (error) throw error;
@@ -284,7 +287,7 @@ export default function ToolsPage() {
     } catch (err) {
       console.error('Error deleting tool:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -305,8 +308,8 @@ export default function ToolsPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
             <Button
               onClick={() => openForm()}
@@ -477,7 +480,14 @@ export default function ToolsPage() {
             </div>
           </form>
 
-          <div>
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
             <ToolTable
               tools={filteredTools}
               totalCount={totalCount}
@@ -493,18 +503,14 @@ export default function ToolsPage() {
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Database"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Database
-          </Button>
-          <ToolForm initialData={editingTool} onSubmit={editingTool ? handleUpdateTool : handleAddTool} onCancel={closeForm} />
+            isLoading={isActionLoading}
+          />
+          <ToolForm initialData={editingTool} onSubmit={editingTool ? handleUpdateTool : handleAddTool} onCancel={closeForm} isLoading={isActionLoading} />
         </div>
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }

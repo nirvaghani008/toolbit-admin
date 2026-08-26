@@ -153,7 +153,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
                   onOpenChange(false);
                   onClose?.();
                 }}
-                className="absolute top-4 right-4 rounded-xl p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                className="absolute top-4 right-4 rounded-xl p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-colors focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600"
                 aria-label="Close dialog"
               >
                 <X className="h-4 w-4" />

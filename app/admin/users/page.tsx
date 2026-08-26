@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
+import { Spinner } from '@/components/ui/spinner';
 import { Users, RefreshCw, Bookmark, ThumbsUp, Search } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { Button } from '@/components/ui/button';
@@ -154,7 +155,7 @@ export default function UsersPage() {
             className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             suppressHydrationWarning
           >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
+            {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
             {isRefreshing ? 'Syncing...' : 'Refresh'}
           </Button>
         </div>

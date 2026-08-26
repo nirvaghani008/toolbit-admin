@@ -14,7 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import PlanBadge from '@/components/common/PlanBadge';
+import { getToolSubmissionStatusOption } from '@/lib/tool-submissions';
 
 export interface ToolSubmission {
   id: number;
@@ -29,9 +29,7 @@ export interface ToolSubmission {
   logo_url?: string;
   image_url?: string;
   featured_image_url?: string;
-  is_verified?: boolean | string | number;
-  verified?: boolean | string | number;
-  is_paid?: boolean | string | number;
+  is_paid?: boolean | null;
   submission_tier?: string;
   ai_approved?: boolean | null;
   ai_denied_reason?: string;
@@ -92,52 +90,34 @@ export default function ToolSubmissionTable({
     return [];
   };
 
-  const getStatusBadgeVariant = (status?: string): 'success' | 'destructive' | 'warning' | 'default' => {
-    const s = (status || '').toLowerCase();
-    if (s === 'approved' || s.startsWith('show')) return 'success';
-    if (s === 'rejected' || s.startsWith('hide')) return 'destructive';
-    if (s === 'pending') return 'warning';
-    return 'default';
-  };
+  const getStatusBadgeVariant = (status?: string) => getToolSubmissionStatusOption(status).variant;
 
-  const formatStatus = (status?: string) => {
-    const s = (status || '').toLowerCase();
-    if (s === 'approved' || s.startsWith('show')) return 'Show';
-    if (s === 'rejected' || s.startsWith('hide')) return 'Hide';
-    if (s === 'pending') return 'Pending';
-    return status || 'Show';
-  };
+  const formatStatus = (status?: string) => getToolSubmissionStatusOption(status).label;
 
   return (
     <div className="bg-[var(--bg-surface)] rounded-2xl shadow-sm border border-[var(--border-color)] overflow-hidden animate-fade-in relative">
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[22%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            <TableHead className="w-[24%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Tool Details
             </TableHead>
-            <TableHead className="w-[16%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            <TableHead className="w-[17%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Submitter
             </TableHead>
-            <TableHead className="w-[16%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            <TableHead className="w-[17%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Categories
             </TableHead>
-            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Verified
-            </TableHead>
-            <TableHead className="w-[9%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Paid Status
-            </TableHead>
-            <TableHead className="w-[12%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              AI Moderation
-            </TableHead>
-            <TableHead className="w-[9%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            <TableHead className="w-[11%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Plan
+            </TableHead>
+            <TableHead className="w-[14%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              AI Moderation
             </TableHead>
             <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Status
             </TableHead>
-            <TableHead className="w-[10%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            <TableHead className="w-[9%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Manage
             </TableHead>
           </TableRow>
@@ -172,16 +152,10 @@ export default function ToolSubmissionTable({
                   </div>
                 </TableCell>
                 <TableCell className="px-2 py-4 text-center">
-                  <Skeleton className="h-5 w-12 mx-auto rounded-md" />
-                </TableCell>
-                <TableCell className="px-2 py-4 text-center">
                   <Skeleton className="h-5 w-14 mx-auto rounded-md" />
                 </TableCell>
                 <TableCell className="px-2 py-4 text-center">
                   <Skeleton className="h-5 w-20 mx-auto rounded-md" />
-                </TableCell>
-                <TableCell className="px-2 py-4 text-center">
-                  <Skeleton className="h-5 w-14 mx-auto rounded-md" />
                 </TableCell>
                 <TableCell className="px-2 py-4 text-center">
                   <Skeleton className="h-5 w-16 mx-auto rounded-md" />
@@ -215,32 +189,8 @@ export default function ToolSubmissionTable({
               const siteUrl = tool.tool_site_url || info.websiteUrl || info.url || '';
               const categories = extractCategories(tool);
 
-              const isPaidSubmission =
-                tool.is_paid === true ||
-                tool.is_paid === 'true' ||
-                tool.is_paid === 'TRUE' ||
-                (tool as any).isPaid === true ||
-                info.is_paid === true ||
-                info.is_paid === 'TRUE' ||
-                info.isPaid === true ||
-                Boolean(tool.submission_tier) ||
-                Boolean(info.submission_tier) ||
-                Boolean(info.is_paid_submission);
-
-              const tierName = tool.submission_tier || info.submission_tier || 'Paid Tier';
-              const rawPricing = tool.pricing_type || tool.plan || info.pricing_type || info.plan || info.pricingModel || info.pricing || 'Free';
-
-              const isVerified =
-                tool.is_verified === true ||
-                tool.is_verified === 'true' ||
-                tool.is_verified === 'TRUE' ||
-                tool.is_verified === 1 ||
-                tool.verified === true ||
-                tool.verified === 'true' ||
-                tool.verified === 1 ||
-                info.is_verified === true ||
-                info.is_verified === 'true' ||
-                info.verified === true;
+              const isPaidSubmission = tool.is_paid === true;
+              const tierName = tool.submission_tier?.trim();
 
               const denialReason =
                 tool.ai_denied_reason ||
@@ -335,38 +285,27 @@ export default function ToolSubmissionTable({
                     </div>
                   </TableCell>
 
-                  {/* Verified */}
-                  <TableCell className="px-2 py-4 text-center">
-                    {isVerified ? (
-                      <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">
-                        TRUE
-                      </Badge>
-                    ) : (
-                      <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">
-                        FALSE
-                      </Badge>
-                    )}
-                  </TableCell>
-
-                  {/* Paid Status */}
+                  {/* Plan */}
                   <TableCell className="px-2 py-4 text-center">
                     <div className="flex items-center justify-center">
                       {isPaidSubmission ? (
                         <div className="relative group/tier inline-block cursor-help whitespace-nowrap">
                           <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">
-                            $ Paid
+                            Paid
                           </Badge>
-                          <div
-                            className={`hidden group-hover/tier:block absolute left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-900 dark:bg-slate-800 text-white rounded-xl shadow-2xl text-[11px] leading-relaxed z-[9999] border border-slate-700 pointer-events-none whitespace-nowrap ${
-                              idx === 0 ? 'top-full mt-2' : 'bottom-full mb-2'
-                            }`}
-                          >
-                            <p className="font-medium capitalize text-slate-100">{tierName}</p>
-                          </div>
+                          {tierName && (
+                            <div
+                              className={`hidden group-hover/tier:block absolute left-1/2 -translate-x-1/2 px-3 py-1.5 bg-slate-900 dark:bg-slate-800 text-white rounded-xl shadow-2xl text-[11px] leading-relaxed z-[9999] border border-slate-700 pointer-events-none whitespace-nowrap ${
+                                idx === 0 ? 'top-full mt-2' : 'bottom-full mb-2'
+                              }`}
+                            >
+                              <p className="font-medium capitalize text-slate-100">{tierName}</p>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">
-                          Unpaid
+                          Free
                         </Badge>
                       )}
                     </div>
@@ -407,10 +346,6 @@ export default function ToolSubmissionTable({
                     </div>
                   </TableCell>
 
-                  {/* Plan */}
-                  <TableCell className="px-2 py-4 text-center">
-                    <PlanBadge plan={rawPricing} />
-                  </TableCell>
 
                   {/* Status */}
                   <TableCell className="px-2 py-4 text-center">

@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
-import { ArrowLeft, Send, Mail, User, Calendar, MessageSquare, AlertCircle } from 'lucide-react';
+import { Send, Mail, User, Calendar, MessageSquare, AlertCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
@@ -56,15 +57,11 @@ export default function ContactReplyView({
     <div className="animate-fade-in-up space-y-6">
       {/* Navigation Header */}
       <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
+        <StickyFormBackButton
+          label="Back to Inquiries"
           onClick={onClose}
-          className="text-sm font-semibold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 gap-2 pl-2 rounded-lg"
-        >
-          <ArrowLeft size={16} />
-          Back to Inquiries
-        </Button>
+          isLoading={isActionLoading}
+        />
 
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--text-muted)] font-medium">Current Status:</span>
@@ -83,7 +80,7 @@ export default function ContactReplyView({
               </span>
               {formattedDate && (
                 <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] font-medium">
-                  <Calendar size={12} />
+                  <Calendar size={12} className="text-zinc-600 dark:text-zinc-200" />
                   <span>{formattedDate}</span>
                 </div>
               )}
@@ -152,13 +149,14 @@ export default function ContactReplyView({
                 placeholder="Draft your reply here..."
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
+                disabled={isActionLoading}
                 className={`flex-1 min-h-[190px] p-4 text-sm font-medium leading-relaxed bg-[var(--bg-elevated)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none ${
-                  replyError ? 'border-rose-500 focus-visible:ring-rose-500/20 ring-2 ring-rose-500/20' : 'border-[var(--border-color)]'
+                  replyError ? 'saas-input-error' : 'border-[var(--border-color)]'
                 }`}
                 suppressHydrationWarning
               />
               {replyError && (
-                <p className="text-[11px] font-semibold text-rose-500 mt-1.5 ml-0.5 flex items-center gap-1">
+                <p className="saas-error-message">
                   <AlertCircle size={13} className="shrink-0" /> {replyError}
                 </p>
               )}
@@ -173,6 +171,7 @@ export default function ContactReplyView({
                 value={selectedStatus}
                 onChange={(value) => setSelectedStatus(value)}
                 options={statusOptions}
+                disabled={isActionLoading}
                 className="bg-[var(--bg-elevated)]"
               />
             </div>
@@ -180,11 +179,20 @@ export default function ContactReplyView({
             <Button
               onClick={onSaveReply}
               disabled={isActionLoading}
-              className="w-full h-11 text-xs font-bold shadow-xs bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 gap-2 transition-all mt-2 rounded-xl active:scale-95"
+              className="w-full h-11 text-xs font-bold shadow-xs bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 gap-2 transition-all mt-2 rounded-xl active:scale-95 cursor-pointer"
               suppressHydrationWarning
             >
-              <Send size={14} />
-              {isActionLoading ? 'Saving...' : 'Dispatch Response'}
+              {isActionLoading ? (
+                <>
+                  <Spinner size={14} className="text-current shrink-0" />
+                  Saving Response...
+                </>
+              ) : (
+                <>
+                  <Send size={14} />
+                  Dispatch Response
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>

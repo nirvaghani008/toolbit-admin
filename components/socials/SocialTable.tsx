@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { ExternalLink, Edit2, Trash2, Share2, Eye, MousePointerClick, DollarSign, Inbox } from 'lucide-react';
+import { ExternalLink, Edit2, Trash2, Share2, Eye, Inbox } from 'lucide-react';
 import Pagination from '@/components/common/Pagination';
 import SocialPreviewModal from './SocialPreviewModal';
+import StatusChangeControl, { StatusOption } from '@/components/common/StatusChangeControl';
 import {
   Table,
   TableBody,
@@ -15,6 +16,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+
+// Proper visibility statuses for social posts.
+// The socials.status column has a DB CHECK constraint allowing only 'Show' / 'Hide'.
+export const SOCIAL_STATUS_OPTIONS: readonly StatusOption[] = [
+  { value: 'Show', label: 'Show' },
+  { value: 'Hide', label: 'Hide' },
+];
 
 const YoutubeIcon = ({ size = 14, className = "" }: { size?: number; className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -76,6 +84,7 @@ interface SocialTableProps {
   onPageChange: (page: number) => void;
   onEdit: (item: SocialItem) => void;
   onDelete: (id: number) => void;
+  onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
 
@@ -87,6 +96,7 @@ export default function SocialTable({
   onPageChange,
   onEdit,
   onDelete,
+  onStatusChange,
   isLoading = false
 }: SocialTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
@@ -168,13 +178,12 @@ export default function SocialTable({
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
             <TableHead className="w-[14%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Platform</TableHead>
-            <TableHead className="w-[26%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Social Post / Update</TableHead>
-            <TableHead className="w-[13%] px-3 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Content Type</TableHead>
+            <TableHead className="w-[30%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Social Post / Update</TableHead>
+            <TableHead className="w-[16%] px-3 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Content Type</TableHead>
             <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Featured</TableHead>
             <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Trending</TableHead>
-            <TableHead className="w-[11%] px-3 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Engagement</TableHead>
-            <TableHead className="w-[10%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
-            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
+            <TableHead className="w-[12%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
+            <TableHead className="w-[10%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
             <TableHead className="w-[10%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
           </TableRow>
         </TableHeader>
@@ -203,9 +212,6 @@ export default function SocialTable({
                 <TableCell className="px-2 py-4 text-center">
                   <Skeleton className="h-5 w-14 mx-auto rounded-md" />
                 </TableCell>
-                <TableCell className="px-3 py-4">
-                  <Skeleton className="h-4 w-20 rounded" />
-                </TableCell>
                 <TableCell className="px-3 py-4 text-center">
                   <Skeleton className="h-4 w-20 mx-auto rounded" />
                 </TableCell>
@@ -223,7 +229,7 @@ export default function SocialTable({
             ))
           ) : socials.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} className="h-48 text-center py-10">
+              <TableCell colSpan={8} className="h-48 text-center py-10">
                 <div className="flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
                   <div className="w-12 h-12 rounded-2xl bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]">
                     <Inbox size={24} />
@@ -318,21 +324,7 @@ export default function SocialTable({
                   )}
                 </TableCell>
 
-                {/* 6. Engagement */}
-                <TableCell className="px-3 py-3.5">
-                  <div className="flex items-center gap-3 text-[10px] font-semibold text-[var(--text-secondary)]">
-                    <span className="inline-flex items-center gap-1" title="Views">
-                      <Eye size={12} className="text-[var(--text-muted)]" />
-                      {(item.view_counter || 0).toLocaleString()}
-                    </span>
-                    <span className="inline-flex items-center gap-1" title="Visits / Clicks">
-                      <MousePointerClick size={12} className="text-[var(--text-muted)]" />
-                      {(item.visit_counter || 0).toLocaleString()}
-                    </span>
-                  </div>
-                </TableCell>
-
-                {/* 7. Published Date */}
+                {/* 6. Published Date */}
                 <TableCell className="px-3 py-3.5 text-center">
                   <span className="text-[11px] font-semibold text-[var(--text-secondary)] tabular-nums">
                     {item.published_date
@@ -341,11 +333,17 @@ export default function SocialTable({
                   </span>
                 </TableCell>
 
-                {/* 8. Status */}
-                <TableCell className="px-2 py-3.5 text-center">
-                  <Badge variant={getStatusBadgeVariant(item.status)} className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">
-                    {formatStatus(item.status)}
-                  </Badge>
+                {/* 7. Status with interactive dropdown */}
+                <TableCell className="px-2 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                  <StatusChangeControl
+                    itemId={item.id}
+                    currentStatus={item.status}
+                    options={SOCIAL_STATUS_OPTIONS}
+                    itemLabel={item.title || 'this social post'}
+                    onStatusChange={onStatusChange}
+                    getVariant={getStatusBadgeVariant}
+                    formatStatus={formatStatus}
+                  />
                 </TableCell>
 
                 {/* 9. Manage */}

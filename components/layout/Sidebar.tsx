@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAdmin } from '@/contexts/AdminContext';
 import {
   ChevronLeft, ChevronDown,
@@ -78,6 +78,28 @@ const navItems: NavItem[] = [
   { label: 'My Profile', href: '/admin/profiles', icon: User, module: 'profiles' },
 ];
 
+const OPEN_MENUS_STORAGE_KEY = 'admin_sidebar_open_menus';
+
+function getStoredOpenMenus(): string[] {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const savedMenus = localStorage.getItem(OPEN_MENUS_STORAGE_KEY);
+    if (!savedMenus) return [];
+
+    const parsedMenus: unknown = JSON.parse(savedMenus);
+    if (!Array.isArray(parsedMenus)) return [];
+
+    return parsedMenus.filter(
+      (label): label is string =>
+        typeof label === 'string' &&
+        navItems.some((item) => item.label === label && item.sub)
+    );
+  } catch {
+    return [];
+  }
+}
+
 export default function Sidebar({
   collapsed,
   onToggle,
@@ -91,7 +113,15 @@ export default function Sidebar({
 }) {
   const pathname = usePathname();
   const { adminData, signOut, isSuperAdmin, hasPermission } = useAdmin();
-  const [openMenus, setOpenMenus] = useState<string[]>([]);
+  const [openMenus, setOpenMenus] = useState<string[]>(getStoredOpenMenus);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPEN_MENUS_STORAGE_KEY, JSON.stringify(openMenus));
+    } catch {
+      /* ignore */
+    }
+  }, [openMenus]);
 
   const visibleNavItems = useMemo(() => {
     return navItems

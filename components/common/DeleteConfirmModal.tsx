@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Portal } from '@/components/ui/portal';
 
@@ -13,6 +14,7 @@ interface DeleteConfirmModalProps {
   onCancel: () => void;
   confirmText?: string;
   cancelText?: string;
+  isLoading?: boolean;
 }
 
 export default function DeleteConfirmModal({
@@ -22,7 +24,8 @@ export default function DeleteConfirmModal({
   onConfirm,
   onCancel,
   confirmText = 'Delete',
-  cancelText = 'Cancel'
+  cancelText = 'Cancel',
+  isLoading = false
 }: DeleteConfirmModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -56,7 +59,7 @@ export default function DeleteConfirmModal({
       >
         <div 
           ref={modalRef}
-          className="bg-[var(--bg-surface)] border border-[var(--border-color)] w-full max-w-[440px] rounded-2xl shadow-2xl overflow-hidden p-6 relative flex flex-col gap-4 animate-in zoom-in-95 duration-150"
+          className={`bg-[var(--bg-surface)] border border-[var(--border-color)] w-full max-w-[440px] rounded-2xl shadow-2xl overflow-hidden p-6 relative flex flex-col gap-4 animate-in zoom-in-95 duration-150 transition-opacity ${isLoading ? 'opacity-50 pointer-events-none select-none' : ''}`}
           onClick={(e) => e.stopPropagation()}
         >
         {/* Close button X */}
@@ -64,6 +67,7 @@ export default function DeleteConfirmModal({
           variant="ghost"
           size="icon"
           onClick={onCancel}
+          disabled={isLoading}
           className="absolute top-4 right-4 h-8 w-8 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg"
           aria-label="Close dialog"
         >
@@ -92,6 +96,7 @@ export default function DeleteConfirmModal({
             variant="outline"
             size="sm"
             onClick={onCancel}
+            disabled={isLoading}
             className="text-xs font-semibold cursor-pointer"
           >
             {cancelText}
@@ -100,9 +105,17 @@ export default function DeleteConfirmModal({
             variant="destructive"
             size="sm"
             onClick={onConfirm}
-            className="text-xs font-bold shadow-md shadow-rose-500/15 cursor-pointer"
+            disabled={isLoading}
+            className="text-xs font-bold shadow-md shadow-rose-500/15 cursor-pointer flex items-center gap-1.5"
           >
-            {confirmText}
+            {isLoading ? (
+              <>
+                <Spinner size={13} className="text-current shrink-0" />
+                <span>Deleting...</span>
+              </>
+            ) : (
+              confirmText
+            )}
           </Button>
         </div>
       </div>

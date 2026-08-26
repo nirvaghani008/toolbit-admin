@@ -5,9 +5,10 @@ import AdvertiseTable from '@/components/advertise/AdvertiseTable';
 import AdvertiseForm from '@/components/advertise/AdvertiseForm';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
-import { Database, Clock, CheckCircle2, XCircle, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Database, Clock, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Button } from '@/components/ui/button';
@@ -324,6 +325,31 @@ export default function AdvertiseSubmissionsPage() {
     };
   };
 
+  // Enforce a single "live" placement per tool: a tool may only have one
+  // advertisement that is active or inactive at a time (expired placements are
+  // historical and do not conflict). Returns the conflicting row, or null.
+  const findLivePlacementForTool = async (
+    toolId: number | null | undefined,
+    excludeId?: number | null
+  ) => {
+    if (toolId === null || toolId === undefined) return null;
+
+    let query = supabase
+      .from('advertisement_tools')
+      .select('id, status')
+      .eq('tool_id', toolId)
+      .in('status', ['active', 'inactive'])
+      .limit(1);
+
+    if (excludeId !== null && excludeId !== undefined) {
+      query = query.neq('id', excludeId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] : null;
+  };
+
   const handleAddItem = async (formData: any) => {
     setIsActionLoading(true);
     try {
@@ -332,6 +358,18 @@ export default function AdvertiseSubmissionsPage() {
       if (user?.id && !payload.user_id) {
         payload.user_id = user.id;
       }
+
+      // Validate before hitting the insert endpoint so we never fire a silent,
+      // conflicting API call. Only active/inactive placements are exclusive.
+      if (payload.status === 'active' || payload.status === 'inactive') {
+        const conflict = await findLivePlacementForTool(payload.tool_id);
+        if (conflict) {
+          throw new Error(
+            `This tool already has an ${conflict.status} advertisement. Set the existing placement to "expired" or edit it instead of creating a new one.`
+          );
+        }
+      }
+
       const { error } = await supabase
         .from('advertisement_tools')
         .insert([{
@@ -357,6 +395,18 @@ export default function AdvertiseSubmissionsPage() {
     setIsActionLoading(true);
     try {
       const payload = sanitizePayload(formData);
+
+      // Prevent an edit from creating a second live placement for the same tool.
+      // We exclude the row being edited so re-saving an existing placement is fine.
+      if (payload.status === 'active' || payload.status === 'inactive') {
+        const conflict = await findLivePlacementForTool(payload.tool_id, editingItem?.id);
+        if (conflict) {
+          throw new Error(
+            `Another ${conflict.status} advertisement already exists for this tool. Set that placement to "expired" or edit it instead.`
+          );
+        }
+      }
+
       const { error } = await supabase
         .from('advertisement_tools')
         .update({ ...payload, updated_at: new Date().toISOString() })
@@ -375,13 +425,38 @@ export default function AdvertiseSubmissionsPage() {
     }
   };
 
+  const handleStatusChange = async (id: number | string, newStatus: string) => {
+    setIsRefreshing(true);
+    try {
+      const { error } = await supabase
+        .from('advertisement_tools')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      await fetchStats();
+      await fetchAdvertiseTools();
+    } catch (err: any) {
+      const errorMsg = err?.message || err?.error_description || 'Unknown error';
+      console.error('Error updating advertise status:', errorMsg, err?.details || '', err?.hint || '');
+      alert('Failed to update advertise status: ' + errorMsg);
+      throw err;
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleDeleteItem = async (id: number) => {
     const confirmed = await confirmDelete({
       title: 'Remove Advertise Tool',
       message: 'Are you sure you want to remove this advertise tool placement? This action cannot be undone.'
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('advertisement_tools').delete().eq('id', id);
       if (error) throw error;
@@ -391,7 +466,7 @@ export default function AdvertiseSubmissionsPage() {
     } catch (err) {
       console.error('Error deleting advertise tool:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -418,8 +493,8 @@ export default function AdvertiseSubmissionsPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
             <Button
               onClick={() => openForm()}
@@ -574,7 +649,14 @@ export default function AdvertiseSubmissionsPage() {
           </form>
 
           {/* Table Container */}
-          <div>
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
             <AdvertiseTable
               data={data}
               totalCount={totalCount}
@@ -583,19 +665,18 @@ export default function AdvertiseSubmissionsPage() {
               onPageChange={setCurrentPage}
               onEdit={handleEditClick}
               onDelete={handleDeleteItem}
+              onStatusChange={handleStatusChange}
               isLoading={loading}
             />
           </div>
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Database"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Database
-          </Button>
+            isLoading={isActionLoading}
+          />
           <AdvertiseForm
             initialData={editingItem}
             onSubmit={editingItem ? handleUpdateItem : handleAddItem}
@@ -604,8 +685,6 @@ export default function AdvertiseSubmissionsPage() {
           />
         </div>
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }

@@ -6,8 +6,10 @@ import { scrollToError, slugify } from '@/lib/form-utils';
 import CollapsibleSection from '../common/CollapsibleSection';
 import RichTextEditor from '../common/RichTextEditor';
 import { Model } from './ModelTable';
-import { Plus, Trash2, Code, LayoutGrid, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Code, LayoutGrid, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
+import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +24,7 @@ interface ModelFormProps {
   onCancel?: () => void;
   onClose?: () => void;
   isLoading?: boolean;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 const MODALITY_OPTIONS = ['text', 'image', 'file', 'audio', 'video'];
@@ -57,9 +60,8 @@ function getFormStatusVariant(status: string): 'success' | 'warning' | 'destruct
   if (s === 'show:invalid') return 'warning';
   if (s === 'show:error' || s === 'error') return 'destructive';
   if (s === 'show:inactive') return 'info';
-  if (s === 'hide') return 'destructive';
-  if (s === 'draft') return 'warning';
-  if (s === 'archived') return 'violet';
+  if (s === 'hide') return 'slate';
+  if (s === 'delete') return 'destructive';
   return 'slate';
 }
 
@@ -69,7 +71,8 @@ export default function ModelForm({
   onSave,
   onCancel,
   onClose,
-  isLoading = false
+  isLoading = false,
+  onBusyChange
 }: ModelFormProps) {
   const handleCancel = onCancel || onClose || (() => { });
   const handleSave = onSubmit || onSave || (async () => { });
@@ -129,6 +132,13 @@ export default function ModelForm({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRichTextUploading, setIsRichTextUploading] = useState(false);
+  const localBusy = isSubmitting || isRichTextUploading;
+  const isBusy = localBusy || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   useEffect(() => {
     if (initialData) {
@@ -503,7 +513,6 @@ export default function ModelForm({
         news_url: formData.news_url || null,
         favicon_url: formData.favicon_url || null,
         status: formData.status,
-        Review: formData.review || null,
         model_info: modelInfoPayload,
         context_length: formData.context_length ? Number(formData.context_length) : null,
         knowledge_cutoff: formData.knowledge_cutoff || null,
@@ -521,7 +530,7 @@ export default function ModelForm({
   const labelClass = "saas-label";
 
   return (
-    <form onSubmit={handleSubmit} className="saas-form space-y-8 pb-10">
+    <form onSubmit={handleSubmit} noValidate className={`saas-form space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}>
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertCircle className="h-4 w-4" />
@@ -530,11 +539,11 @@ export default function ModelForm({
           </AlertTitle>
           <AlertDescription>
             {errors.submit ? (
-              <p className="font-semibold uppercase tracking-wide">{errors.submit}</p>
+              <p className="font-semibold">{errors.submit}</p>
             ) : (
               <p>
                 There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:{' '}
-                <span className="font-bold uppercase tracking-tight">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </p>
@@ -564,12 +573,12 @@ export default function ModelForm({
               value={formData.name}
               onChange={handleChange}
               placeholder="e.g. GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro"
-              className={errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.name ? 'saas-input-error' : ''}
               required
               suppressHydrationWarning
             />
             {errors.name && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.name}
               </p>
             )}
@@ -583,12 +592,12 @@ export default function ModelForm({
               value={formData.model_id_slug}
               onChange={handleChange}
               placeholder="gpt-4o"
-              className={errors.model_id_slug ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.model_id_slug ? 'saas-input-error' : ''}
               required
               suppressHydrationWarning
             />
             {errors.model_id_slug && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.model_id_slug}
               </p>
             )}
@@ -602,12 +611,12 @@ export default function ModelForm({
               value={formData.provider}
               onChange={handleChange}
               placeholder="e.g. OpenAI, Anthropic, Google, Meta"
-              className={errors.provider ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.provider ? 'saas-input-error' : ''}
               required
               suppressHydrationWarning
             />
             {errors.provider && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.provider}
               </p>
             )}
@@ -615,11 +624,10 @@ export default function ModelForm({
 
           <div className="space-y-1">
             <label className={labelClass}>Release Date</label>
-            <Input
-              type="date"
+            <DateField
               name="release_date"
               value={formData.release_date}
-              onChange={handleChange}
+              onChange={(value) => handleChange({ target: { name: 'release_date', value } } as React.ChangeEvent<HTMLInputElement>)}
               suppressHydrationWarning
             />
           </div>
@@ -635,8 +643,7 @@ export default function ModelForm({
             >
               <option value="show">Show</option>
               <option value="hide">Hide</option>
-              <option value="draft">Draft</option>
-              <option value="archived">Archived</option>
+              <option value="delete">Delete</option>
             </Select>
           </div>
         </div>
@@ -658,6 +665,7 @@ export default function ModelForm({
               placeholder="GPT-4o ('o' for 'omni') is OpenAI's flagship model designed to accept any combination of text, audio, image, and video input..."
               name="review"
               showFormatButton={false}
+              onBusyChange={setIsRichTextUploading}
             />
           </div>
 
@@ -669,11 +677,11 @@ export default function ModelForm({
               value={formData.meta_title}
               onChange={handleChange}
               placeholder="e.g. GPT-4o: Architecture, Benchmarks & Features"
-              className={errors.meta_title ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.meta_title ? 'saas-input-error' : ''}
               suppressHydrationWarning
             />
             {errors.meta_title && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.meta_title}
               </p>
             )}
@@ -687,11 +695,11 @@ export default function ModelForm({
               onChange={handleChange}
               rows={3}
               placeholder="Compelling search result snippet for this model..."
-              className={errors.meta_description ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.meta_description ? 'saas-input-error' : ''}
               suppressHydrationWarning
             />
             {errors.meta_description && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.meta_description}
               </p>
             )}
@@ -720,11 +728,11 @@ export default function ModelForm({
                   value={formData.context_length}
                   onChange={handleChange}
                   placeholder="e.g. 128000 or 1000000"
-                  className={errors.context_length ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+                  className={errors.context_length ? 'saas-input-error' : ''}
                   suppressHydrationWarning
                 />
                 {errors.context_length && (
-                  <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+                  <p className="saas-error-message">
                     <AlertTriangle size={11} /> {errors.context_length}
                   </p>
                 )}
@@ -779,7 +787,7 @@ export default function ModelForm({
                         type="button"
                         key={`input-${mod}`}
                         onClick={() => handleModalityToggle('input', mod)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all ${selected ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/30' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border-color)]'}`}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all ${selected ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border-color)]'}`}
                       >
                         {selected ? '✓ ' : '+ '}{mod}
                       </button>
@@ -787,7 +795,7 @@ export default function ModelForm({
                   })}
                 </div>
                 {errors.input_modalities && (
-                  <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+                  <p className="saas-error-message">
                     <AlertTriangle size={11} /> {errors.input_modalities}
                   </p>
                 )}
@@ -811,7 +819,7 @@ export default function ModelForm({
                   })}
                 </div>
                 {errors.output_modalities && (
-                  <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+                  <p className="saas-error-message">
                     <AlertTriangle size={11} /> {errors.output_modalities}
                   </p>
                 )}
@@ -891,7 +899,7 @@ export default function ModelForm({
                   suppressHydrationWarning
                 />
                 {jsonError && (
-                  <p className="text-[10px] font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1">
+                  <p className="saas-error-message">
                     <AlertTriangle size={11} /> {jsonError}
                   </p>
                 )}
@@ -921,7 +929,7 @@ export default function ModelForm({
                     <div key={bench.id || idx} className="p-5 bg-[var(--bg-elevated)]/30 border border-[var(--border-color)] rounded-2xl space-y-5 relative group">
                       <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
                         <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-500 text-xs font-bold flex items-center justify-center border border-indigo-500/20">
+                          <span className="w-6 h-6 rounded-lg bg-zinc-900/10 dark:bg-zinc-100/10 text-zinc-900 dark:text-zinc-100 text-xs font-bold flex items-center justify-center border border-zinc-900/20 dark:border-zinc-100/20">
                             {idx + 1}
                           </span>
                           <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
@@ -1274,11 +1282,11 @@ export default function ModelForm({
               value={formData.site_url}
               onChange={handleChange}
               placeholder="https://openai.com/index/hello-gpt-4o/"
-              className={errors.site_url ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.site_url ? 'saas-input-error' : ''}
               suppressHydrationWarning
             />
             {errors.site_url && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.site_url}
               </p>
             )}
@@ -1292,11 +1300,11 @@ export default function ModelForm({
               value={formData.news_url}
               onChange={handleChange}
               placeholder="https://openai.com/news/gpt-4o-announcement"
-              className={errors.news_url ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.news_url ? 'saas-input-error' : ''}
               suppressHydrationWarning
             />
             {errors.news_url && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.news_url}
               </p>
             )}
@@ -1310,11 +1318,11 @@ export default function ModelForm({
               value={formData.favicon_url}
               onChange={handleChange}
               placeholder="https://openai.com/favicon.ico"
-              className={errors.favicon_url ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.favicon_url ? 'saas-input-error' : ''}
               suppressHydrationWarning
             />
             {errors.favicon_url && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.favicon_url}
               </p>
             )}
@@ -1328,20 +1336,20 @@ export default function ModelForm({
           type="button"
           variant="outline"
           onClick={handleCancel}
-          disabled={isSubmitting || isLoading}
+          disabled={isBusy}
           className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting || isLoading}
+          disabled={!isDirty || isBusy}
           className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting || isLoading ? (
+          {isBusy ? (
             <>
-              <Loader2 size={14} className="animate-spin mr-1.5" />
-              Saving...
+              <Spinner size={14} className="mr-1.5 text-current shrink-0" />
+              <span>{initialData ? 'Updating Model...' : 'Creating Model...'}</span>
             </>
           ) : (
             initialData ? 'Update Model' : 'Create Model'

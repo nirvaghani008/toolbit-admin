@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
 import CountUp from '@/components/common/CountUp';
 import { Database, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Button } from '@/components/ui/button';
@@ -121,22 +121,24 @@ export default function NewsletterPage() {
     setSearchQuery(searchInputValue);
   };
 
-  const handleStatusToggle = async (sub: Subscriber) => {
-    const isCurrentlyActive = sub.status === 'active' || sub.status === 'subscribed';
-    const newStatus = isCurrentlyActive ? 'inactive' : 'active';
-    setIsActionLoading(true);
+  const handleStatusChange = async (id: number | string, newStatus: string) => {
+    setIsRefreshing(true);
     try {
       const { error } = await supabase
         .from('newsletter_subscribers')
         .update({ status: newStatus })
-        .eq('id', sub.id);
+        .eq('id', id);
       if (error) throw error;
+      // Optimistically reflect the change so the badge updates immediately.
+      setSubscribers((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
+      );
       await fetchStats();
       await fetchSubscribers(true);
     } catch (err: any) {
       console.error('Error updating subscriber status:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -147,7 +149,7 @@ export default function NewsletterPage() {
         'Are you sure you want to permanently remove this subscriber? This action cannot be undone.',
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('newsletter_subscribers').delete().eq('id', id);
       if (error) throw error;
@@ -156,7 +158,7 @@ export default function NewsletterPage() {
     } catch (err) {
       console.error('Error deleting subscriber:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -174,25 +176,25 @@ export default function NewsletterPage() {
     },
     {
       id: 'active',
-      label: 'Active',
+      label: 'Subscribed',
       value: stats.active,
       iconStyle: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
       badgeStyle: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
       sparklineColor: 'text-[#3c5748] dark:text-emerald-400',
       icon: <CheckCircle2 size={17} />,
       points: sparklines.active,
-      badge: 'Subscribed',
+      badge: 'Active Members',
     },
     {
-      id: 'unsubscribed',
-      label: 'Inactive',
+      id: 'inactive',
+      label: 'Unsubscribed',
       value: stats.unsubscribed,
-      iconStyle: 'text-[#824235] bg-[#faf2ef] border-[#edd6cf] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
-      badgeStyle: 'bg-[#faf2ef] text-[#824235] border-[#edd6cf] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-      sparklineColor: 'text-[#824235] dark:text-rose-400',
+      iconStyle: 'text-[#5c3838] bg-[#f6f1f1] border-[#e2d3d3] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
+      badgeStyle: 'bg-[#f6f1f1] text-[#5c3838] border-[#e2d3d3] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
+      sparklineColor: 'text-[#5c3838] dark:text-rose-400',
       icon: <XCircle size={17} />,
       points: sparklines.unsubscribed,
-      badge: 'Unsubscribed',
+      badge: 'Inactive',
     },
   ];
 
@@ -203,7 +205,7 @@ export default function NewsletterPage() {
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Newsletter Subscribers</h1>
           <p className="text-sm text-[var(--text-muted)] font-medium mt-1">
-            Manage your mailing list and subscription statuses.
+            Grow, nurture, and track platform audience subscriptions.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -214,8 +216,8 @@ export default function NewsletterPage() {
             className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             suppressHydrationWarning
           >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-            {isRefreshing ? 'Syncing...' : 'Refresh'}
+            {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+            Refresh
           </Button>
         </div>
       </div>
@@ -306,18 +308,25 @@ export default function NewsletterPage() {
       </form>
 
       {/* Table */}
-      <SubscriberTable
-        subscribers={subscribers}
-        totalCount={totalCount}
-        pageSize={pageSize}
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-        onStatusToggle={handleStatusToggle}
-        onDelete={handleDelete}
-        isLoading={loading}
-      />
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
+      <div className="relative">
+        {isRefreshing && (
+          <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+            <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+              <Spinner size={20} />
+            </div>
+          </div>
+        )}
+        <SubscriberTable
+          subscribers={subscribers}
+          totalCount={totalCount}
+          pageSize={pageSize}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          onStatusChange={handleStatusChange}
+          onDelete={handleDelete}
+          isLoading={loading}
+        />
+      </div>
     </div>
   );
 }

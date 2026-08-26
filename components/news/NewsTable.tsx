@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { ExternalLink, Edit2, Trash2, Newspaper, Inbox } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ExternalLink, Edit2, Trash2, Newspaper, Inbox, ChevronDown, Check, AlertCircle } from 'lucide-react';
 import Pagination from '@/components/common/Pagination';
 import {
   Table,
@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Portal } from '@/components/ui/portal';
 
 export interface NewsItem {
   news_id: number;
@@ -28,6 +29,36 @@ export interface NewsItem {
   created_at?: string;
 }
 
+type BadgeVariant = 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default';
+
+/** Visibility statuses stored in the live `news.status` column. */
+export const NEWS_STATUS_OPTIONS = [
+  { value: 'published', label: 'Published' },
+  { value: 'hide', label: 'Hide' },
+] as const;
+
+/** Normalize a status for comparisons without substituting a default value. */
+export function normalizeNewsStatus(status?: string): string {
+  return (status || '').toLowerCase().trim();
+}
+
+/** Badge color variant for a given (raw) status. */
+export function getNewsStatusVariant(status?: string): BadgeVariant {
+  switch (normalizeNewsStatus(status)) {
+    case 'published': return 'success';
+    case 'hide': return 'slate';
+    default: return 'default';
+  }
+}
+
+/** Human-readable label for a given (raw) status. */
+export function formatNewsStatus(status?: string): string {
+  const normalized = normalizeNewsStatus(status);
+  const opt = NEWS_STATUS_OPTIONS.find((o) => o.value === normalized);
+  if (opt) return opt.label;
+  return status?.trim() || '—';
+}
+
 interface NewsTableProps {
   news: NewsItem[];
   totalCount: number;
@@ -36,6 +67,7 @@ interface NewsTableProps {
   onPageChange: (page: number) => void;
   onEdit: (item: NewsItem) => void;
   onDelete: (id: number) => void;
+  onStatusChange?: (newsId: number, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
 
@@ -87,29 +119,40 @@ export default function NewsTable({
   onPageChange,
   onEdit,
   onDelete,
+  onStatusChange,
   isLoading = false
 }: NewsTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
+  const [openStatusDropdownId, setOpenStatusDropdownId] = useState<number | null>(null);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{ item: NewsItem; newStatus: string } | null>(null);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
 
-  const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' => {
-    const s = (status || 'show').toLowerCase();
-    if (s === 'show' || s === 'published' || s === 'active') return 'success';
-    if (s === 'hide') return 'slate';
-    if (s === 'draft') return 'warning';
-    if (s === 'archived') return 'violet';
-    return 'default';
-  };
+  // Close dropdown on outside click or escape
+  useEffect(() => {
+    const handleClickOutside = () => setOpenStatusDropdownId(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpenStatusDropdownId(null);
+        if (!isChangingStatus) setPendingStatusChange(null);
+      }
+    };
 
-  const formatStatus = (status?: string) => {
-    const s = (status || 'show').toLowerCase();
-    if (s === 'show' || s === 'published') return 'Show';
-    if (s === 'hide') return 'Hide';
-    if (s === 'draft') return 'Draft';
-    if (s === 'archived') return 'Archived';
-    return status || 'Show';
-  };
+    if (openStatusDropdownId) {
+      document.addEventListener('click', handleClickOutside);
+    }
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openStatusDropdownId, isChangingStatus]);
+
+  const getStatusBadgeVariant = getNewsStatusVariant;
+  const formatStatus = formatNewsStatus;
 
   return (
+    <>
     <div className="bg-[var(--bg-surface)] rounded-2xl shadow-sm overflow-hidden animate-fade-in border border-[var(--border-color)] relative">
       <Table className="table-fixed">
         <TableHeader>
@@ -232,11 +275,65 @@ export default function NewsTable({
                   </span>
                 </TableCell>
 
-                {/* 5. Status */}
-                <TableCell className="px-3 py-4 text-center">
-                  <Badge variant={getStatusBadgeVariant(item.status)} className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">
-                    {formatStatus(item.status)}
-                  </Badge>
+                {/* 5. Status with interactive dropdown */}
+                <TableCell className="px-3 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative inline-block text-left">
+                    <button
+                      type="button"
+                      onClick={() => setOpenStatusDropdownId(openStatusDropdownId === item.news_id ? null : item.news_id)}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer group/status focus:outline-none"
+                      title="Click to change status"
+                    >
+                      <Badge
+                        variant={getStatusBadgeVariant(item.status)}
+                        className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase cursor-pointer"
+                      >
+                        {formatStatus(item.status)}
+                      </Badge>
+                      <ChevronDown size={11} className={`text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)] transition-transform duration-200 ${openStatusDropdownId === item.news_id ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {openStatusDropdownId === item.news_id && (
+                      <div
+                        className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 mt-1.5 w-38 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-1 animate-in fade-in zoom-in-95 duration-150 text-left"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase px-2.5 py-1 tracking-wider border-b border-[var(--border-color)]/60 mb-1">
+                          Change Status
+                        </div>
+                        <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-0.5">
+                          {NEWS_STATUS_OPTIONS.map((opt) => {
+                            const isCurrent = normalizeNewsStatus(item.status) === opt.value;
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => {
+                                  setOpenStatusDropdownId(null);
+                                  if (!isCurrent) {
+                                    setPendingStatusChange({ item, newStatus: opt.value });
+                                  }
+                                }}
+                                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                                  isCurrent
+                                    ? 'bg-zinc-100 dark:bg-zinc-800 font-bold text-zinc-900 dark:text-zinc-100'
+                                    : 'text-[var(--text-secondary)] hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100'
+                                }`}
+                              >
+                                <span className="flex items-center gap-1.5 truncate">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                    opt.value === 'published' ? 'bg-emerald-500' : 'bg-zinc-400'
+                                  }`} />
+                                  <span className="text-[11px] truncate">{opt.label}</span>
+                                </span>
+                                {isCurrent && <Check size={12} className="text-zinc-900 dark:text-zinc-100 shrink-0 ml-1" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </TableCell>
 
                 {/* 6. Manage Actions */}
@@ -277,6 +374,90 @@ export default function NewsTable({
         onPageChange={onPageChange}
       />
     </div>
+
+    {/* Confirmation Dialog for Status Change wrapped in Portal */}
+    {pendingStatusChange && (
+      <Portal>
+        <div
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => !isChangingStatus && setPendingStatusChange(null)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-800 dark:text-zinc-200 shrink-0 border border-zinc-200 dark:border-zinc-700 shadow-2xs">
+                <AlertCircle size={20} />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                  Confirm Status Change
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-slate-400 leading-relaxed">
+                  Are you sure you want to update the status of{' '}
+                  <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                    {pendingStatusChange.item.title || 'this news article'}
+                  </span>
+                  ?
+                </p>
+              </div>
+            </div>
+
+            {/* Visual Status Transition */}
+            <div className="flex items-center justify-center gap-3 p-3 bg-zinc-50 dark:bg-slate-900/60 rounded-xl border border-zinc-200/80 dark:border-zinc-800">
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[9px] font-bold uppercase text-zinc-400 dark:text-slate-500 tracking-wider">Current</span>
+                <Badge variant={getStatusBadgeVariant(pendingStatusChange.item.status)} className="text-[9px] px-2.5 py-0.5 font-bold tracking-wider uppercase">
+                  {formatStatus(pendingStatusChange.item.status)}
+                </Badge>
+              </div>
+              <span className="text-zinc-400 dark:text-slate-600 font-bold text-lg px-2">→</span>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[9px] font-bold uppercase text-zinc-400 dark:text-slate-500 tracking-wider">New Status</span>
+                <Badge variant={getStatusBadgeVariant(pendingStatusChange.newStatus)} className="text-[9px] px-2.5 py-0.5 font-bold tracking-wider uppercase">
+                  {formatStatus(pendingStatusChange.newStatus)}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isChangingStatus}
+                onClick={() => setPendingStatusChange(null)}
+                className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isChangingStatus}
+                onClick={async () => {
+                  if (!pendingStatusChange) return;
+                  setIsChangingStatus(true);
+                  try {
+                    if (onStatusChange) {
+                      await onStatusChange(pendingStatusChange.item.news_id, pendingStatusChange.newStatus);
+                    }
+                    setPendingStatusChange(null);
+                  } catch (err) {
+                    console.error('Failed to change news status:', err);
+                  } finally {
+                    setIsChangingStatus(false);
+                  }
+                }}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs min-w-[130px] cursor-pointer"
+              >
+                {isChangingStatus ? 'Updating...' : 'Confirm Change'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Portal>
+    )}
+    </>
   );
 }
 

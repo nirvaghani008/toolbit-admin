@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import StatusChangeControl from '@/components/common/StatusChangeControl';
 
 interface Category {
   id?: number;
@@ -39,6 +40,7 @@ interface CategoryTableProps {
   onPageChange: (page: number) => void;
   onEdit: (category: Category) => void;
   onDelete: (id: number) => void;
+  onStatusChange?: (categoryId: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
 
@@ -47,16 +49,7 @@ export function CategoryStatusBadge({ status }: { status: string }) {
   if (s === 'show') {
     return <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Show</Badge>;
   }
-  if (s === 'hide') {
-    return <Badge variant="destructive" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
-  }
-  if (s === 'draft') {
-    return <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Draft</Badge>;
-  }
-  if (s === 'archived') {
-    return <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Archived</Badge>;
-  }
-  return <Badge variant="default" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">{status || 'Show'}</Badge>;
+  return <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
 }
 
 export default function CategoryTable({
@@ -67,6 +60,7 @@ export default function CategoryTable({
   onPageChange,
   onEdit,
   onDelete,
+  onStatusChange,
   isLoading = false
 }: CategoryTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
@@ -221,7 +215,22 @@ export default function CategoryTable({
                   </TableCell>
 
                   <TableCell className="px-2 py-4 text-center">
-                    <CategoryStatusBadge status={category.status} />
+                    {onStatusChange && (category.id != null || category.category_id != null) ? (
+                      <StatusChangeControl
+                        itemId={category.id ?? category.category_id ?? ''}
+                        currentStatus={category.status}
+                        options={[
+                          { value: 'show', label: 'Show' },
+                          { value: 'hide', label: 'Hide' },
+                        ]}
+                        itemLabel={categoryName || 'this category'}
+                        onStatusChange={onStatusChange}
+                        getVariant={(status) => (status || '').toLowerCase() === 'show' ? 'success' : 'slate'}
+                        formatStatus={(status) => (status || '').toLowerCase() === 'show' ? 'Show' : 'Hide'}
+                      />
+                    ) : (
+                      <CategoryStatusBadge status={category.status} />
+                    )}
                   </TableCell>
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>

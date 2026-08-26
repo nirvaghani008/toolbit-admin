@@ -10,9 +10,10 @@ import CountUp from '@/components/common/CountUp';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import {
-  RefreshCw, Share2, CheckCircle2, EyeOff, FileText, Star, ArrowLeft
+  RefreshCw, Share2, CheckCircle2, EyeOff, FileText, Star
 } from 'lucide-react';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -208,7 +209,7 @@ export default function SocialsPage() {
     });
     if (!confirmed) return;
 
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('socials').delete().eq('id', id);
       if (error) throw error;
@@ -218,7 +219,27 @@ export default function SocialsPage() {
     } catch (err: any) {
       alert(err?.message || 'Error deleting social post');
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleStatusChange = async (id: number | string, newStatus: string) => {
+    setIsRefreshing(true);
+    try {
+      const { error } = await supabase
+        .from('socials')
+        .update({ status: newStatus })
+        .eq('id', id);
+      if (error) throw error;
+
+      // Optimistically update local state, then refresh stat counters
+      setSocialsList(prev => prev.map(s => (s.id === id ? { ...s, status: newStatus } : s)));
+      await fetchStats();
+    } catch (err: any) {
+      console.error('Error updating social status:', err);
+      alert('Failed to update status: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -252,18 +273,10 @@ export default function SocialsPage() {
   const handleCreateSocial = async (data: Partial<SocialItem>) => {
     setIsActionLoading(true);
     try {
-      let insertPayload: Record<string, any> = { ...data };
-      const { data: maxIdData } = await supabase.from('socials').select('id').order('id', { ascending: false }).limit(1);
-      if (maxIdData && maxIdData.length > 0 && maxIdData[0].id) {
-        insertPayload.id = maxIdData[0].id + 1;
-      }
-
-      const { error } = await supabase.from('socials').insert([insertPayload]);
-      if (error) {
-        // Fallback retry without explicit ID if identity handles sequence automatically
-        const { error: retryError } = await supabase.from('socials').insert([data]);
-        if (retryError) throw retryError;
-      }
+      const { error } = await supabase
+        .from('socials')
+        .insert([data]);
+      if (error) throw error;
       await fetchStats();
       await fetchSocials(true);
       closeForm();
@@ -284,7 +297,7 @@ export default function SocialsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Social Updates Database</h1>
-          <p className="text-sm text-[var(--text-muted)] font-medium mt-1">Manage social media posts, announcements, and community updates.</p>
+          <p className="text-sm text-[var(--text-muted)] font-medium mt-1">Curate platform insights, product feature drop announcements, and AI releases.</p>
         </div>
         {!showForm && (
           <div className="flex items-center gap-3">
@@ -295,8 +308,8 @@ export default function SocialsPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
             <Button
               onClick={() => openForm()}
@@ -483,26 +496,34 @@ export default function SocialsPage() {
           </form>
 
           {/* Table */}
-          <SocialTable
-            socials={socialsList}
-            totalCount={totalCount}
-            pageSize={pageSize}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onEdit={handleEditSocial}
-            onDelete={handleDeleteSocial}
-            isLoading={isLoading}
-          />
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
+            <SocialTable
+              socials={socialsList}
+              totalCount={totalCount}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onEdit={handleEditSocial}
+              onDelete={handleDeleteSocial}
+              onStatusChange={handleStatusChange}
+              isLoading={isLoading}
+            />
+          </div>
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Database"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Database
-          </Button>
+            isLoading={isActionLoading}
+          />
           <SocialForm
             initialData={editingSocial}
             onSubmit={editingSocial ? handleSaveSocial : handleCreateSocial}
@@ -511,8 +532,6 @@ export default function SocialsPage() {
           />
         </div>
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }

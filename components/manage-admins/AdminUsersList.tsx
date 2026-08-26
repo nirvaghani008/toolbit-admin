@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -100,7 +101,7 @@ export default function AdminUsersList({
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {isLoading ? (
           <div className="p-8 text-center space-y-3">
-            <div className="w-8 h-8 mx-auto border-2 border-zinc-300 dark:border-zinc-700 border-t-zinc-900 dark:border-t-zinc-200 rounded-full animate-spin" />
+            <Spinner size={32} className="mx-auto text-zinc-900 dark:text-zinc-200" />
             <p className="text-xs text-[var(--text-muted)] font-medium">Loading team members...</p>
           </div>
         ) : filteredUsers.length === 0 ? (

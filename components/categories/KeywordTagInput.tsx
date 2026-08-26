@@ -13,26 +13,27 @@ interface KeywordTagInputProps {
   type?: 'category' | 'tag' | 'audience' | 'generic' | 'parent-category' | 'parent-tag';
   singleSelect?: boolean;
   name?: string;
+  hasError?: boolean;
+  onClearError?: () => void;
+  className?: string;
 }
 
-const DEFAULT_BLOG_CATEGORIES = [
-  'Research & Insights',
+export const DEFAULT_BLOG_CATEGORIES = [
+  'AI Agents',
+  'AI Engineering',
   'AI for Business',
-  'Prompt Engineering',
-  'Development',
-  'Comparison',
-  'Models & LLMs',
+  'AI Infrastructure',
+  'AI News',
+  'AI Research',
   'Automation',
-  'Design & Creative',
-  'Audio & Video',
-  'Marketing & SEO',
-  'Finance & FinTech',
-  'Security & Safety',
-  'Case Studies',
-  'Tutorials',
-  'Industry News',
-  'Opinion',
-  'Product Updates'
+  'Comparison',
+  'Development',
+  'e-commerce',
+  'Guides & Tutorials',
+  'Models & LLMs',
+  'Prompt Engineering',
+  'Research & Insights',
+  'Tips & Tricks'
 ];
 
 export const DEFAULT_PARENT_CATEGORIES = [
@@ -58,14 +59,21 @@ export const DEFAULT_PARENT_CATEGORIES = [
   'Legal & Compliance',
   'Life & Assistant',
   'Medical & Healthcare',
-  'Photo & Photography',
-  'Productivity',
-  'Research & Data',
-  'Social Media',
-  'Travel & Navigation',
+  'News & Information',
+  'Operations & Management',
+  'Personal & Relationships',
+  'Productivity & Workflow',
+  'Real Estate & Property',
+  'Sales & Outreach',
+  'Science & Research',
+  'Security & Privacy',
+  'SEO & Growth',
+  'Social Media & Community',
+  'Sports & Fitness',
+  'Travel & Hospitality',
   'Video & Animation',
   'Voice & Speech',
-  'Writing & Editing'
+  'Writing & Copywriting'
 ];
 
 export const DEFAULT_PARENT_TAGS = DEFAULT_PARENT_CATEGORIES;
@@ -76,9 +84,12 @@ export default function KeywordTagInput({
   placeholder = 'Type or select keyword...',
   type = 'generic',
   singleSelect = false,
-  name
+  name,
+  hasError = false,
+  onClearError,
+  className
 }: KeywordTagInputProps) {
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState(() => (singleSelect && selectedKeywords[0] ? selectedKeywords[0] : ''));
   const [dbSuggestions, setDbSuggestions] = useState<string[]>(
     type === 'parent-category' 
       ? DEFAULT_PARENT_CATEGORIES 
@@ -97,6 +108,13 @@ export default function KeywordTagInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Synchronize inputValue with selectedKeywords for singleSelect mode
+  useEffect(() => {
+    if (singleSelect) {
+      setInputValue(selectedKeywords[0] || '');
+    }
+  }, [singleSelect, selectedKeywords]);
+
   // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -104,11 +122,14 @@ export default function KeywordTagInput({
         setShowSuggestions(false);
         setIsFocused(false);
         setSelectedIndex(-1);
+        if (singleSelect) {
+          setInputValue(selectedKeywords[0] || '');
+        }
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [singleSelect, selectedKeywords]);
 
   // Fetch recommendations from Supabase DB
   useEffect(() => {
@@ -240,10 +261,14 @@ export default function KeywordTagInput({
   // Compute filtered suggestions whenever inputValue or selectedKeywords changes
   useEffect(() => {
     const selectedLower = selectedKeywords.map(k => k.toLowerCase().replace(/^#+/, ''));
-    const available = dbSuggestions.filter(kw => !selectedLower.includes(kw.toLowerCase().replace(/^#+/, '')));
-    const searchVal = inputValue.trim().toLowerCase();
+    const available = singleSelect
+      ? dbSuggestions
+      : dbSuggestions.filter(kw => !selectedLower.includes(kw.toLowerCase().replace(/^#+/, '')));
 
-    if (!searchVal) {
+    const searchVal = inputValue.trim().toLowerCase().replace(/^#+/, '');
+    const currentSelected = (selectedKeywords[0] || '').toLowerCase().replace(/^#+/, '');
+
+    if (!searchVal || (singleSelect && searchVal === currentSelected)) {
       setSuggestions(available);
     } else {
       const cleanSearch = searchVal.replace(/[\s#]+/g, '');
@@ -253,7 +278,7 @@ export default function KeywordTagInput({
       });
       setSuggestions(filtered);
     }
-  }, [inputValue, selectedKeywords, dbSuggestions]);
+  }, [inputValue, selectedKeywords, dbSuggestions, singleSelect]);
 
   // Reset selectedIndex whenever suggestions or inputValue changes
   useEffect(() => {
@@ -287,9 +312,14 @@ export default function KeywordTagInput({
 
     const isTagType = type === 'parent-tag' || type === 'tag';
 
+    if (onClearError) onClearError();
+
     if (singleSelect) {
       onKeywordsChange([trimmed]);
-      setInputValue('');
+      setInputValue(trimmed);
+      setShowSuggestions(false);
+      setSelectedIndex(-1);
+      return;
     } else if (!selectedKeywords.some(k => k.replace(/^#+/, '').toLowerCase() === trimmed.toLowerCase())) {
       onKeywordsChange([...selectedKeywords, trimmed]);
       setInputValue('');
@@ -315,6 +345,7 @@ export default function KeywordTagInput({
   };
 
   const removeKeyword = (keyword: string) => {
+    if (onClearError) onClearError();
     onKeywordsChange(selectedKeywords.filter(k => k !== keyword));
   };
 
@@ -360,18 +391,52 @@ export default function KeywordTagInput({
           name={name}
           value={inputValue}
           onChange={(e) => {
-            setInputValue(e.target.value);
+            const val = e.target.value;
+            setInputValue(val);
             setShowSuggestions(true);
+            if (onClearError) {
+              onClearError();
+            }
+            if (singleSelect && !val.trim()) {
+              onKeywordsChange([]);
+            }
+          }}
+          onInput={() => {
+            if (onClearError) {
+              onClearError();
+            }
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => {
             setIsFocused(true);
             setShowSuggestions(true);
           }}
-          placeholder={selectedKeywords.length === 0 ? placeholder : (singleSelect ? "Change selection..." : "Type or click to add more...")}
-          className="bg-[var(--bg-elevated)] border-[var(--border-color)] text-[13px] text-[var(--text-primary)]"
+          placeholder={singleSelect && inputValue ? '' : placeholder}
+          className={`bg-[var(--bg-elevated)] text-[13px] text-[var(--text-primary)] font-normal ${
+            hasError ? 'saas-input-error' : 'border-[var(--border-color)]'
+          } ${
+            singleSelect && inputValue ? 'pr-9 font-medium text-[var(--text-primary)]' : ''
+          } ${className || ''}`}
           suppressHydrationWarning
         />
+
+        {singleSelect && inputValue && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onKeywordsChange([]);
+              setInputValue('');
+              if (onClearError) onClearError();
+              inputRef.current?.focus();
+            }}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-rose-500 transition-colors p-1 rounded-md cursor-pointer"
+            title="Clear selection"
+            aria-label="Clear selection"
+          >
+            <X size={14} />
+          </button>
+        )}
 
         {showSuggestions && isFocused && suggestions.length > 0 && (
           <div ref={dropdownRef} className="absolute z-[100] left-0 right-0 mt-1 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 p-1">
@@ -402,7 +467,7 @@ export default function KeywordTagInput({
         )}
       </div>
 
-      {selectedKeywords.length > 0 && (
+      {!singleSelect && selectedKeywords.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-3">
           {selectedKeywords.map((kw, i) => (
             <Badge

@@ -5,11 +5,12 @@ import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
 import { useAdmin } from '@/contexts/AdminContext';
 import { scrollToError } from '@/lib/form-utils';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Shield,
   User,
   Mail,
+  CalendarDays,
   Camera,
   Key,
   CheckCircle2,
@@ -19,7 +20,6 @@ import {
   EyeOff,
   Lock,
   Save,
-  Loader2,
   Edit3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -78,7 +78,7 @@ const profileSchema = z.object({
 });
 
 export default function ProfilePage() {
-  const { refreshAdmin } = useAdmin();
+  const { refreshAdmin, role } = useAdmin();
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
@@ -110,6 +110,7 @@ export default function ProfilePage() {
 
       const userProfile = {
         id: user.id,
+        created_at: user.created_at,
         full_name: fullName,
         email: email,
         avatar_url: avatarUrl,
@@ -204,7 +205,11 @@ export default function ProfilePage() {
     }
   };
 
-  if (loading) return <LoadingOverlay message="Fetching secure profile data..." />;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <Spinner size={28} />
+    </div>
+  );
 
   return (
     <div className="max-w-[1200px] mx-auto p-6 md:p-8 animate-in fade-in duration-500">
@@ -212,11 +217,7 @@ export default function ProfilePage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
         <div>
           <div className="flex items-center gap-2.5 mb-2">
-            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Account Intelligence</h1>
-            <Badge variant="slate" className="gap-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-              <Shield size={11} />
-              System Governance
-            </Badge>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">My Profile</h1>
           </div>
           <p className="text-sm text-[var(--text-muted)] font-medium">Manage your administrative identity and security clearance.</p>
         </div>
@@ -227,12 +228,12 @@ export default function ProfilePage() {
             className="gap-2 font-bold text-xs bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 rounded-xl shadow-xs active:scale-95 cursor-pointer"
           >
             <Edit3 size={14} />
-            Modify Profile
+            Update Profile
           </Button>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 transition-opacity duration-200 ${saving ? 'opacity-50 pointer-events-none select-none' : ''}`}>
         {/* Left Column: Identity Overview Card */}
         <div className="lg:col-span-4 space-y-8">
           <Card className="relative overflow-hidden group border-[var(--border-color)] bg-[var(--bg-surface)] shadow-sm rounded-3xl">
@@ -254,7 +255,7 @@ export default function ProfilePage() {
                   {profile?.full_name || 'Administrator'}
                 </h3>
                 <Badge variant="default" className="text-[10px] font-bold uppercase tracking-wider">
-                  System Administrator
+                  {role === 'admin' ? 'admin' : 'sub admin'}
                 </Badge>
               </div>
 
@@ -338,11 +339,11 @@ export default function ProfilePage() {
                               });
                             }
                           }}
-                          className={`pl-10 ${errors.full_name ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}`}
+                          className={`pl-10 ${errors.full_name ? 'saas-input-error' : ''}`}
                           placeholder="Your full name"
                         />
                       </div>
-                      {errors.full_name && <p className="text-[11px] font-semibold text-rose-500 ml-1">{errors.full_name}</p>}
+                      {errors.full_name && <p className="saas-error-message">{errors.full_name}</p>}
                     </div>
 
                     <div className="space-y-1.5">
@@ -365,11 +366,11 @@ export default function ProfilePage() {
                               });
                             }
                           }}
-                          className={`pl-10 ${errors.email ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}`}
+                          className={`pl-10 ${errors.email ? 'saas-input-error' : ''}`}
                           placeholder="admin@toolbit.ai"
                         />
                       </div>
-                      {errors.email && <p className="text-[11px] font-semibold text-rose-500 ml-1">{errors.email}</p>}
+                      {errors.email && <p className="saas-error-message">{errors.email}</p>}
                     </div>
                   </div>
                 </div>
@@ -377,7 +378,12 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                   <DossierItem label="Official Name" value={profile?.full_name} icon={<User size={14} />} />
                   <DossierItem label="Secure Email" value={profile?.email} icon={<Mail size={14} />} />
-                  <DossierItem label="Clearance" value="Super Admin" icon={<Shield size={14} />} isBadge badgeVariant="default" />
+                  <DossierItem label="Clearance" value={role === 'admin' ? 'admin' : 'sub admin'} icon={<Shield size={14} />} isBadge badgeVariant="default" />
+                  <DossierItem
+                    label="Joined On"
+                    value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null}
+                    icon={<CalendarDays size={14} />}
+                  />
                   <DossierItem label="Identity Status" value="Verified & Active" icon={<CheckCircle2 size={14} />} isBadge badgeVariant="success" />
                 </div>
               )}
@@ -450,7 +456,7 @@ export default function ProfilePage() {
                             }
                           }}
                           placeholder="••••••••••••"
-                          className={`pl-10 pr-10 ${errors.password ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}`}
+                          className={`pl-10 pr-10 ${errors.password ? 'saas-input-error' : ''}`}
                         />
                         <button
                           type="button"
@@ -462,7 +468,7 @@ export default function ProfilePage() {
                           {showPasswordText ? <EyeOff size={15} /> : <Eye size={15} />}
                         </button>
                       </div>
-                      {errors.password && <p className="text-[11px] font-semibold text-rose-500 ml-1">{errors.password}</p>}
+                      {errors.password && <p className="saas-error-message">{errors.password}</p>}
                     </div>
 
                     <div className="space-y-1.5">
@@ -486,7 +492,7 @@ export default function ProfilePage() {
                             }
                           }}
                           placeholder="••••••••••••"
-                          className={`pl-10 pr-10 ${errors.confirmPassword ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''}`}
+                          className={`pl-10 pr-10 ${errors.confirmPassword ? 'saas-input-error' : ''}`}
                         />
                         <button
                           type="button"
@@ -498,7 +504,7 @@ export default function ProfilePage() {
                           {showConfirmPasswordText ? <EyeOff size={15} /> : <Eye size={15} />}
                         </button>
                       </div>
-                      {errors.confirmPassword && <p className="text-[11px] font-semibold text-rose-500 ml-1">{errors.confirmPassword}</p>}
+                      {errors.confirmPassword && <p className="saas-error-message">{errors.confirmPassword}</p>}
                     </div>
                   </div>
 
@@ -566,7 +572,7 @@ export default function ProfilePage() {
               >
                 {saving ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Spinner size={16} className="text-current shrink-0" />
                     Updating...
                   </>
                 ) : (
@@ -580,8 +586,6 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
-
-      {saving && <LoadingOverlay message="Updating system credentials..." />}
     </div>
   );
 }

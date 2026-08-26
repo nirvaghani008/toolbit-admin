@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 
 // ─── Types ───────────────────────────────────────────────
 interface StatCardProps {
@@ -474,7 +475,7 @@ export default function DashboardPage() {
               disabled={isRefreshing}
               className="gap-2 bg-white text-zinc-700 border-[#e5e3df] hover:bg-zinc-50 hover:text-zinc-900 shadow-2xs dark:bg-[var(--bg-surface)] dark:border-[var(--border-color)] dark:text-[var(--text-secondary)] dark:hover:bg-[var(--bg-elevated)] dark:hover:text-[var(--text-primary)]"
             >
-              <RefreshCw size={14} className={isRefreshing ? 'animate-spin text-zinc-900 dark:text-indigo-500' : ''} />
+              {isRefreshing ? <Spinner size={14} className="text-zinc-900 dark:text-zinc-100" /> : <RefreshCw size={14} />}
               {isRefreshing ? 'Syncing...' : 'Refresh Overview'}
             </Button>
           </div>

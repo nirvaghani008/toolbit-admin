@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import Pagination from '@/components/common/Pagination';
 import {
-  ExternalLink,
+  Pencil,
   Trash2,
   Eye,
   Database,
@@ -35,6 +35,7 @@ interface OrderTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onViewDetails: (order: Order) => void;
+  onEdit: (order: Order) => void;
   onDelete: (id: string) => void;
   isLoading?: boolean;
 }
@@ -114,6 +115,7 @@ export default function OrderTable({
   currentPage,
   onPageChange,
   onViewDetails,
+  onEdit,
   onDelete,
   isLoading = false,
 }: OrderTableProps) {
@@ -322,45 +324,19 @@ export default function OrderTable({
                         <Eye size={13} />
                       </Button>
 
-                      {order.invoice_url && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          asChild
-                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                          title="View Invoice"
-                          aria-label={`View invoice for order ${order.order_number}`}
-                        >
-                          <a
-                            href={order.invoice_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <ExternalLink size={13} />
-                          </a>
-                        </Button>
-                      )}
-
-                      {order.receipt_url && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          asChild
-                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                          title="View Receipt"
-                          aria-label={`View receipt for order ${order.order_number}`}
-                        >
-                          <a
-                            href={order.receipt_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <FileText size={13} />
-                          </a>
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEdit(order);
+                        }}
+                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                        title="Edit Order"
+                        aria-label={`Edit order ${order.order_number}`}
+                      >
+                        <Pencil size={13} />
+                      </Button>
 
                       <Button
                         variant="ghost"

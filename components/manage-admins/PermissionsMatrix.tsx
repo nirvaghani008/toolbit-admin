@@ -13,10 +13,10 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
-  Loader2,
   Layers,
 } from 'lucide-react';
 import { AdminUser, ADMIN_MODULES, ModulePermission } from './types';
+import { Spinner } from '@/components/ui/spinner';
 
 interface PermissionsMatrixProps {
   user: AdminUser | null;
@@ -228,7 +228,7 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
   };
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl overflow-hidden shadow-xs">
+    <div className={`flex flex-col h-full bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl overflow-hidden shadow-xs transition-opacity duration-200 ${isSaving ? 'opacity-50 pointer-events-none select-none' : ''}`}>
       {/* User Header Summary */}
       <div className="p-5 md:p-6 border-b border-[var(--border-color)] bg-[var(--bg-elevated)] flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3.5">
@@ -486,7 +486,7 @@ export default function PermissionsMatrix({ user, onPermissionsUpdated }: Permis
           >
             {isSaving ? (
               <>
-                <Loader2 size={15} className="animate-spin" />
+                <Spinner size={15} className="text-current shrink-0" />
                 Saving...
               </>
             ) : (

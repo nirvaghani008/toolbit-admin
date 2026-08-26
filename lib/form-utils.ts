@@ -27,13 +27,13 @@ export const scrollToError = (errors: Record<string, string>) => {
         (element as any).focus();
       }
 
-      // Add visual highlight shadow
+      // Add visual border highlight pulse
       element.classList.add('saas-input-error-highlight');
 
-      // Remove class after animation completes
+      // Remove class after 3 pulses complete (0.45s x 3 = 1350ms)
       setTimeout(() => {
         element.classList.remove('saas-input-error-highlight');
-      }, 2000);
+      }, 1400);
     }
   }, 100);
 };

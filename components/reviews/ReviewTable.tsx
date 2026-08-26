@@ -14,6 +14,47 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import StatusChangeControl from '@/components/common/StatusChangeControl';
+
+// Canonical review visibility statuses. The `reviews.status` column stores
+// `pending`, `approved`/`show` and `hide`/`rejected`. We normalize to the
+// three canonical values below for the interactive status control.
+export const REVIEW_STATUS_OPTIONS = [
+  { value: 'show', label: 'Approved' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'hide', label: 'Rejected' },
+] as const;
+
+/** Collapse the aliased raw status into a canonical value. */
+export const normalizeReviewStatus = (status: string): string => {
+  const s = (status || '').toLowerCase();
+  if (s === 'show' || s === 'approved') return 'show';
+  if (s === 'pending') return 'pending';
+  return 'hide';
+};
+
+const getReviewStatusVariant = (
+  status: string
+): 'success' | 'warning' | 'destructive' | 'slate' => {
+  const s = (status || '').toLowerCase();
+  if (s === 'show' || s === 'approved') return 'success';
+  if (s === 'pending') return 'warning';
+  return 'destructive';
+};
+
+const formatReviewStatus = (status: string): string => {
+  const s = (status || '').toLowerCase();
+  if (s === 'show' || s === 'approved') return 'Approved';
+  if (s === 'pending') return 'Pending';
+  return 'Rejected';
+};
+
+const reviewStatusDotColor = (value: string): string => {
+  const v = (value || '').toLowerCase();
+  if (v === 'show' || v === 'approved') return 'bg-emerald-500';
+  if (v === 'pending') return 'bg-amber-500';
+  return 'bg-rose-500';
+};
 
 export interface Review {
   review_id: number;
@@ -45,7 +86,8 @@ interface ReviewTableProps {
   onPageChange: (page: number) => void;
   onEdit: (review: Review) => void;
   onDelete: (id: number) => void;
-  onStatusToggle: (review: Review) => void;
+  onStatusToggle?: (review: Review) => void;
+  onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
 
@@ -66,7 +108,7 @@ export function ReviewStatusBadge({
   const isApproved = s === 'approved' || s === 'show';
   const isPending = s === 'pending';
 
-  const variant = isApproved ? 'success' : isPending ? 'warning' : 'slate';
+  const variant = isApproved ? 'success' : isPending ? 'warning' : 'destructive';
   const label = isPending ? 'Pending' : isApproved ? 'Approved' : 'Rejected';
 
   if (isClickable && onClick) {
@@ -104,6 +146,7 @@ export default function ReviewTable({
   onEdit,
   onDelete,
   onStatusToggle,
+  onStatusChange,
   isLoading = false,
 }: ReviewTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
@@ -218,12 +261,25 @@ export default function ReviewTable({
                     </div>
                   </TableCell>
 
-                  <TableCell className="px-2 py-3.5 text-center">
-                    <ReviewStatusBadge
-                      status={review.status}
-                      isClickable
-                      onClick={() => onStatusToggle(review)}
-                    />
+                  <TableCell className="px-2 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                    {onStatusChange ? (
+                      <StatusChangeControl
+                        itemId={review.review_id}
+                        currentStatus={normalizeReviewStatus(review.status)}
+                        options={REVIEW_STATUS_OPTIONS}
+                        itemLabel={review.reviewer_name || toolName}
+                        onStatusChange={onStatusChange}
+                        getVariant={getReviewStatusVariant}
+                        formatStatus={formatReviewStatus}
+                        getDotColor={reviewStatusDotColor}
+                      />
+                    ) : (
+                      <ReviewStatusBadge
+                        status={review.status}
+                        isClickable={!!onStatusToggle}
+                        onClick={onStatusToggle ? () => onStatusToggle(review) : undefined}
+                      />
+                    )}
                   </TableCell>
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>

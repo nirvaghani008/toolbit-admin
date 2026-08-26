@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import StatusChangeControl from '@/components/common/StatusChangeControl';
 
 export interface TagItem {
   id?: number;
@@ -39,6 +40,8 @@ interface TagTableProps {
   onPageChange: (page: number) => void;
   onEdit: (tag: TagItem) => void;
   onDelete: (id: number) => void;
+  onStatusChange?: (tagId: number | string, newStatus: string) => Promise<void> | void;
+  availableStatuses?: readonly string[];
   isLoading?: boolean;
 }
 
@@ -59,6 +62,38 @@ export function TagStatusBadge({ status }: { status: string }) {
   return <Badge variant="default" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">{status || 'Show'}</Badge>;
 }
 
+const DEFAULT_TAG_STATUS_VALUES = ['show', 'hide', 'draft', 'archived'] as const;
+
+const formatTagStatus = (status: string) => {
+  const s = (status || '').toLowerCase();
+  if (s === 'show') return 'Show';
+  if (s === 'hide') return 'Hide';
+  if (s === 'draft') return 'Draft';
+  if (s === 'archived') return 'Archived';
+  return status || 'Show';
+};
+
+const getTagStatusVariant = (status: string) => {
+  const s = (status || '').toLowerCase();
+  if (s === 'show') return 'success';
+  if (s === 'hide') return 'destructive';
+  if (s === 'draft') return 'warning';
+  if (s === 'archived') return 'slate';
+  return 'default';
+};
+
+const getTagStatusOptions = (availableStatuses: readonly string[] | undefined, currentStatus: string) => {
+  const baseStatuses = availableStatuses?.length ? availableStatuses : DEFAULT_TAG_STATUS_VALUES;
+  const normalizedStatuses = [...baseStatuses, currentStatus]
+    .map((status) => (status || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return Array.from(new Set(normalizedStatuses)).map((value) => ({
+    value,
+    label: formatTagStatus(value)
+  }));
+};
+
 export default function TagTable({
   tags,
   totalCount,
@@ -67,6 +102,8 @@ export default function TagTable({
   onPageChange,
   onEdit,
   onDelete,
+  onStatusChange,
+  availableStatuses,
   isLoading = false
 }: TagTableProps) {
   const items = tags || [];
@@ -224,8 +261,20 @@ export default function TagTable({
                     </span>
                   </TableCell>
 
-                  <TableCell className="px-4 py-4 text-center">
-                    <TagStatusBadge status={tag.status} />
+                  <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                    {onStatusChange && tag.id != null ? (
+                      <StatusChangeControl
+                        itemId={tag.id ?? ''}
+                        currentStatus={tag.status}
+                        options={getTagStatusOptions(availableStatuses, tag.status)}
+                        itemLabel={displayName || 'this tag'}
+                        onStatusChange={onStatusChange}
+                        getVariant={getTagStatusVariant}
+                        formatStatus={formatTagStatus}
+                      />
+                    ) : (
+                      <TagStatusBadge status={tag.status} />
+                    )}
                   </TableCell>
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>

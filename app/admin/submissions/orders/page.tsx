@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
 import { Database, CheckCircle2, Clock, RefreshCw, RotateCcw, Search } from 'lucide-react';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import OrderTable from '@/components/orders/OrderTable';
 import OrderDetailsModal, { Order, Submitter } from '@/components/orders/OrderDetailsModal';
+import EditOrderModal from '@/components/orders/EditOrderModal';
 
 export default function OrdersPage() {
   const confirmDelete = useConfirm();
@@ -23,6 +24,7 @@ export default function OrdersPage() {
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const [stats, setStats] = useState({ all: 0, completed: 0, pending: 0, refunded: 0 });
   const [sparklines] = useState<Record<string, number[]>>({
@@ -72,7 +74,66 @@ export default function OrdersPage() {
       let query = supabase.from('orders').select('*', { count: 'exact' });
 
       if (searchQuery) {
-        query = query.or(`order_number.ilike.%${searchQuery}%,plan_id.ilike.%${searchQuery}%`);
+        const term = searchQuery.trim().replace(/,/g, '');
+        if (term) {
+          // Find matching user_ids by searching user names and emails from auth.users via get_admin_users
+          let matchedUserIds: string[] = [];
+          try {
+            const { data: userMatches } = await supabase.rpc('get_admin_users', {
+              p_search: term,
+              p_sort: 'created_at-desc',
+              p_limit: 100,
+              p_offset: 0,
+            });
+            if (userMatches && userMatches.length > 0) {
+              matchedUserIds = userMatches.map((u: any) => u.id).filter(Boolean);
+            }
+          } catch (e) {
+            console.warn('Error matching users by name/email:', e);
+          }
+
+          const orClauses: string[] = [
+            `order_number.ilike.%${term}%`,
+            `plan_id.ilike.%${term}%`,
+            `payment_method.ilike.%${term}%`,
+            `dodo_payment_id.ilike.%${term}%`,
+            `metadata->>tool_name.ilike.%${term}%`,
+            `metadata->>tool_url.ilike.%${term}%`,
+          ];
+
+          // Direct user_id match if term is a valid UUID
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term);
+          if (isUuid) {
+            orClauses.push(`user_id.eq.${term}`);
+          }
+
+          // Match orders belonging to users found by name or email
+          if (matchedUserIds.length > 0) {
+            orClauses.push(`user_id.in.(${matchedUserIds.slice(0, 50).join(',')})`);
+          }
+
+          const lower = term.toLowerCase();
+          if (lower.includes('launch')) {
+            orClauses.push('plan_id.ilike.%launch_tool%');
+          }
+          if (lower.includes('update')) {
+            orClauses.push('plan_id.ilike.%update_tool%');
+          }
+          if (lower.includes('guest')) {
+            orClauses.push('plan_id.ilike.%guest_post%');
+          }
+          if (lower.includes('adver')) {
+            orClauses.push('plan_id.ilike.%advertise%');
+          }
+          if (lower.includes('free')) {
+            orClauses.push('plan_id.ilike.%free_%');
+          }
+          if (lower.includes('paid')) {
+            orClauses.push('plan_id.ilike.%paid_%');
+          }
+
+          query = query.or(orClauses.join(','));
+        }
       }
       if (statusFilter !== 'all') query = query.eq('status', statusFilter);
 
@@ -145,7 +206,7 @@ export default function OrdersPage() {
       message: 'Are you sure you want to permanently delete this order? This action cannot be undone.'
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('orders').delete().eq('id', id);
       if (error) throw error;
@@ -154,7 +215,7 @@ export default function OrdersPage() {
     } catch (err) {
       console.error('Error deleting order:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -185,9 +246,9 @@ export default function OrdersPage() {
       id: 'pending',
       label: 'Pending',
       value: stats.pending,
-      iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
-      badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-      sparklineColor: 'text-[#8a652a] dark:text-amber-400',
+      iconStyle: 'text-[#5a4833] bg-[#f7f4ee] border-[#e2dcd0] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
+      badgeStyle: 'bg-[#f7f4ee] text-[#5a4833] border-[#e2dcd0] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
+      sparklineColor: 'text-[#5a4833] dark:text-amber-400',
       icon: <Clock size={17} />,
       points: sparklines.pending,
       badge: 'Pending',
@@ -196,9 +257,9 @@ export default function OrdersPage() {
       id: 'refunded',
       label: 'Refunded',
       value: stats.refunded,
-      iconStyle: 'text-[#824235] bg-[#faf2ef] border-[#edd6cf] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
-      badgeStyle: 'bg-[#faf2ef] text-[#824235] border-[#edd6cf] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-      sparklineColor: 'text-[#824235] dark:text-rose-400',
+      iconStyle: 'text-[#5c3838] bg-[#f6f1f1] border-[#e2d3d3] dark:text-rose-400 dark:bg-rose-500/10 dark:border-rose-500/20',
+      badgeStyle: 'bg-[#f6f1f1] text-[#5c3838] border-[#e2d3d3] dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
+      sparklineColor: 'text-[#5c3838] dark:text-rose-400',
       icon: <RotateCcw size={17} />,
       points: sparklines.refunded,
       badge: 'Refunded',
@@ -210,12 +271,7 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight flex items-center gap-2.5">
-            Orders & Transactions
-            <Badge variant="slate" className="rounded-full font-semibold">
-              Finance
-            </Badge>
-          </h1>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Orders & Invoices</h1>
           <p className="text-sm text-[var(--text-muted)] font-medium mt-1">
             Track all payment orders and transaction records.
           </p>
@@ -227,8 +283,8 @@ export default function OrdersPage() {
           className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           suppressHydrationWarning
         >
-          <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-          {isRefreshing ? 'Syncing...' : 'Refresh'}
+          {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+          Refresh
         </Button>
       </div>
 
@@ -290,7 +346,7 @@ export default function OrdersPage() {
         <div className="flex-1 flex gap-2">
           <Input
             type="text"
-            placeholder="Search by order number or plan..."
+            placeholder="Search by order #, tool name, plan, or user..."
             value={searchInputValue}
             onChange={(e) => setSearchInputValue(e.target.value)}
             className="flex-1 h-11 px-4 text-sm"
@@ -298,7 +354,7 @@ export default function OrdersPage() {
           />
           <Button
             type="submit"
-            className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95 shrink-0"
+            className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95 shrink-0 cursor-pointer"
             suppressHydrationWarning
           >
             Search
@@ -320,25 +376,51 @@ export default function OrdersPage() {
       </form>
 
       {/* Standardized Order Table */}
-      <OrderTable
-        orders={orders}
-        totalCount={totalCount}
-        pageSize={pageSize}
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-        onViewDetails={(order) => setSelectedOrder(order)}
-        onDelete={handleDelete}
-        isLoading={loading}
-      />
+      <div className="relative">
+        {isRefreshing && (
+          <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+            <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+              <Spinner size={20} />
+            </div>
+          </div>
+        )}
+        <OrderTable
+          orders={orders}
+          totalCount={totalCount}
+          pageSize={pageSize}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          onViewDetails={(order) => setSelectedOrder(order)}
+          onEdit={(order) => setEditingOrder(order)}
+          onDelete={handleDelete}
+          isLoading={loading}
+        />
+      </div>
 
       {/* Order Details Modal */}
       <OrderDetailsModal
         order={selectedOrder}
         isOpen={Boolean(selectedOrder)}
         onClose={() => setSelectedOrder(null)}
+        onEdit={(order) => setEditingOrder(order)}
       />
 
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
+      {/* Edit Order Modal */}
+      <EditOrderModal
+        order={editingOrder}
+        isOpen={Boolean(editingOrder)}
+        onClose={() => setEditingOrder(null)}
+        onSaveSuccess={async (updatedOrder) => {
+          setOrders((prev) =>
+            prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o))
+          );
+          if (selectedOrder?.id === updatedOrder.id) {
+            setSelectedOrder((prev) => (prev ? { ...prev, ...updatedOrder } : null));
+          }
+          await fetchStats();
+          await fetchOrders();
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import {
   ExternalLink,
   User,
@@ -23,6 +24,10 @@ import {
   Clock,
   XCircle,
   Database,
+  Copy,
+  Check,
+  Download,
+  Pencil,
 } from 'lucide-react';
 
 export interface Submitter {
@@ -60,6 +65,7 @@ interface OrderDetailsModalProps {
   order: Order | null;
   isOpen: boolean;
   onClose: () => void;
+  onEdit?: (order: Order) => void;
 }
 
 export function formatPlanLabel(planId: string): string {
@@ -128,7 +134,51 @@ export default function OrderDetailsModal({
   order,
   isOpen,
   onClose,
+  onEdit,
 }: OrderDetailsModalProps) {
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+
+  const handleCopy = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => {
+        setCopiedField((prev) => (prev === field ? null : prev));
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+    }
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!order?.invoice_url) return;
+    setIsDownloading(true);
+    setDownloadNotice(null);
+    try {
+      const response = await fetch(order.invoice_url);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const isPdf = blob.type === 'application/pdf' || order.invoice_url.toLowerCase().includes('.pdf');
+      link.download = `Invoice-${order.order_number}.${isPdf ? 'pdf' : 'html'}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      // If direct cross-origin fetch is blocked or hosted externally, open in new tab
+      window.open(order.invoice_url, '_blank', 'noopener,noreferrer');
+      setDownloadNotice('Opening invoice in new tab...');
+      setTimeout(() => setDownloadNotice(null), 4000);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   if (!order) return null;
 
   const toolName =
@@ -162,9 +212,24 @@ export default function OrderDetailsModal({
         <DialogHeader className="border-b border-[var(--border-color)]/60 pb-4 text-left">
           <div className="flex flex-wrap items-center justify-between gap-2 pr-6">
             <div className="flex items-center gap-2.5">
-              <span className="font-mono text-sm font-bold text-[var(--text-primary)]">
-                {order.order_number}
-              </span>
+              <div className="flex items-center gap-1.5 bg-[var(--bg-elevated)] px-2.5 py-1 rounded-lg border border-[var(--border-color)]/60">
+                <span className="font-mono text-sm font-bold text-[var(--text-primary)]">
+                  {order.order_number}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(order.order_number, 'order_number')}
+                  className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
+                  title={copiedField === 'order_number' ? 'Copied!' : 'Copy Order Number'}
+                  aria-label="Copy Order Number"
+                >
+                  {copiedField === 'order_number' ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
               <Badge variant="slate" className="font-semibold">
                 {formatPlanLabel(order.plan_id)}
               </Badge>
@@ -240,8 +305,21 @@ export default function OrderDetailsModal({
                 {order.submitter?.email || 'No email attached'}
               </div>
               {order.user_id && (
-                <div className="text-[10px] text-[var(--text-muted)] font-mono truncate pt-1">
-                  User ID: {order.user_id}
+                <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] font-mono truncate pt-1">
+                  <span>User ID: {order.user_id}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(order.user_id!, 'user_id')}
+                    className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer shrink-0"
+                    title={copiedField === 'user_id' ? 'Copied!' : 'Copy User ID'}
+                    aria-label="Copy User ID"
+                  >
+                    {copiedField === 'user_id' ? (
+                      <Check className="h-3 w-3 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
                 </div>
               )}
             </div>
@@ -372,23 +450,50 @@ export default function OrderDetailsModal({
         </div>
 
         <DialogFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-color)]/60 pt-4 mt-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {order.invoice_url && (
-              <Button variant="outline" size="sm" asChild className="border-zinc-200 dark:border-zinc-700">
-                <a
-                  href={order.invoice_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="gap-1.5 text-xs font-semibold"
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadInvoice}
+                  disabled={isDownloading}
+                  className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
+                  title="Download Invoice"
                 >
-                  <FileText className="h-3.5 w-3.5" />
-                  View Invoice
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </Button>
+                  {isDownloading ? <Spinner size={13} /> : <Download className="h-3.5 w-3.5" />}
+                  Download Invoice
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="border-zinc-200 dark:border-zinc-700"
+                  title="Open Invoice in New Tab"
+                >
+                  <a
+                    href={order.invoice_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gap-1.5 text-xs font-semibold"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open in New Tab
+                  </a>
+                </Button>
+              </>
             )}
+
             {order.receipt_url && (
-              <Button variant="outline" size="sm" asChild className="border-zinc-200 dark:border-zinc-700">
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="border-zinc-200 dark:border-zinc-700"
+                title="View Receipt"
+              >
                 <a
                   href={order.receipt_url}
                   target="_blank"
@@ -401,10 +506,39 @@ export default function OrderDetailsModal({
                 </a>
               </Button>
             )}
+
+            {downloadNotice && (
+              <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                {downloadNotice}
+              </span>
+            )}
           </div>
-          <Button variant="outline" size="sm" onClick={onClose} className="border-zinc-200 dark:border-zinc-700">
-            Close
-          </Button>
+
+          <div className="flex items-center gap-2">
+            {onEdit && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onEdit(order);
+                }}
+                className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit Order
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              className="border-zinc-200 dark:border-zinc-700 cursor-pointer"
+            >
+              Close
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -61,7 +61,7 @@ export default function CollapsibleSection({
     <div
       id={id}
       className={`saas-card transition-all duration-300 ${
-        hasErrors ? 'border-rose-500 ring-2 ring-rose-500/10' : ''
+        hasErrors ? 'border-rose-500/60' : ''
       } ${className}`}
     >
       <div

@@ -5,9 +5,16 @@ import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
 import KeywordTagInput from '../categories/KeywordTagInput';
 import RichTextEditor from '../common/RichTextEditor';
-import { Plus, Upload, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Upload, AlertCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { uploadImageFile } from '@/lib/image-upload';
 import { scrollToError, slugify } from '@/lib/form-utils';
+import {
+  getToolSubmissionStatus,
+  getToolSubmissionStatusOption,
+  TOOL_SUBMISSION_STATUS_OPTIONS,
+} from '@/lib/tool-submissions';
+import { TOOL_STATUS_OPTIONS } from '@/components/tools/ToolTable';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import CollapsibleSection from '../common/CollapsibleSection';
-import LoadingOverlay from '../common/LoadingOverlay';
 
 const btnNeutralClass = "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-xl transition-all shadow-2xs cursor-pointer";
 const btnProClass = "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-xl transition-all shadow-2xs cursor-pointer";
@@ -57,9 +63,18 @@ interface ToolFormProps {
   onSubmit: (data: any) => Promise<void> | void;
   onCancel: () => void;
   isSubmission?: boolean;
+  isLoading?: boolean;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
-export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission = false }: ToolFormProps) {
+export default function ToolForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isSubmission = false,
+  isLoading = false,
+  onBusyChange,
+}: ToolFormProps) {
   const info = initialData?.tool_info || {};
 
   // Detect model type: 41954 (New) has 'overview', 41889/41953 (Old) has 'fullDescription'
@@ -72,8 +87,9 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
     tool_site_url: initialData?.tool_site_url || '',
     tool_screenshot_url: initialData?.tool_screenshot_url || '',
     favicon_url: initialData?.favicon_url || '',
-    // Default to 'draft' for new records
-    status: initialData?.status || 'draft',
+    status: isSubmission
+      ? getToolSubmissionStatus(initialData?.status)
+      : initialData?.status || 'hide',
     full_name: initialData?.full_name || '',
     business_email: initialData?.business_email || '',
     is_verified: initialData?.is_verified ?? false,
@@ -167,6 +183,13 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
   const faviconFileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [isRichTextUploading, setIsRichTextUploading] = useState(false);
+  const localBusy = isSubmitting || uploadingScreenshot || uploadingFavicon || isRichTextUploading;
+  const isBusy = localBusy || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   const handleScreenshotUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -240,7 +263,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
         tool_site_url: initialData.tool_site_url || '',
         tool_screenshot_url: initialData.tool_screenshot_url || '',
         favicon_url: initialData.favicon_url || '',
-        status: initialData.status || 'draft',
+        status: initialData.status || 'hide',
         full_name: initialData.full_name || '',
         business_email: initialData.business_email || '',
         is_verified: initialData.is_verified ?? false,
@@ -795,16 +818,18 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
   const labelClass = "saas-label";
   const inputClass = "saas-input";
   const areaClass = "saas-textarea";
+  const submissionStatusOption = isSubmission ? getToolSubmissionStatusOption(formData.status) : null;
 
   return (
     <form
       onSubmit={handleSubmit}
+      noValidate
       onKeyDown={(e) => {
         if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
           e.preventDefault();
         }
       }}
-      className="saas-form space-y-8 pb-10"
+      className={`saas-form space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}
     >
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
@@ -814,11 +839,11 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
           </AlertTitle>
           <AlertDescription>
             {errors.submit ? (
-              <p className="font-semibold uppercase tracking-wider">{errors.submit}</p>
+              <p className="font-semibold">{errors.submit}</p>
             ) : (
               <p>
                 There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:{' '}
-                <span className="font-bold uppercase tracking-tight">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </p>
@@ -839,7 +864,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
             <Badge
               variant={
                 isSubmission
-                  ? (formData.status === 'approved' ? 'success' : formData.status === 'rejected' ? 'destructive' : 'warning')
+                  ? submissionStatusOption!.variant
                   : (
                     formData.status === 'show' || formData.status === 'approved' ? 'success' :
                     formData.status === 'show:invalid' || formData.status === 'draft' || formData.status === 'pending' ? 'warning' :
@@ -851,7 +876,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
               className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider"
             >
               {isSubmission
-                ? (formData.status === 'approved' ? 'Approved' : formData.status === 'rejected' ? 'Rejected' : 'Pending')
+                ? submissionStatusOption!.label
                 : (
                   formData.status === 'show' ? 'Show' :
                   formData.status === 'show:invalid' ? 'Show: Invalid' :
@@ -873,22 +898,22 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
             <div className="space-y-1">
               <label className={labelClass}>Tool Name <span className="saas-label-required">*</span></label>
               <Input name="toolName" value={formData.toolName || ''} onChange={handleChange} placeholder="toolName" className={errors.toolName ? 'saas-input-error' : ''} required />
-              {errors.toolName && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.toolName}</p>}
+              {errors.toolName && <p className="saas-error-message">{errors.toolName}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Tagline <span className="saas-label-required">*</span></label>
               <Input name="tagline" value={formData.tagline || ''} onChange={handleChange} placeholder="tagline" className={errors.tagline ? 'saas-input-error' : ''} />
-              {errors.tagline && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tagline}</p>}
+              {errors.tagline && <p className="saas-error-message">{errors.tagline}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Slug <span className="saas-label-required">*</span></label>
               <Input name="tool_url" value={formData.tool_url || ''} onChange={handleChange} placeholder="slug" className={`font-mono text-sm ${errors.tool_url ? 'saas-input-error' : ''}`} required />
-              {errors.tool_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tool_url}</p>}
+              {errors.tool_url && <p className="saas-error-message">{errors.tool_url}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Tool Site Url <span className="saas-label-required">*</span></label>
               <Input name="tool_site_url" value={formData.tool_site_url || ''} onChange={handleChange} placeholder="tool_site_url" className={errors.tool_site_url ? 'saas-input-error' : ''} required />
-              {errors.tool_site_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tool_site_url}</p>}
+              {errors.tool_site_url && <p className="saas-error-message">{errors.tool_site_url}</p>}
             </div>
           </div>
 
@@ -924,13 +949,13 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
             <div className="space-y-1">
               <label className={labelClass}>Short Description <span className="saas-label-required">*</span></label>
               <Textarea name="shortDescription" value={formData.shortDescription || ''} onChange={handleChange} placeholder="shortDescription" className={errors.shortDescription ? 'saas-input-error' : ''} rows={3} />
-              {errors.shortDescription && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.shortDescription}</p>}
+              {errors.shortDescription && <p className="saas-error-message">{errors.shortDescription}</p>}
             </div>
           )}
           <div className="space-y-1">
             <label className={labelClass}>{modelType === 'new' ? 'Overview' : 'Full Description'} <span className="saas-label-required">*</span></label>
             {modelType === 'new' ? (
-              <div className={`${errors.overview ? 'p-1 bg-rose-500/10 border border-rose-500/20 rounded-xl' : ''}`}>
+              <div className={errors.overview ? 'saas-error-wrapper' : ''}>
                 <RichTextEditor
                   content={formData.overview}
                   onChange={(html) => {
@@ -944,10 +969,11 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   placeholder="overview"
                   showFormatButton={false}
                   name="overview"
+                  onBusyChange={setIsRichTextUploading}
                 />
               </div>
             ) : (
-              <div className={`${errors.fullDescription ? 'p-1 bg-rose-500/10 border border-rose-500/20 rounded-xl' : ''}`}>
+              <div className={errors.fullDescription ? 'saas-error-wrapper' : ''}>
                 <RichTextEditor
                   content={formData.fullDescription}
                   onChange={(html) => {
@@ -961,10 +987,11 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   placeholder="fullDescription"
                   showFormatButton={false}
                   name="fullDescription"
+                  onBusyChange={setIsRichTextUploading}
                 />
               </div>
             )}
-            {(errors.overview || errors.fullDescription) && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.overview || errors.fullDescription}</p>}
+            {(errors.overview || errors.fullDescription) && <p className="saas-error-message">{errors.overview || errors.fullDescription}</p>}
           </div>
         </div>
       </CollapsibleSection>
@@ -981,11 +1008,18 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
               <label className={labelClass}>Categories <span className="saas-label-required">*</span></label>
-              <div className={`relative focus-within:z-50 ${errors.categories ? 'p-1 bg-rose-500/10 border border-rose-500/20 rounded-xl' : ''}`}>
+              <div className={`relative focus-within:z-50 ${errors.categories ? 'saas-error-wrapper' : ''}`}>
                 <KeywordTagInput
                   selectedKeywords={selectedCategories}
                   onKeywordsChange={(val) => {
                     setSelectedCategories(val);
+                    if (errors.categories) setErrors(prev => {
+                      const n = { ...prev };
+                      delete n.categories;
+                      return n;
+                    });
+                  }}
+                  onClearError={() => {
                     if (errors.categories) setErrors(prev => {
                       const n = { ...prev };
                       delete n.categories;
@@ -997,15 +1031,22 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   name="categories"
                 />
               </div>
-              {errors.categories && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.categories}</p>}
+              {errors.categories && <p className="saas-error-message">{errors.categories}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Tags <span className="saas-label-required">*</span></label>
-              <div className={`relative focus-within:z-40 ${errors.tags ? 'p-1 bg-rose-500/10 border border-rose-500/20 rounded-xl' : ''}`}>
+              <div className={`relative focus-within:z-40 ${errors.tags ? 'saas-error-wrapper' : ''}`}>
                 <KeywordTagInput
                   selectedKeywords={selectedTags}
                   onKeywordsChange={(val) => {
                     setSelectedTags(val);
+                    if (errors.tags) setErrors(prev => {
+                      const n = { ...prev };
+                      delete n.tags;
+                      return n;
+                    });
+                  }}
+                  onClearError={() => {
                     if (errors.tags) setErrors(prev => {
                       const n = { ...prev };
                       delete n.tags;
@@ -1017,7 +1058,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   name="tags"
                 />
               </div>
-              {errors.tags && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tags}</p>}
+              {errors.tags && <p className="saas-error-message">{errors.tags}</p>}
             </div>
           </div>
           <div className="space-y-1">
@@ -1080,7 +1121,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   title="Browse & upload screenshot to CDN"
                 >
                   {uploadingScreenshot ? (
-                    <Loader2 size={16} className="animate-spin text-zinc-500" />
+                    <Spinner size={16} className="text-zinc-500" />
                   ) : (
                     <Upload size={16} />
                   )}
@@ -1093,7 +1134,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   className="hidden"
                 />
               </div>
-              {errors.tool_screenshot_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.tool_screenshot_url}</p>}
+              {errors.tool_screenshot_url && <p className="saas-error-message">{errors.tool_screenshot_url}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Favicon Url</label>
@@ -1114,7 +1155,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   title="Browse & upload favicon to CDN"
                 >
                   {uploadingFavicon ? (
-                    <Loader2 size={16} className="animate-spin text-zinc-500" />
+                    <Spinner size={16} className="text-zinc-500" />
                   ) : (
                     <Upload size={16} />
                   )}
@@ -1127,33 +1168,23 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   className="hidden"
                 />
               </div>
-              {errors.favicon_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.favicon_url}</p>}
+              {errors.favicon_url && <p className="saas-error-message">{errors.favicon_url}</p>}
             </div>
             <div className="space-y-1">
-              <label className={labelClass}>Status</label>
+              <label className={labelClass}>Visibility Status</label>
               <Select
                 name="status"
                 value={formData.status}
                 onChange={(val) => setFormData(prev => ({ ...prev, status: val }))}
               >
                 {isSubmission ? (
-                  <>
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                  </>
+                  TOOL_SUBMISSION_STATUS_OPTIONS.map((status) => (
+                    <option key={status.value} value={status.value}>{status.label}</option>
+                  ))
                 ) : (
-                  <>
-                    <option value="show">Show</option>
-                    <option value="show:invalid">Show: Invalid</option>
-                    <option value="show:error">Show: Error</option>
-                    <option value="show:inactive">Show: Inactive</option>
-                    <option value="hide">Hide</option>
-                    <option value="draft">Draft</option>
-                    <option value="archived">Archived</option>
-                    <option value="pending">Pending</option>
-                    <option value="error">Error</option>
-                  </>
+                  TOOL_STATUS_OPTIONS.map((status) => (
+                    <option key={status.value} value={status.value}>{status.label}</option>
+                  ))
                 )}
               </Select>
             </div>
@@ -1177,10 +1208,11 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
 
       {/* 4. Pricing & Plans */}
       <CollapsibleSection
+        key={formData.hasPricing ? 'pricing-enabled' : 'pricing-disabled'}
         id="pricing-architecture"
         title="Pricing Architecture"
         description="Define monetization and subscription models."
-        defaultOpen={!isSubmission}
+        defaultOpen={formData.hasPricing}
         hasErrors={false}
         headerActions={
           <div className="flex items-center gap-3">
@@ -1297,8 +1329,11 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                     <p className="text-xs text-[var(--text-muted)] italic">No items added yet</p>
                   )}
                   {plans.map((plan) => (
-                    <div key={plan.id} className="p-5 border border-[var(--border-color)] rounded-2xl bg-[var(--bg-elevated)]/30 space-y-6 relative group shadow-sm transition-all hover:border-[var(--border-color)]/80">
-                      <button type="button" onClick={() => removePlan(plan.id)} className="absolute top-4 right-4 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 px-3 py-1.5 rounded-lg font-bold opacity-0 group-hover:opacity-100 transition-all uppercase tracking-wider cursor-pointer">Remove Plan</button>
+                    <div key={plan.id} className="p-5 border border-[var(--border-color)] rounded-2xl bg-[var(--bg-elevated)]/30 space-y-6 shadow-sm transition-all hover:border-[var(--border-color)]/80">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Plan</span>
+                        <button type="button" onClick={() => removePlan(plan.id)} className="shrink-0 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 px-3 py-1.5 rounded-lg font-bold transition-colors uppercase tracking-wider cursor-pointer">Remove Plan</button>
+                      </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="space-y-1">
@@ -1493,8 +1528,11 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                   <p className="text-xs text-[var(--text-muted)] italic">No items added yet</p>
                 )}
                 {faqs.map((faq) => (
-                  <div key={faq.id} className="p-6 border border-[var(--border-color)] rounded-xl bg-[var(--bg-elevated)]/30 space-y-3 relative group">
-                    <button type="button" onClick={() => removeFaq(faq.id)} className="absolute top-4 right-4 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 px-3 py-1.5 rounded-lg font-bold opacity-0 group-hover:opacity-100 transition-all uppercase tracking-wider cursor-pointer">Delete</button>
+                  <div key={faq.id} className="p-6 border border-[var(--border-color)] rounded-xl bg-[var(--bg-elevated)]/30 space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">FAQ</span>
+                      <button type="button" onClick={() => removeFaq(faq.id)} className="shrink-0 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 px-3 py-1.5 rounded-lg font-bold transition-colors uppercase tracking-wider cursor-pointer">Delete</button>
+                    </div>
                     <Input value={faq.question || ''} onChange={(e) => updateFaq(faq.id, 'question', e.target.value)} placeholder="question" />
                     <Textarea value={faq.answer || ''} onChange={(e) => updateFaq(faq.id, 'answer', e.target.value)} placeholder="answer" rows={2} />
                   </div>
@@ -1649,51 +1687,51 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
             <div className="space-y-1">
               <label className={labelClass}>Website / Homepage</label>
               <Input name="homepage" value={formData.homepage || ''} onChange={handleChange} placeholder="https://..." className={errors.homepage ? 'saas-input-error' : ''} />
-              {errors.homepage && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.homepage}</p>}
+              {errors.homepage && <p className="saas-error-message">{errors.homepage}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Pricing Page</label>
               <Input name="pricing_url" value={formData.pricing_url || ''} onChange={handleChange} placeholder="https://..." className={errors.pricing_url ? 'saas-input-error' : ''} />
-              {errors.pricing_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.pricing_url}</p>}
+              {errors.pricing_url && <p className="saas-error-message">{errors.pricing_url}</p>}
             </div>
             {modelType === 'old' && (
               <>
                 <div className="space-y-1">
                   <label className={labelClass}>Documentation</label>
                   <Input name="docs" value={formData.docs || ''} onChange={handleChange} placeholder="https://..." className={errors.docs ? 'saas-input-error' : ''} />
-                  {errors.docs && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.docs}</p>}
+                  {errors.docs && <p className="saas-error-message">{errors.docs}</p>}
                 </div>
                 <div className="space-y-1">
                   <label className={labelClass}>Blog</label>
                   <Input name="blog" value={formData.blog || ''} onChange={handleChange} placeholder="https://..." className={errors.blog ? 'saas-input-error' : ''} />
-                  {errors.blog && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.blog}</p>}
+                  {errors.blog && <p className="saas-error-message">{errors.blog}</p>}
                 </div>
                 <div className="space-y-1">
                   <label className={labelClass}>Login Page</label>
                   <Input name="login" value={formData.login || ''} onChange={handleChange} placeholder="https://..." className={errors.login ? 'saas-input-error' : ''} />
-                  {errors.login && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.login}</p>}
+                  {errors.login && <p className="saas-error-message">{errors.login}</p>}
                 </div>
               </>
             )}
             <div className="space-y-1">
               <label className={labelClass}>Contact Page</label>
               <Input name="contact" value={formData.contact || ''} onChange={handleChange} placeholder="https://..." className={errors.contact ? 'saas-input-error' : ''} />
-              {errors.contact && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.contact}</p>}
+              {errors.contact && <p className="saas-error-message">{errors.contact}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Support / Help</label>
               <Input name="support" value={formData.support || ''} onChange={handleChange} placeholder="https://..." className={errors.support ? 'saas-input-error' : ''} />
-              {errors.support && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.support}</p>}
+              {errors.support && <p className="saas-error-message">{errors.support}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>iOS App URL</label>
               <Input name="ios" value={formData.ios || ''} onChange={handleChange} placeholder="https://apps.apple.com/..." className={errors.ios ? 'saas-input-error' : ''} />
-              {errors.ios && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.ios}</p>}
+              {errors.ios && <p className="saas-error-message">{errors.ios}</p>}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Android App URL</label>
               <Input name="android" value={formData.android || ''} onChange={handleChange} placeholder="https://play.google.com/..." className={errors.android ? 'saas-input-error' : ''} />
-              {errors.android && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.android}</p>}
+              {errors.android && <p className="saas-error-message">{errors.android}</p>}
             </div>
           </div>
 
@@ -1740,7 +1778,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                             <Select
                               value={social.platform || ''}
                               onChange={(val) => updateSocial(social.id, 'platform', val)}
-                              className={`sm:w-40 ${hasPlatformError ? 'border-rose-500 ring-2 ring-rose-500/10' : ''}`}
+                              className={`sm:w-40 ${hasPlatformError ? 'saas-input-error' : ''}`}
                             >
                               <option value="">platform</option>
                               {availablePlatforms.map(p => (
@@ -1758,7 +1796,7 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
                           <button type="button" onClick={() => removeSocial(social.id)} className="hidden sm:block p-2 text-rose-500 opacity-30 group-hover:opacity-100 transition-all cursor-pointer">✕</button>
                         </div>
                         {(hasPlatformError || hasUrlError) && (
-                          <p className="text-[10px] font-bold text-rose-500 uppercase tracking-wider pl-1">
+                          <p className="saas-error-message pl-1">
                             {errors[`socialLinks_${index}_platform`] || errors[`socialLinks_${index}_url`]}
                           </p>
                         )}
@@ -1785,20 +1823,26 @@ export default function ToolForm({ initialData, onSubmit, onCancel, isSubmission
           type="button"
           variant="outline"
           onClick={onCancel}
+          disabled={isBusy}
           className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting}
+          disabled={!isDirty || isBusy}
           className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting ? 'Processing...' : (initialData ? 'Update Tool' : 'Create Tool')}
+          {isBusy ? (
+            <>
+              <Spinner size={16} className="text-current shrink-0" />
+              <span>{initialData ? 'Updating Tool...' : 'Creating Tool...'}</span>
+            </>
+          ) : (
+            initialData ? 'Update Tool' : 'Create Tool'
+          )}
         </Button>
       </div>
-
-      {isSubmitting && <LoadingOverlay message="Synchronizing with database..." />}
     </form>
   );
 }

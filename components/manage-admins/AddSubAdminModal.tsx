@@ -17,10 +17,10 @@ import {
   UserPlus,
   Eye,
   EyeOff,
-  Loader2,
   AlertCircle,
 } from 'lucide-react';
 import { ADMIN_MODULES, ModulePermission } from './types';
+import { Spinner } from '@/components/ui/spinner';
 
 interface AddSubAdminModalProps {
   isOpen: boolean;
@@ -192,7 +192,7 @@ export default function AddSubAdminModal({ isOpen, onClose, onSuccess }: AddSubA
         </DialogHeader>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} noValidate className={`p-6 space-y-4 transition-opacity duration-200 ${loading ? 'opacity-50 pointer-events-none select-none' : ''}`}>
           {apiError && (
             <div className="p-3.5 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-2xl flex items-start gap-3 animate-in shake duration-300">
               <AlertCircle className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" size={16} />
@@ -212,11 +212,11 @@ export default function AddSubAdminModal({ isOpen, onClose, onSuccess }: AddSubA
               value={fullName}
               onChange={(e) => handleFieldChange('fullName', e.target.value)}
               className={`h-11 text-sm shadow-xs ${
-                fieldErrors.fullName ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''
+                fieldErrors.fullName ? 'saas-input-error' : ''
               }`}
             />
             {fieldErrors.fullName && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertCircle size={11} /> {fieldErrors.fullName}
               </p>
             )}
@@ -234,11 +234,11 @@ export default function AddSubAdminModal({ isOpen, onClose, onSuccess }: AddSubA
               value={email}
               onChange={(e) => handleFieldChange('email', e.target.value)}
               className={`h-11 text-sm shadow-xs ${
-                fieldErrors.email ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''
+                fieldErrors.email ? 'saas-input-error' : ''
               }`}
             />
             {fieldErrors.email && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertCircle size={11} /> {fieldErrors.email}
               </p>
             )}
@@ -257,7 +257,7 @@ export default function AddSubAdminModal({ isOpen, onClose, onSuccess }: AddSubA
                 value={password}
                 onChange={(e) => handleFieldChange('password', e.target.value)}
                 className={`h-11 pr-11 text-sm shadow-xs ${
-                  fieldErrors.password ? 'border-rose-500 focus-visible:ring-rose-500/20' : ''
+                  fieldErrors.password ? 'saas-input-error' : ''
                 }`}
               />
               <button
@@ -269,7 +269,7 @@ export default function AddSubAdminModal({ isOpen, onClose, onSuccess }: AddSubA
               </button>
             </div>
             {fieldErrors.password ? (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertCircle size={11} /> {fieldErrors.password}
               </p>
             ) : (
@@ -311,7 +311,7 @@ export default function AddSubAdminModal({ isOpen, onClose, onSuccess }: AddSubA
             >
               {loading ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" />
+                  <Spinner size={16} className="text-current shrink-0" />
                   Creating Account...
                 </>
               ) : (

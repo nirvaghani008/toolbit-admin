@@ -15,6 +15,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import StatusChangeControl from '@/components/common/StatusChangeControl';
+
+// Real status values present in the `models` table.
+export const MODEL_STATUS_OPTIONS = [
+  { value: 'show', label: 'Show' },
+  { value: 'hide', label: 'Hide' },
+  { value: 'delete', label: 'Delete' },
+] as const;
 
 export interface Model {
   id: number;
@@ -47,7 +55,10 @@ interface ModelTableProps {
   onPageChange: (page: number) => void;
   onEdit: (model: Model) => void;
   onDelete: (id: number) => void;
+  onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 function ModelLogo({ model }: { model: Model }) {
@@ -113,7 +124,10 @@ export default function ModelTable({
   onPageChange,
   onEdit,
   onDelete,
-  isLoading = false
+  onStatusChange,
+  isLoading = false,
+  canEdit = true,
+  canDelete = true,
 }: ModelTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
   const [previewModel, setPreviewModel] = useState<Model | null>(null);
@@ -125,6 +139,7 @@ export default function ModelTable({
     if (s === 'show:error' || s === 'error') return 'destructive';
     if (s === 'show:inactive') return 'info';
     if (s === 'hide') return 'slate';
+    if (s === 'delete') return 'destructive';
     if (s === 'draft') return 'warning';
     if (s === 'archived') return 'violet';
     return 'default';
@@ -136,6 +151,7 @@ export default function ModelTable({
     if (s === 'show:invalid') return 'Show: Invalid';
     if (s === 'show:error') return 'Show: Error';
     if (s === 'hide') return 'Hide';
+    if (s === 'delete') return 'Delete';
     if (s === 'draft') return 'Draft';
     if (s === 'archived') return 'Archived';
     if (s === 'show:inactive') return 'Show: Inactive';
@@ -338,35 +354,54 @@ export default function ModelTable({
                   </TableCell>
 
                   {/* 7. Status */}
-                  <TableCell className="px-3 py-4 text-center">
-                    <Badge variant={getStatusBadgeVariant(model.status)} className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">
-                      {formatStatus(model.status)}
-                    </Badge>
+                  <TableCell className="px-3 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                    {onStatusChange && canEdit ? (
+                      <StatusChangeControl
+                        itemId={model.id}
+                        currentStatus={model.status}
+                        options={MODEL_STATUS_OPTIONS}
+                        itemLabel={model.name || 'this model'}
+                        onStatusChange={onStatusChange}
+                        getVariant={getStatusBadgeVariant}
+                        formatStatus={formatStatus}
+                      />
+                    ) : (
+                      <Badge variant={getStatusBadgeVariant(model.status)} className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">
+                        {formatStatus(model.status)}
+                      </Badge>
+                    )}
                   </TableCell>
 
                   {/* 8. Manage Actions */}
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(model)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Record"
-                        aria-label={`Edit model ${model.name}`}
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(model.id)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Record"
-                        aria-label={`Delete model ${model.name}`}
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEdit(model)}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Record"
+                          aria-label={`Edit model ${model.name}`}
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(model.id)}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Record"
+                          aria-label={`Delete model ${model.name}`}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+                      {!canEdit && !canDelete && (
+                        <span className="text-[10px] text-[var(--text-muted)] italic">Read only</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

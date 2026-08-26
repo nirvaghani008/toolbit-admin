@@ -13,7 +13,7 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
 import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -267,12 +267,25 @@ export default function ContactsPage() {
 
     setIsActionLoading(true);
     try {
+      // Stamp replied_at whenever a reply is actually made, regardless of the
+      // visibility status (Replied or Hide). Set the timestamp for a new or
+      // changed reply, preserve an existing timestamp on status-only edits, and
+      // only clear it when there is no reply message at all.
+      const trimmedReply = replyText.trim();
+      const isNewOrChangedReply =
+        !!trimmedReply && replyText !== (selectedContact.reply_message ?? '');
+      const repliedAt = trimmedReply
+        ? isNewOrChangedReply
+          ? new Date().toISOString()
+          : selectedContact.replied_at ?? new Date().toISOString()
+        : null;
+
       const { error } = await supabase
         .from('contacts')
         .update({
           reply_message: replyText,
           status: selectedStatus,
-          replied_at: selectedStatus === 'replied' ? new Date().toISOString() : null,
+          replied_at: repliedAt,
         })
         .eq('contact_id', selectedContact.contact_id);
 
@@ -295,7 +308,7 @@ export default function ContactsPage() {
         'Are you sure you want to permanently delete this support inquiry? This action cannot be undone.',
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('contacts').delete().eq('contact_id', id);
       if (error) throw error;
@@ -304,7 +317,7 @@ export default function ContactsPage() {
     } catch (err) {
       console.error('Error deleting inquiry:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -327,8 +340,8 @@ export default function ContactsPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
           </div>
         )}
@@ -465,17 +478,26 @@ export default function ContactsPage() {
             </div>
           </form>
 
-          {/* Standardized Contact Table */}
-          <ContactTable
-            contacts={contacts}
-            totalCount={totalCount}
-            pageSize={pageSize}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onSelectContact={openReply}
-            onDelete={handleDelete}
-            isLoading={loading}
-          />
+          {/* Contact Inquiries Table Container */}
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
+            <ContactTable
+              contacts={contacts}
+              totalCount={totalCount}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onSelectContact={openReply}
+              onDelete={handleDelete}
+              isLoading={loading}
+            />
+          </div>
         </>
       ) : (
         /* Standardized Contact Reply & Details View */
@@ -494,10 +516,6 @@ export default function ContactsPage() {
           replyError={replyError}
         />
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }
-
-

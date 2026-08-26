@@ -3,23 +3,27 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { z } from 'zod';
 import { scrollToError } from '@/lib/form-utils';
+import { useDebounce } from '@/lib/hooks/use-debounce';
 import CollapsibleSection from '../common/CollapsibleSection';
 import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
+import { DateField } from '@/components/ui/date-field';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 
 interface AdvertiseFormProps {
   initialData?: any;
   onSubmit: (data: any) => Promise<void> | void;
   onCancel: () => void;
   isLoading?: boolean;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
-export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoading = false }: AdvertiseFormProps) {
+export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoading = false, onBusyChange }: AdvertiseFormProps) {
   const [formData, setFormData] = useState({
     tool_id: '',
     tool_site_url: '',
@@ -35,6 +39,11 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isBusy = isSubmitting || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   // Tool search & lookup state from Supabase ai_tools table
   const [toolsList, setToolsList] = useState<any[]>([]);
@@ -165,26 +174,27 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
     }
   }, [getToolName]);
 
-  // Search when typing
+  // Debounce the search term so we only query the database once the user pauses
+  // typing, instead of firing a request on every keystroke.
+  const debouncedToolSearch = useDebounce(toolSearch, 350);
+
+  // Run the search when the debounced term settles.
   useEffect(() => {
+    // Skip the lookup when the value change came from selecting a tool or
+    // hydrating initial data (not from the user actively typing).
     if (isSelectionRef.current) {
       isSelectionRef.current = false;
       return;
     }
 
-    const query = toolSearch.trim();
+    const query = debouncedToolSearch.trim();
     if (!query) {
       setToolsList([]);
-      setIsDropdownOpen(false);
       return;
     }
 
-    const timer = setTimeout(() => {
-      fetchTools(query);
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [toolSearch, fetchTools]);
+    fetchTools(query);
+  }, [debouncedToolSearch, fetchTools]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -373,7 +383,7 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
   const labelClass = "saas-label";
 
   return (
-    <form onSubmit={handleSubmit} className="saas-form space-y-8 pb-10">
+    <form onSubmit={handleSubmit} noValidate className={`saas-form space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}>
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertTriangle className="h-4 w-4" />
@@ -386,7 +396,7 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
             ) : (
               <span>
                 There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:
-                <span className="font-bold ml-1 uppercase tracking-tight">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </span>
@@ -432,7 +442,7 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
                     setToolsList([]);
                   }
                 }}
-                className={errors.tool_id ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+                className={errors.tool_id ? 'saas-input-error' : ''}
                 placeholder="Search and select tool from database..."
                 required
                 suppressHydrationWarning
@@ -444,7 +454,7 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
               <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] shadow-2xl custom-scrollbar p-0 overflow-hidden">
                 {toolsLoading ? (
                   <div className="px-4 py-3 text-xs font-semibold text-[var(--text-muted)] animate-pulse text-center flex items-center justify-center gap-2">
-                    <Loader2 size={14} className="animate-spin text-indigo-500" /> Searching tools...
+                    <Spinner size={14} className="text-zinc-600 dark:text-zinc-400" /> Searching tools...
                   </div>
                 ) : filteredTools.length > 0 ? (
                   filteredTools.map((t) => (
@@ -474,7 +484,7 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
             )}
 
             {errors.tool_id && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.tool_id}
               </p>
             )}
@@ -487,13 +497,13 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
               name="tool_site_url"
               value={formData.tool_site_url}
               onChange={handleChange}
-              className={errors.tool_site_url ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.tool_site_url ? 'saas-input-error' : ''}
               placeholder="https://toolbit.ai"
               required
               suppressHydrationWarning
             />
             {errors.tool_site_url && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.tool_site_url}
               </p>
             )}
@@ -514,34 +524,30 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
               <label className={labelClass}>Start Date <span className="saas-label-required">*</span></label>
-              <Input
+              <DateField
                 name="start_date"
-                type="date"
                 value={formData.start_date}
-                onChange={handleChange}
-                className={errors.start_date ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+                onChange={(value) => handleChange({ target: { name: 'start_date', value } } as React.ChangeEvent<HTMLInputElement>)}
+                error={!!errors.start_date}
                 required
-                suppressHydrationWarning
               />
               {errors.start_date && (
-                <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+                <p className="saas-error-message">
                   <AlertTriangle size={11} /> {errors.start_date}
                 </p>
               )}
             </div>
             <div className="space-y-1">
               <label className={labelClass}>End Date <span className="saas-label-required">*</span></label>
-              <Input
+              <DateField
                 name="end_date"
-                type="date"
                 value={formData.end_date}
-                onChange={handleChange}
-                className={errors.end_date ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+                onChange={(value) => handleChange({ target: { name: 'end_date', value } } as React.ChangeEvent<HTMLInputElement>)}
+                error={!!errors.end_date}
                 required
-                suppressHydrationWarning
               />
               {errors.end_date && (
-                <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+                <p className="saas-error-message">
                   <AlertTriangle size={11} /> {errors.end_date}
                 </p>
               )}
@@ -615,7 +621,7 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
               ))}
             </div>
             {errors.featured_type && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.featured_type}
               </p>
             )}
@@ -672,18 +678,20 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
           type="button"
           variant="outline"
           onClick={onCancel}
+          disabled={isBusy}
           className="h-10 px-5 font-bold text-xs rounded-xl border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting || isLoading}
-          className="h-10 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold text-xs rounded-xl shadow-xs active:scale-95"
+          disabled={!isDirty || isBusy}
+          className="h-10 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold text-xs rounded-xl shadow-xs active:scale-95 cursor-pointer"
         >
-          {isSubmitting || isLoading ? (
+          {isBusy ? (
             <span className="flex items-center gap-2">
-              <Loader2 size={14} className="animate-spin" /> Saving...
+              <Spinner size={14} className="text-current shrink-0" />
+              <span>{initialData ? 'Updating...' : 'Creating...'}</span>
             </span>
           ) : (
             initialData ? 'Update Advertise Tool' : 'Create Advertise Placement'

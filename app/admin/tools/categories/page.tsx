@@ -5,9 +5,10 @@ import CategoryTable from '@/components/categories/CategoryTable';
 import CategoryForm from '@/components/categories/CategoryForm';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
-import { Folder, Eye, EyeOff, FileText, Archive, RefreshCw } from 'lucide-react';
+import { Folder, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { Button } from '@/components/ui/button';
@@ -21,16 +22,12 @@ export default function CategoriesPage() {
   const [stats, setStats] = useState({
     all: 0,
     show: 0,
-    hide: 0,
-    draft: 0,
-    archived: 0
+    hide: 0
   });
   const [sparklines, setSparklines] = useState<Record<string, number[]>>({
     all: [0, 0, 0, 0, 0, 0, 0],
     show: [0, 0, 0, 0, 0, 0, 0],
-    hide: [0, 0, 0, 0, 0, 0, 0],
-    draft: [0, 0, 0, 0, 0, 0, 0],
-    archived: [0, 0, 0, 0, 0, 0, 0]
+    hide: [0, 0, 0, 0, 0, 0, 0]
   });
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -40,7 +37,7 @@ export default function CategoriesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'show' | 'hide' | 'draft' | 'archived'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'show' | 'hide'>('all');
   const [sortBy, setSortBy] = useState<'updated_at' | 'created_at' | 'name'>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showForm, setShowForm] = useState(false);
@@ -82,7 +79,7 @@ export default function CategoriesPage() {
     try {
       const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
         'categories',
-        ['show', 'hide', 'draft', 'archived'],
+        ['show', 'hide'],
         'updated_at',
         7
       );
@@ -90,17 +87,13 @@ export default function CategoriesPage() {
       setStats({
         all: counts.total || 0,
         show: counts.show || 0,
-        hide: counts.hide || 0,
-        draft: counts.draft || 0,
-        archived: counts.archived || 0
+        hide: counts.hide || 0
       });
 
       setSparklines({
         all: trends['all'] || [],
         show: trends['show'] || [],
-        hide: trends['hide'] || [],
-        draft: trends['draft'] || [],
-        archived: trends['archived'] || []
+        hide: trends['hide'] || []
       });
     } catch (err: any) {
       console.warn('Error fetching stats:', err?.message || err);
@@ -248,13 +241,37 @@ export default function CategoriesPage() {
     }
   };
 
+  const handleStatusChange = async (categoryId: number | string, newStatus: string) => {
+    setIsRefreshing(true);
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', categoryId);
+
+      if (error) throw error;
+
+      await fetchCategories(true);
+    } catch (err: any) {
+      const errorMsg = err?.message || err?.error_description || 'Unknown error';
+      console.error('Error updating category status:', errorMsg, err?.details || '', err?.hint || '');
+      alert('Failed to update category status: ' + errorMsg);
+      throw err;
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleDeleteCategory = async (id: number) => {
     const confirmed = await confirmDelete({
       title: 'Delete Category',
       message: 'Are you sure you want to permanently delete this category? This action cannot be undone.'
     });
     if (!confirmed) return;
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('categories').delete().eq('id', id);
       if (error) throw error;
@@ -264,7 +281,7 @@ export default function CategoriesPage() {
     } catch (err) {
       console.error('Error deleting category:', err);
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -289,8 +306,8 @@ export default function CategoriesPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
             <Button
               onClick={() => openForm()}
@@ -306,7 +323,7 @@ export default function CategoriesPage() {
       {!showForm ? (
         <>
           {/* Stats Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {[
               {
                 id: 'all',
@@ -340,28 +357,6 @@ export default function CategoriesPage() {
                 icon: <EyeOff size={17} />,
                 points: sparklines.hide,
                 badge: 'Hidden'
-              },
-              {
-                id: 'draft',
-                label: 'Draft',
-                value: stats.draft,
-                iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
-                badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-                sparklineColor: 'text-[#8a652a] dark:text-amber-400',
-                icon: <FileText size={17} />,
-                points: sparklines.draft,
-                badge: 'Draft'
-              },
-              {
-                id: 'archived',
-                label: 'Archived',
-                value: stats.archived,
-                iconStyle: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
-                badgeStyle: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
-                sparklineColor: 'text-[#6e5e50] dark:text-violet-400',
-                icon: <Archive size={17} />,
-                points: sparklines.archived,
-                badge: 'Archived'
               },
             ].map((stat) => {
               const isSelected = statusFilter === stat.id;
@@ -451,7 +446,14 @@ export default function CategoriesPage() {
           </form>
 
           {/* Table Container */}
-          <div>
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
             <CategoryTable
               categories={filteredCategories}
               totalCount={totalCount}
@@ -460,28 +462,27 @@ export default function CategoriesPage() {
               onPageChange={setCurrentPage}
               onEdit={handleEditClick}
               onDelete={handleDeleteCategory}
+              onStatusChange={handleStatusChange}
               isLoading={loading}
             />
           </div>
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Overview"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Overview
-          </Button>
+            isLoading={isActionLoading}
+          />
           <CategoryForm
+            key={editingCategory?.id ? `edit-${editingCategory.id}` : 'new-category'}
             initialData={editingCategory}
             onSubmit={editingCategory ? handleUpdateCategory : handleAddCategory}
             onCancel={closeForm}
+            isLoading={isActionLoading}
           />
         </div>
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }

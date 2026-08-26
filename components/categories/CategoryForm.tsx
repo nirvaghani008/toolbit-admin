@@ -3,10 +3,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { z } from 'zod';
 import { AlertCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import KeywordTagInput from './KeywordTagInput';
 import { scrollToError, slugify } from '@/lib/form-utils';
 import CollapsibleSection from '../common/CollapsibleSection';
-import LoadingOverlay from '../common/LoadingOverlay';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -18,72 +18,116 @@ interface CategoryFormProps {
   initialData?: any;
   onSubmit: (data: any) => Promise<void> | void;
   onCancel: () => void;
+  isLoading?: boolean;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 function FormStatusBadge({ status }: { status: string }) {
   const s = (status || '').toLowerCase();
   if (s === 'show') {
-    return <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Show</Badge>;
+    return <Badge variant="success" className="text-[9px] px-2.5 py-0.5 font-bold tracking-wider uppercase">Show</Badge>;
   }
-  if (s === 'hide') {
-    return <Badge variant="destructive" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
-  }
-  if (s === 'draft') {
-    return <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Draft</Badge>;
-  }
-  return <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase">Archived</Badge>;
+  return <Badge variant="slate" className="text-[9px] px-2.5 py-0.5 font-bold tracking-wider uppercase">Hide</Badge>;
 }
 
+const extractData = (data: any) => {
+  if (!data) return null;
+  if (data.category && typeof data.category === 'object') return data.category;
+  if (data.data && typeof data.data === 'object') return data.data;
+  return data;
+};
+
 const getInitialCategoryName = (data: any) => {
-  if (!data) return '';
-  return String(data.name || data.category_name || '').trim();
+  const raw = extractData(data);
+  if (!raw) return '';
+  const val = raw.name ?? raw.category_name ?? raw.title ?? '';
+  return String(val).trim();
 };
 
 const getInitialCategoryUrl = (data: any) => {
-  if (!data) return '';
-  return String(data.slug || data.category_url || '').toLowerCase().trim();
+  const raw = extractData(data);
+  if (!raw) return '';
+  const val = raw.slug ?? raw.category_url ?? raw.url ?? '';
+  return String(val).toLowerCase().trim();
 };
 
 const getInitialParentCategory = (data: any) => {
-  if (!data) return '';
-  return String(data.parent || data.parent_category || '').trim();
+  const raw = extractData(data);
+  if (!raw) return '';
+  const val = raw.parent ?? raw.parent_category ?? raw.parentCategory ?? '';
+  return String(val).trim();
 };
 
-export default function CategoryForm({ initialData, onSubmit, onCancel }: CategoryFormProps) {
-  const [formData, setFormData] = useState({
-    category_name: getInitialCategoryName(initialData),
-    category_url: getInitialCategoryUrl(initialData),
-    parent_category: getInitialParentCategory(initialData),
-    status: initialData?.status || 'show',
-    meta_title: initialData?.meta_title || '',
-    meta_description: initialData?.meta_description || '',
-    description: initialData?.description || '',
+const getInitialStatus = (data: any) => {
+  const raw = extractData(data);
+  if (!raw?.status) return 'hide';
+  const s = String(raw.status).toLowerCase().trim();
+  return s === 'show' ? 'show' : 'hide';
+};
+
+export default function CategoryForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isLoading = false,
+  onBusyChange,
+}: CategoryFormProps) {
+  const [formData, setFormData] = useState(() => {
+    const raw = extractData(initialData);
+    return {
+      category_name: getInitialCategoryName(raw),
+      category_url: getInitialCategoryUrl(raw),
+      parent_category: getInitialParentCategory(raw),
+      status: getInitialStatus(raw),
+      meta_title: raw?.meta_title ?? raw?.metaTitle ?? '',
+      meta_description: raw?.meta_description ?? raw?.metaDescription ?? '',
+      description: raw?.description ?? raw?.category_description ?? '',
+    };
   });
 
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>(() => {
-    if (initialData?.meta_keywords) {
-      return typeof initialData.meta_keywords === 'string'
-        ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
-        : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
+    const raw = extractData(initialData);
+    const kw = raw?.meta_keywords ?? raw?.metaKeywords;
+    if (kw) {
+      return typeof kw === 'string'
+        ? kw.split(',').map((k: string) => k.trim()).filter(Boolean)
+        : Array.isArray(kw) ? kw : [];
     }
     return [];
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isBusy = isSubmitting || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   const isDirty = useMemo(() => {
-    if (!initialData) return true;
-    const initialKeywords = typeof initialData.meta_keywords === 'string'
-      ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
-      : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
+    const raw = extractData(initialData);
+    if (!raw) {
+      return !!(
+        formData.category_name ||
+        formData.category_url ||
+        formData.parent_category ||
+        formData.meta_title ||
+        formData.meta_description ||
+        formData.description ||
+        selectedKeywords.length > 0
+      );
+    }
+    const kw = raw.meta_keywords ?? raw.metaKeywords;
+    const initialKeywords = typeof kw === 'string'
+      ? kw.split(',').map((k: string) => k.trim()).filter(Boolean)
+      : Array.isArray(kw) ? kw : [];
 
-    const initialCategoryName = getInitialCategoryName(initialData);
-    const initialCategoryUrl = getInitialCategoryUrl(initialData);
-    const initialParentCategory = getInitialParentCategory(initialData);
-    const initialStatus = initialData.status || 'show';
-    const initialMetaTitle = initialData.meta_title || '';
-    const initialMetaDesc = initialData.meta_description || '';
-    const initialDesc = initialData.description || '';
+    const initialCategoryName = getInitialCategoryName(raw);
+    const initialCategoryUrl = getInitialCategoryUrl(raw);
+    const initialParentCategory = getInitialParentCategory(raw);
+    const initialStatus = getInitialStatus(raw);
+    const initialMetaTitle = raw.meta_title ?? raw.metaTitle ?? '';
+    const initialMetaDesc = raw.meta_description ?? raw.metaDescription ?? '';
+    const initialDesc = raw.description ?? raw.category_description ?? '';
 
     return (
       formData.category_name !== initialCategoryName ||
@@ -98,25 +142,38 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
   }, [formData, selectedKeywords, initialData]);
 
   useEffect(() => {
-    if (initialData) {
+    const raw = extractData(initialData);
+    if (raw) {
       setFormData({
-        category_name: getInitialCategoryName(initialData),
-        category_url: getInitialCategoryUrl(initialData),
-        parent_category: getInitialParentCategory(initialData),
-        status: initialData.status || 'show',
-        meta_title: initialData.meta_title || '',
-        meta_description: initialData.meta_description || '',
-        description: initialData.description || '',
+        category_name: getInitialCategoryName(raw),
+        category_url: getInitialCategoryUrl(raw),
+        parent_category: getInitialParentCategory(raw),
+        status: getInitialStatus(raw),
+        meta_title: raw.meta_title ?? raw.metaTitle ?? '',
+        meta_description: raw.meta_description ?? raw.metaDescription ?? '',
+        description: raw.description ?? raw.category_description ?? '',
       });
 
-      if (initialData.meta_keywords) {
-        const keywords = typeof initialData.meta_keywords === 'string'
-          ? initialData.meta_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
-          : Array.isArray(initialData.meta_keywords) ? initialData.meta_keywords : [];
+      const kw = raw.meta_keywords ?? raw.metaKeywords;
+      if (kw) {
+        const keywords = typeof kw === 'string'
+          ? kw.split(',').map((k: string) => k.trim()).filter(Boolean)
+          : Array.isArray(kw) ? kw : [];
         setSelectedKeywords(keywords);
       } else {
         setSelectedKeywords([]);
       }
+    } else {
+      setFormData({
+        category_name: '',
+        category_url: '',
+        parent_category: '',
+        status: 'hide',
+        meta_title: '',
+        meta_description: '',
+        description: '',
+      });
+      setSelectedKeywords([]);
     }
   }, [initialData]);
 
@@ -199,12 +256,13 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
   return (
     <form
       onSubmit={handleSubmit}
+      noValidate
       onKeyDown={(e) => {
         if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
           e.preventDefault();
         }
       }}
-      className="saas-form space-y-8 pb-10"
+      className={`saas-form space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}
     >
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
@@ -214,11 +272,11 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
           </AlertTitle>
           <AlertDescription>
             {errors.apiError ? (
-              <p className="font-semibold uppercase tracking-wider">{errors.apiError}</p>
+              <p className="font-semibold">{errors.apiError}</p>
             ) : (
               <p>
                 There are {Object.keys(errors).filter(k => k !== 'submit' && k !== 'apiError').length} fields that require your attention:{' '}
-                <span className="font-bold uppercase tracking-tight">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit' && k !== 'apiError').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </p>
@@ -251,7 +309,7 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
                 suppressHydrationWarning
               />
               {errors.category_name && (
-                <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">
+                <p className="saas-error-message">
                   {errors.category_name}
                 </p>
               )}
@@ -271,21 +329,33 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
                 suppressHydrationWarning
               />
               {errors.category_url && (
-                <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">
+                <p className="saas-error-message">
                   {errors.category_url}
                 </p>
               )}
             </div>
 
-            <div className="space-y-1 relative focus-within:z-50">
+            <div className="space-y-1">
               <label className={labelClass}>Parent Category</label>
-              <KeywordTagInput
-                selectedKeywords={formData.parent_category ? [formData.parent_category] : []}
-                onKeywordsChange={(val) => setFormData(prev => ({ ...prev, parent_category: val[0] || '' }))}
-                placeholder="Select Parent Category..."
-                type="parent-category"
-                singleSelect={true}
-              />
+              <div className={`relative focus-within:z-50 ${errors.parent_category ? 'saas-error-wrapper' : ''}`}>
+                <KeywordTagInput
+                  selectedKeywords={formData.parent_category ? [formData.parent_category] : []}
+                  onKeywordsChange={(val) => {
+                    setFormData(prev => ({ ...prev, parent_category: val[0] || '' }));
+                    if (errors.parent_category) {
+                      setErrors(prev => { const n = { ...prev }; delete n.parent_category; return n; });
+                    }
+                  }}
+                  onClearError={() => {
+                    if (errors.parent_category) {
+                      setErrors(prev => { const n = { ...prev }; delete n.parent_category; return n; });
+                    }
+                  }}
+                  placeholder="Select Parent Category..."
+                  type="parent-category"
+                  singleSelect={true}
+                />
+              </div>
             </div>
 
             <div className="space-y-1">
@@ -293,13 +363,16 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
               <Select
                 name="status"
                 value={formData.status}
-                onChange={(val) => setFormData(prev => ({ ...prev, status: val }))}
+                onChange={(val) => {
+                  setFormData(prev => ({ ...prev, status: val }));
+                  if (errors.status) {
+                    setErrors(prev => { const n = { ...prev }; delete n.status; return n; });
+                  }
+                }}
                 suppressHydrationWarning
               >
                 <option value="show">Show</option>
                 <option value="hide">Hide</option>
-                <option value="draft">Draft</option>
-                <option value="archived">Archived</option>
               </Select>
             </div>
           </div>
@@ -338,7 +411,7 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
               suppressHydrationWarning
             />
             {errors.meta_title && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">
+              <p className="saas-error-message">
                 {errors.meta_title}
               </p>
             )}
@@ -356,7 +429,7 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
               suppressHydrationWarning
             />
             {errors.meta_description && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">
+              <p className="saas-error-message">
                 {errors.meta_description}
               </p>
             )}
@@ -379,21 +452,26 @@ export default function CategoryForm({ initialData, onSubmit, onCancel }: Catego
           type="button"
           variant="outline"
           onClick={onCancel}
-          disabled={isSubmitting}
+          disabled={isBusy}
           className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting}
+          disabled={!isDirty || isBusy}
           className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting ? 'Processing...' : (initialData ? 'Update Category' : 'Create Category')}
+          {isBusy ? (
+            <>
+              <Spinner size={16} className="text-current shrink-0" />
+              <span>{initialData ? 'Updating Category...' : 'Creating Category...'}</span>
+            </>
+          ) : (
+            initialData ? 'Update Category' : 'Create Category'
+          )}
         </Button>
       </div>
-
-      {isSubmitting && <LoadingOverlay message="Synchronizing with database..." />}
     </form>
   );
 }

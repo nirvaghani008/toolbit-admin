@@ -23,9 +23,10 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   PlusCircle, Moon, Sun, Image as ImageIcon,
   Link2, ChevronDown, ListChecks, Heading1, Heading2, Heading3, Heading4,
-  Type, Sparkles, Upload, X, Loader2, HardDrive
+  Type, Sparkles, Upload, X, HardDrive
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { Spinner } from '@/components/ui/spinner';
 import { uploadImageFile } from '@/lib/image-upload';
 
 interface RichTextEditorProps {
@@ -34,6 +35,9 @@ interface RichTextEditorProps {
   placeholder?: string;
   showFormatButton?: boolean;
   name?: string;
+  hasError?: boolean;
+  className?: string;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 declare module '@tiptap/core' {
@@ -783,7 +787,7 @@ const Dropdown = ({ label, icon: Icon, children, active }: { label?: string; ico
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`p-1.5 rounded-md transition-all flex items-center gap-1 min-w-[36px] justify-between ${active ? 'bg-indigo-500/10 text-indigo-500 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+        className={`p-1.5 rounded-md transition-all flex items-center gap-1 min-w-[36px] justify-between ${active ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
       >
         <div className="flex items-center gap-1 overflow-hidden">
@@ -987,7 +991,7 @@ const MenuBar = ({
   );
 };
 
-export default function RichTextEditor({ content, onChange, placeholder, showFormatButton = true, name }: RichTextEditorProps) {
+export default function RichTextEditor({ content, onChange, placeholder, showFormatButton = true, name, hasError = false, className, onBusyChange }: RichTextEditorProps) {
   const { theme } = useTheme();
   const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(theme);
   const [hasToggledLocally, setHasToggledLocally] = useState(false);
@@ -1002,6 +1006,10 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
   const [isUploading, setIsUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    onBusyChange?.(isUploading);
+  }, [isUploading, onBusyChange]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -1293,10 +1301,13 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
   }, [content, editor]);
 
   return (
-    <div id={name} data-field={name} className={`border rounded-xl shadow-2xs transition-colors duration-300 relative flex flex-col max-h-[680px] overflow-hidden ${editorTheme === 'dark'
-      ? 'dark dark:bg-zinc-950 text-gray-100 dark:border-zinc-800'
-      : 'bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]'
-      }`}>
+    <div id={name} data-field={name} className={`border rounded-xl shadow-2xs transition-colors duration-300 relative flex flex-col max-h-[680px] overflow-hidden ${
+      hasError
+        ? 'border-rose-500 saas-input-error'
+        : (editorTheme === 'dark'
+            ? 'dark dark:bg-zinc-950 text-gray-100 dark:border-zinc-800'
+            : 'bg-[var(--bg-surface)] text-[var(--text-primary)] border-[var(--border-color)]')
+    } ${className || ''}`}>
       <MenuBar
         editor={editor}
         editorTheme={editorTheme}
@@ -1406,7 +1417,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
                     value={imageUrlInput}
                     onChange={(e) => setImageUrlInput(e.target.value)}
                     placeholder="https://example.com/image.png"
-                    className="w-full px-3 py-2.5 text-xs border border-gray-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition-all"
+                    className="w-full px-3 py-2.5 text-xs border border-gray-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 outline-none focus:outline-none focus-visible:outline-none ring-0 focus:ring-0 focus-visible:ring-0 focus:border-zinc-400 dark:focus:border-zinc-300 transition-colors"
                   />
                   {imageUrlInput.trim() && (
                     <div className="p-2 border border-gray-200 dark:border-zinc-800 rounded-xl bg-gray-50 dark:bg-gray-900 flex justify-center">
@@ -1440,7 +1451,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
               >
                 {isUploading ? (
                   <>
-                    <Loader2 size={14} className="animate-spin" /> Uploading...
+                    <Spinner size={14} className="text-current shrink-0" /> Uploading...
                   </>
                 ) : (
                   'Insert Image'

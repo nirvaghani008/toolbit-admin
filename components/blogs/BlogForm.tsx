@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { z } from 'zod';
-import { Upload, Loader2, AlertCircle } from 'lucide-react';
+import { Upload, AlertCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import KeywordTagInput from '../categories/KeywordTagInput';
 import RichTextEditor from '../common/RichTextEditor';
 import { scrollToError, slugify, shortSlugify } from '@/lib/form-utils';
 import CollapsibleSection from '../common/CollapsibleSection';
 import { uploadImageFile, uploadBase64Image, processAndUploadBase64Images } from '@/lib/image-upload';
-import LoadingOverlay from '../common/LoadingOverlay';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
@@ -20,6 +20,8 @@ interface BlogFormProps {
   initialData?: any;
   onSubmit: (data: any) => Promise<void> | void;
   onCancel: () => void;
+  isLoading?: boolean;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 const cleanContentMdx = (val: string): string => {
@@ -93,7 +95,13 @@ const cleanContentMdx = (val: string): string => {
   );
 };
 
-export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormProps) {
+export default function BlogForm({
+  initialData,
+  onSubmit,
+  onCancel,
+  isLoading = false,
+  onBusyChange,
+}: BlogFormProps) {
   const [formData, setFormData] = useState({
     title: initialData?.title || '',
     slug: initialData?.slug || '',
@@ -117,6 +125,13 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingFeaturedImage, setIsUploadingFeaturedImage] = useState(false);
+  const [isRichTextUploading, setIsRichTextUploading] = useState(false);
+  const localBusy = isSubmitting || isUploadingFeaturedImage || isRichTextUploading;
+  const isBusy = localBusy || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
   const featuredFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFeaturedImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -362,7 +377,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
   const labelClass = "saas-label";
 
   return (
-    <form onSubmit={handleSubmit} className="saas-form space-y-8 pb-10">
+    <form onSubmit={handleSubmit} noValidate className={`saas-form space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}>
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertCircle className="h-4 w-4" />
@@ -371,11 +386,11 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
           </AlertTitle>
           <AlertDescription className="text-xs font-semibold mt-1 leading-relaxed">
             {errors.submit ? (
-              <span className="uppercase tracking-wider font-bold">{errors.submit}</span>
+              <span className="font-bold">{errors.submit}</span>
             ) : (
               <>
                 There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:
-                <span className="font-black ml-1 uppercase tracking-tight">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </>
@@ -395,13 +410,15 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
             variant={
               formData.status === 'published' ? 'success' :
               formData.status === 'pending' ? 'warning' :
-              formData.status === 'draft' ? 'violet' : 'slate'
+              formData.status === 'draft' ? 'violet' :
+              formData.status === 'rejected' ? 'destructive' : 'slate'
             }
             className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider"
           >
             {formData.status === 'published' ? 'Published' :
              formData.status === 'pending' ? 'Pending' :
-             formData.status === 'draft' ? 'Draft' : 'Archived'}
+             formData.status === 'draft' ? 'Draft' :
+             formData.status === 'rejected' ? 'Rejected' : 'Archived'}
           </Badge>
         }
       >
@@ -426,7 +443,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
               className={errors.title ? 'saas-input-error' : ''}
               required
             />
-            {errors.title && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.title}</p>}
+            {errors.title && <p className="saas-error-message">{errors.title}</p>}
           </div>
           <div className="space-y-1.5">
             <label className={labelClass}>Slug <span className="saas-label-required">*</span></label>
@@ -438,7 +455,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
               className={`font-mono text-sm ${errors.slug ? 'saas-input-error' : ''}`}
               required
             />
-            {errors.slug && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.slug}</p>}
+            {errors.slug && <p className="saas-error-message">{errors.slug}</p>}
           </div>
         </div>
 
@@ -456,16 +473,26 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
 
         <div className="space-y-1.5 mt-6">
           <label className={labelClass}>Content Mdx <span className="saas-label-required">*</span></label>
-          <div className={errors.content_mdx ? 'p-1 bg-rose-500/10 border border-rose-500/30 rounded-2xl' : 'border border-[var(--border-color)] rounded-2xl'}>
+          <div className={errors.content_mdx ? 'saas-error-wrapper' : ''}>
             <RichTextEditor
               content={formData.content_mdx}
-              onChange={(html) => setFormData(prev => ({ ...prev, content_mdx: html }))}
+              onChange={(html) => {
+                setFormData(prev => ({ ...prev, content_mdx: html }));
+                if (errors.content_mdx && html.trim() && html !== '<p></p>') {
+                  setErrors(prev => {
+                    const next = { ...prev };
+                    delete next.content_mdx;
+                    return next;
+                  });
+                }
+              }}
               placeholder="Write or paste your article content here..."
               showFormatButton={false}
               name="content_mdx"
+              onBusyChange={setIsRichTextUploading}
             />
           </div>
-          {errors.content_mdx && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.content_mdx}</p>}
+          {errors.content_mdx && <p className="saas-error-message">{errors.content_mdx}</p>}
         </div>
       </CollapsibleSection>
 
@@ -479,28 +506,65 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-1.5">
             <label className={labelClass}>Categories <span className="saas-label-required">*</span></label>
-            <div className={`relative focus-within:z-50 ${errors.categories ? 'p-1 bg-rose-500/10 border border-rose-500/30 rounded-2xl' : ''}`}>
+            <div className={`relative focus-within:z-50 ${errors.categories ? 'saas-error-wrapper' : ''}`}>
               <KeywordTagInput
                 selectedKeywords={selectedCategories}
-                onKeywordsChange={setSelectedCategories}
+                onKeywordsChange={(cats) => {
+                  setSelectedCategories(cats);
+                  if (errors.categories) {
+                    setErrors(prev => {
+                      const next = { ...prev };
+                      delete next.categories;
+                      return next;
+                    });
+                  }
+                }}
+                onClearError={() => {
+                  if (errors.categories) {
+                    setErrors(prev => {
+                      const next = { ...prev };
+                      delete next.categories;
+                      return next;
+                    });
+                  }
+                }}
                 placeholder="Select or type categories..."
                 type="category"
                 name="categories"
               />
             </div>
-            {errors.categories && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.categories}</p>}
+            {errors.categories && <p className="saas-error-message">{errors.categories}</p>}
           </div>
           <div className="space-y-1.5">
             <label className={labelClass}>Tags</label>
-            <div className="relative focus-within:z-40">
+            <div className={`relative focus-within:z-40 ${errors.tags ? 'saas-error-wrapper' : ''}`}>
               <KeywordTagInput
                 selectedKeywords={selectedTags}
-                onKeywordsChange={setSelectedTags}
+                onKeywordsChange={(tags) => {
+                  setSelectedTags(tags);
+                  if (errors.tags) {
+                    setErrors(prev => {
+                      const next = { ...prev };
+                      delete next.tags;
+                      return next;
+                    });
+                  }
+                }}
+                onClearError={() => {
+                  if (errors.tags) {
+                    setErrors(prev => {
+                      const next = { ...prev };
+                      delete next.tags;
+                      return next;
+                    });
+                  }
+                }}
                 placeholder="Select or type tags..."
                 type="generic"
                 name="tags"
               />
             </div>
+            {errors.tags && <p className="saas-error-message">{errors.tags}</p>}
           </div>
         </div>
 
@@ -526,6 +590,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
                 { value: 'pending', label: 'Pending' },
                 { value: 'draft', label: 'Draft' },
                 { value: 'published', label: 'Published' },
+                { value: 'rejected', label: 'Rejected' },
                 { value: 'archived', label: 'Archived' },
               ]}
             />
@@ -594,7 +659,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
                 disabled={isUploadingFeaturedImage}
                 className="shrink-0 h-10 px-4 font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs gap-1.5"
               >
-                {isUploadingFeaturedImage ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                {isUploadingFeaturedImage ? <Spinner size={14} className="text-current shrink-0" /> : <Upload size={14} />}
                 <span>Browse</span>
               </Button>
             </div>
@@ -605,7 +670,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
               onChange={handleFeaturedImageUpload}
               className="hidden"
             />
-            {errors.featured_image_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.featured_image_url}</p>}
+            {errors.featured_image_url && <p className="saas-error-message">{errors.featured_image_url}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -617,7 +682,7 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
               placeholder="https://..."
               className={errors.external_source_url ? 'saas-input-error' : ''}
             />
-            {errors.external_source_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.external_source_url}</p>}
+            {errors.external_source_url && <p className="saas-error-message">{errors.external_source_url}</p>}
             <p className="text-[10px] text-[var(--text-muted)] font-medium mt-1">Unique URL where this post is originally sourced or syndicated.</p>
           </div>
         </div>
@@ -628,20 +693,20 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
           type="button"
           variant="outline"
           onClick={onCancel}
-          disabled={isSubmitting}
+          disabled={isBusy}
           className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting}
+          disabled={!isDirty || isBusy}
           className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting ? (
+          {isBusy ? (
             <>
-              <Loader2 size={14} className="animate-spin mr-1.5" />
-              Saving...
+              <Spinner size={14} className="mr-1.5 text-current shrink-0" />
+              <span>{initialData ? 'Updating Article...' : 'Creating Article...'}</span>
             </>
           ) : initialData ? (
             'Update Article'
@@ -650,8 +715,6 @@ export default function BlogForm({ initialData, onSubmit, onCancel }: BlogFormPr
           )}
         </Button>
       </div>
-
-      {isSubmitting && <LoadingOverlay message="Synchronizing with database..." />}
     </form>
   );
 }

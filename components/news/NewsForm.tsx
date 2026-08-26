@@ -5,15 +5,16 @@ import { z } from 'zod';
 import { scrollToError } from '@/lib/form-utils';
 import CollapsibleSection from '../common/CollapsibleSection';
 import KeywordTagInput from '../categories/KeywordTagInput';
-import LoadingOverlay from '../common/LoadingOverlay';
-import { NewsItem } from './NewsTable';
+import { NewsItem, NEWS_STATUS_OPTIONS, normalizeNewsStatus, getNewsStatusVariant, formatNewsStatus } from './NewsTable';
 import { Input } from '@/components/ui/input';
+import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { AlertTriangle, AlertCircle, Loader2 } from 'lucide-react';
+import { AlertTriangle, AlertCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 
 interface NewsFormProps {
   initialData?: NewsItem | null;
@@ -22,15 +23,7 @@ interface NewsFormProps {
   onCancel?: () => void;
   onClose?: () => void;
   isLoading?: boolean;
-}
-
-function getFormStatusVariant(status: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' {
-  const s = (status || '').toLowerCase();
-  if (s === 'show' || s === 'published' || s === 'active') return 'success';
-  if (s === 'hide') return 'destructive';
-  if (s === 'draft') return 'warning';
-  if (s === 'archived') return 'slate';
-  return 'default';
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 export default function NewsForm({
@@ -39,7 +32,8 @@ export default function NewsForm({
   onSave,
   onCancel,
   onClose,
-  isLoading = false
+  isLoading = false,
+  onBusyChange
 }: NewsFormProps) {
   const handleCancel = onCancel || onClose || (() => { });
   const handleSave = onSubmit || onSave || (async () => { });
@@ -51,12 +45,17 @@ export default function NewsForm({
     source_url: '',
     favicon_url: '',
     published_date: '',
-    status: 'show'
+    status: 'published'
   });
 
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isBusy = isSubmitting || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   useEffect(() => {
     if (initialData) {
@@ -67,7 +66,7 @@ export default function NewsForm({
         source_url: initialData.source_url || '',
         favicon_url: initialData.favicon_url || '',
         published_date: initialData.published_date ? initialData.published_date.substring(0, 10) : '',
-        status: initialData.status || 'show'
+        status: initialData.status || 'published'
       });
       const rawCats = initialData.categories;
       if (Array.isArray(rawCats)) {
@@ -97,7 +96,7 @@ export default function NewsForm({
       formData.source_url !== (initialData.source_url || '') ||
       formData.favicon_url !== (initialData.favicon_url || '') ||
       formData.published_date !== initialPubDate ||
-      formData.status !== (initialData.status || 'show') ||
+      formData.status !== (initialData.status || 'published') ||
       selectedCategories.join(',') !== initialCats.join(',')
     );
   }, [formData, selectedCategories, initialData]);
@@ -175,7 +174,7 @@ export default function NewsForm({
   const labelClass = "saas-label";
 
   return (
-    <form onSubmit={handleSubmit} className="saas-form space-y-8 pb-10">
+    <form onSubmit={handleSubmit} noValidate className={`saas-form space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}>
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertTriangle className="h-4 w-4" />
@@ -184,11 +183,11 @@ export default function NewsForm({
           </AlertTitle>
           <AlertDescription>
             {errors.submit ? (
-              <span className="font-semibold uppercase tracking-wider">{errors.submit}</span>
+              <span className="font-semibold">{errors.submit}</span>
             ) : (
               <span>
                 There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:
-                <span className="font-black ml-1 uppercase tracking-tighter">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </span>
@@ -204,8 +203,8 @@ export default function NewsForm({
         description="Provide headline, category, source details, summary snippet, links, publication date, and visibility status."
         hasErrors={!!errors.title || !!errors.source_url || !!errors.favicon_url}
         headerActions={
-          <Badge variant={getFormStatusVariant(formData.status)} className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider">
-            {formData.status}
+          <Badge variant={getNewsStatusVariant(formData.status)} className="text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider">
+            {formatNewsStatus(formData.status)}
           </Badge>
         }
       >
@@ -222,24 +221,32 @@ export default function NewsForm({
               className={errors.title ? 'saas-input-error' : ''}
               required
             />
-            {errors.title && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.title}</p>}
+            {errors.title && <p className="saas-error-message">{errors.title}</p>}
           </div>
 
           {/* 2. Categories */}
           <div className="space-y-1.5">
             <label className={labelClass}>Categories <span className="saas-label-required">*</span></label>
-            <KeywordTagInput
-              selectedKeywords={selectedCategories}
-              onKeywordsChange={(cats) => {
-                setSelectedCategories(cats);
-                if (errors.categories && cats.length > 0) {
-                  setErrors(prev => { const n = { ...prev }; delete n.categories; return n; });
-                }
-              }}
-              placeholder="Type or select news categories..."
-              type="generic"
-            />
-            {errors.categories && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.categories}</p>}
+            <div className={`relative focus-within:z-50 ${errors.categories ? 'saas-error-wrapper' : ''}`}>
+              <KeywordTagInput
+                selectedKeywords={selectedCategories}
+                onKeywordsChange={(cats) => {
+                  setSelectedCategories(cats);
+                  if (errors.categories) {
+                    setErrors(prev => { const n = { ...prev }; delete n.categories; return n; });
+                  }
+                }}
+                onClearError={() => {
+                  if (errors.categories) {
+                    setErrors(prev => { const n = { ...prev }; delete n.categories; return n; });
+                  }
+                }}
+                placeholder="Type or select news categories..."
+                type="generic"
+                name="categories"
+              />
+            </div>
+            {errors.categories && <p className="saas-error-message">{errors.categories}</p>}
           </div>
 
           {/* 3. Source Name & News URL horizontally */}
@@ -255,7 +262,7 @@ export default function NewsForm({
                 className={errors.source_name ? 'saas-input-error' : ''}
                 required
               />
-              {errors.source_name && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_name}</p>}
+              {errors.source_name && <p className="saas-error-message">{errors.source_name}</p>}
             </div>
 
             <div className="space-y-1.5">
@@ -269,7 +276,7 @@ export default function NewsForm({
                 className={errors.source_url ? 'saas-input-error' : ''}
                 required
               />
-              {errors.source_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.source_url}</p>}
+              {errors.source_url && <p className="saas-error-message">{errors.source_url}</p>}
             </div>
           </div>
 
@@ -297,34 +304,37 @@ export default function NewsForm({
               placeholder="https://techcrunch.com/favicon.ico"
               className={errors.favicon_url ? 'saas-input-error' : ''}
             />
-            {errors.favicon_url && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.favicon_url}</p>}
+            {errors.favicon_url && <p className="saas-error-message">{errors.favicon_url}</p>}
           </div>
 
           {/* 6. Published Date & Status in one line */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className={labelClass}>Published Date <span className="saas-label-required">*</span></label>
-              <Input
-                type="date"
+              <DateField
                 name="published_date"
                 value={formData.published_date}
-                onChange={handleChange}
-                className={errors.published_date ? 'saas-input-error' : ''}
+                onChange={(value) => handleChange({ target: { name: 'published_date', value } } as React.ChangeEvent<HTMLInputElement>)}
+                error={!!errors.published_date}
                 required
               />
-              {errors.published_date && <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider">{errors.published_date}</p>}
+              {errors.published_date && <p className="saas-error-message">{errors.published_date}</p>}
             </div>
 
             <div className="space-y-1.5">
               <label className={labelClass}>Status</label>
               <Select
-                value={formData.status}
-                onChange={(val) => setFormData(prev => ({ ...prev, status: val }))}
+                value={normalizeNewsStatus(formData.status)}
+                onChange={(val) => {
+                  setFormData(prev => ({ ...prev, status: val }));
+                  if (errors.status) {
+                    setErrors(prev => { const n = { ...prev }; delete n.status; return n; });
+                  }
+                }}
               >
-                <option value="show">Show</option>
-                <option value="hide">Hide</option>
-                <option value="draft">Draft</option>
-                <option value="archived">Archived</option>
+                {NEWS_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </Select>
             </div>
           </div>
@@ -337,20 +347,20 @@ export default function NewsForm({
           type="button"
           variant="outline"
           onClick={handleCancel}
-          disabled={isSubmitting || isLoading}
+          disabled={isBusy}
           className="font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting || isLoading}
+          disabled={!isDirty || isBusy}
           className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs flex items-center gap-2 min-w-[130px]"
         >
-          {isSubmitting || isLoading ? (
+          {isBusy ? (
             <>
-              <Loader2 size={14} className="animate-spin mr-1.5" />
-              Saving...
+              <Spinner size={14} className="mr-1.5 text-current shrink-0" />
+              <span>{initialData ? 'Updating News...' : 'Creating News...'}</span>
             </>
           ) : initialData ? (
             'Update News Article'
@@ -359,8 +369,6 @@ export default function NewsForm({
           )}
         </Button>
       </div>
-
-      {(isSubmitting || isLoading) && <LoadingOverlay message="Synchronizing with database..." />}
     </form>
   );
 }

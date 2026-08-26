@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { z } from 'zod';
-import { AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import KeywordTagInput from '../categories/KeywordTagInput';
 import { scrollToError, slugify } from '@/lib/form-utils';
 import CollapsibleSection from '../common/CollapsibleSection';
-import LoadingOverlay from '../common/LoadingOverlay';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -19,6 +19,8 @@ export interface TagFormProps {
   availableStatuses?: string[];
   onSubmit: (data: any) => Promise<void> | void;
   onCancel: () => void;
+  isLoading?: boolean;
+  onBusyChange?: (isBusy: boolean) => void;
 }
 
 export function FormStatusBadge({ status }: { status: string }) {
@@ -52,7 +54,14 @@ const getInitialParentTag = (data: any) => {
   return String(raw).replace(/^#+/, '').trim();
 };
 
-export default function TagForm({ initialData, availableStatuses = ['show', 'hide'], onSubmit, onCancel }: TagFormProps) {
+export default function TagForm({
+  initialData,
+  availableStatuses = ['show', 'hide'],
+  onSubmit,
+  onCancel,
+  isLoading = false,
+  onBusyChange,
+}: TagFormProps) {
   const defaultStatus = initialData?.status || availableStatuses[0] || 'show';
   const [formData, setFormData] = useState({
     name: getInitialTagName(initialData),
@@ -75,6 +84,11 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isBusy = isSubmitting || isLoading;
+
+  useEffect(() => {
+    onBusyChange?.(isBusy);
+  }, [isBusy, onBusyChange]);
 
   const isDirty = useMemo(() => {
     if (!initialData) return true;
@@ -211,7 +225,7 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
   const labelClass = "saas-label";
 
   return (
-    <form onSubmit={handleSubmit} className="saas-form-compact space-y-8 pb-10">
+    <form onSubmit={handleSubmit} noValidate className={`saas-form-compact space-y-8 pb-10 transition-opacity duration-200 ${isBusy ? 'opacity-50 pointer-events-none select-none' : ''}`}>
       {Object.keys(errors).length > 0 && (
         <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-4 duration-300">
           <AlertCircle className="h-4 w-4" />
@@ -220,11 +234,11 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
           </AlertTitle>
           <AlertDescription>
             {errors.apiError ? (
-              <p className="font-semibold uppercase tracking-wide">{errors.apiError}</p>
+              <p className="font-semibold">{errors.apiError}</p>
             ) : (
               <p>
                 There are {Object.keys(errors).filter(k => k !== 'submit').length} fields that require your attention:{' '}
-                <span className="font-bold uppercase tracking-tight">
+                <span className="font-bold ml-1">
                   {Object.keys(errors).filter(k => k !== 'submit').map(key => key.replace(/_/g, ' ')).join(', ')}
                 </span>
               </p>
@@ -251,12 +265,12 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
               value={formData.name}
               onChange={handleChange}
               placeholder="e.g. Generative AI"
-              className={errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.name ? 'saas-input-error' : ''}
               required
               suppressHydrationWarning
             />
             {errors.name && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.name}
               </p>
             )}
@@ -271,26 +285,33 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
               value={formData.slug}
               onChange={handleChange}
               placeholder="generative-ai"
-              className={errors.slug ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={`font-mono text-sm ${errors.slug ? 'saas-input-error' : ''}`}
               required
               suppressHydrationWarning
             />
             {errors.slug && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.slug}
               </p>
             )}
           </div>
 
-          <div className="space-y-1.5 relative focus-within:z-50">
+          <div className="space-y-1.5">
             <label className={labelClass}>Parent Tag</label>
-            <KeywordTagInput
-              selectedKeywords={formData.parent_tag ? [formData.parent_tag] : []}
-              onKeywordsChange={(val) => setFormData(prev => ({ ...prev, parent_tag: val[0] || '' }))}
-              placeholder="Select Parent Tag..."
-              type="parent-tag"
-              singleSelect={true}
-            />
+            <div className={`relative focus-within:z-50 ${errors.parent_tag ? 'saas-error-wrapper' : ''}`}>
+              <KeywordTagInput
+                selectedKeywords={formData.parent_tag ? [formData.parent_tag] : []}
+                onKeywordsChange={(val) => {
+                  setFormData(prev => ({ ...prev, parent_tag: val[0] || '' }));
+                  if (errors.parent_tag) {
+                    setErrors(prev => { const n = { ...prev }; delete n.parent_tag; return n; });
+                  }
+                }}
+                placeholder="Select Parent Tag..."
+                type="parent-tag"
+                singleSelect={true}
+              />
+            </div>
           </div>
 
             <div className="space-y-1.5">
@@ -339,11 +360,11 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
               value={formData.meta_title}
               onChange={handleChange}
               placeholder="e.g. Explore Top AI Tags & Categories"
-              className={errors.meta_title ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.meta_title ? 'saas-input-error' : ''}
               suppressHydrationWarning
             />
             {errors.meta_title && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.meta_title}
               </p>
             )}
@@ -357,11 +378,11 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
               onChange={handleChange}
               rows={3}
               placeholder="Describe this tag for search engine indexing..."
-              className={errors.meta_description ? 'border-rose-500 ring-2 ring-rose-500/20' : ''}
+              className={errors.meta_description ? 'saas-input-error' : ''}
               suppressHydrationWarning
             />
             {errors.meta_description && (
-              <p className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-wider flex items-center gap-1">
+              <p className="saas-error-message">
                 <AlertTriangle size={11} /> {errors.meta_description}
               </p>
             )}
@@ -384,28 +405,26 @@ export default function TagForm({ initialData, availableStatuses = ['show', 'hid
           type="button"
           variant="outline"
           onClick={onCancel}
-          disabled={isSubmitting}
+          disabled={isBusy}
           className="h-11 px-5 font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
         >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={!isDirty || isSubmitting}
+          disabled={!isDirty || isBusy}
           className="min-w-[140px] h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs active:scale-95 rounded-xl cursor-pointer"
         >
-          {isSubmitting ? (
+          {isBusy ? (
             <>
-              <Loader2 size={15} className="animate-spin mr-2" />
-              Saving...
+              <Spinner size={15} className="mr-2 text-current shrink-0" />
+              <span>{initialData ? 'Updating Tag...' : 'Creating Tag...'}</span>
             </>
           ) : (
             initialData ? 'Update Tag' : 'Create Tag'
           )}
         </Button>
       </div>
-
-      {isSubmitting && <LoadingOverlay message="Synchronizing with database..." />}
     </form>
   );
 }

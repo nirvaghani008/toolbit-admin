@@ -430,7 +430,7 @@ export default function BlogPreviewModal({ blog, onClose }: BlogPreviewModalProp
                 </div>
                 <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
                 <div className="flex items-center gap-1.5">
-                  <Calendar size={13} className="text-slate-400" />
+                  <Calendar size={13} className="text-zinc-600 dark:text-zinc-200" />
                   <span>{formattedDate}</span>
                 </div>
                 <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>

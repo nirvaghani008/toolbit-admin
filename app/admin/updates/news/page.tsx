@@ -10,9 +10,10 @@ import CountUp from '@/components/common/CountUp';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { 
-  RefreshCw, Newspaper, CheckCircle2, EyeOff, FileText, Archive 
+  RefreshCw, Newspaper, CheckCircle2, EyeOff
 } from 'lucide-react';
-import LoadingOverlay from '@/components/common/LoadingOverlay';
+import { Spinner } from '@/components/ui/spinner';
+import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -79,18 +80,14 @@ export default function NewsPage() {
   // Stats & Sparklines
   const [stats, setStats] = useState({
     all: 0,
-    show: 0,
-    hide: 0,
-    draft: 0,
-    archived: 0
+    published: 0,
+    hide: 0
   });
 
   const [sparklines, setSparklines] = useState<Record<string, number[]>>({
     all: [0, 0, 0, 0, 0, 0, 0],
-    show: [0, 0, 0, 0, 0, 0, 0],
-    hide: [0, 0, 0, 0, 0, 0, 0],
-    draft: [0, 0, 0, 0, 0, 0, 0],
-    archived: [0, 0, 0, 0, 0, 0, 0]
+    published: [0, 0, 0, 0, 0, 0, 0],
+    hide: [0, 0, 0, 0, 0, 0, 0]
   });
 
   const confirmDelete = useConfirm();
@@ -98,7 +95,7 @@ export default function NewsPage() {
   // Fetch stats & sparklines
   const fetchStats = useCallback(async () => {
     try {
-      const statusList = ['show', 'hide', 'draft', 'archived'];
+      const statusList = ['published', 'hide'];
       const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
         'news',
         statusList,
@@ -106,26 +103,18 @@ export default function NewsPage() {
         7
       );
 
-      // Fetch exact count of active/show news items
-      const { count: liveShowCount } = await supabase
-        .from('news')
-        .select('*', { count: 'exact', head: true })
-        .or('status.eq.show,status.eq.published,status.eq.active,status.ilike.show%,status.is.null');
-
       setStats({
-        all: counts['total'] || 0,
-        show: (counts['show'] || counts['published']) ? (counts['show'] || counts['published']) : (liveShowCount || 0),
-        hide: counts['hide'] || 0,
-        draft: counts['draft'] || 0,
-        archived: counts['archived'] || 0
+        all: counts.total || 0,
+        published: counts.published || 0,
+        hide: counts.hide || 0
       });
 
       if (trends) {
-        setSparklines(prev => ({
-          ...prev,
-          ...trends,
-          show: (trends['show'] && trends['show'].some(n => n > 0)) ? trends['show'] : (trends['all'] || [0,0,0,0,0,0,0])
-        }));
+        setSparklines({
+          all: trends.all || [0, 0, 0, 0, 0, 0, 0],
+          published: trends.published || [0, 0, 0, 0, 0, 0, 0],
+          hide: trends.hide || [0, 0, 0, 0, 0, 0, 0]
+        });
       }
     } catch (err) {
       console.warn('Error fetching news stats:', err);
@@ -140,9 +129,7 @@ export default function NewsPage() {
     try {
       let query = supabase.from('news').select('*', { count: 'exact' });
 
-      if (statusFilter === 'show') {
-        query = query.or('status.eq.show,status.eq.published,status.eq.active,status.ilike.show%,status.is.null');
-      } else if (statusFilter !== 'all') {
+      if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
       }
 
@@ -186,7 +173,7 @@ export default function NewsPage() {
     });
     if (!confirmed) return;
 
-    setIsActionLoading(true);
+    setIsRefreshing(true);
     try {
       const { error } = await supabase.from('news').delete().eq('news_id', id);
       if (error) throw error;
@@ -196,12 +183,32 @@ export default function NewsPage() {
     } catch (err: any) {
       alert(err?.message || 'Error deleting news item');
     } finally {
-      setIsActionLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   const handleEditNews = (item: NewsItem) => {
     openForm(item);
+  };
+
+  const handleStatusChange = async (newsId: number, newStatus: string) => {
+    setIsRefreshing(true);
+    try {
+      const { error } = await supabase
+        .from('news')
+        .update({ status: newStatus })
+        .eq('news_id', newsId);
+      if (error) throw error;
+
+      // Optimistically update the row in local state
+      setNewsList(prev => prev.map(n => n.news_id === newsId ? { ...n, status: newStatus } : n));
+      await fetchStats();
+    } catch (err: any) {
+      console.error('Error updating news status:', err);
+      alert('Failed to update news status: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleSaveNews = async (data: Partial<NewsItem>) => {
@@ -235,12 +242,8 @@ export default function NewsPage() {
       if (maxIdData && maxIdData.length > 0 && maxIdData[0].news_id) {
         insertPayload.news_id = maxIdData[0].news_id + 1;
       }
-
       const { error } = await supabase.from('news').insert([insertPayload]);
-      if (error) {
-        const { error: retryError } = await supabase.from('news').insert([data]);
-        if (retryError) throw retryError;
-      }
+      if (error) throw error;
       await fetchStats();
       await fetchNews(true);
       closeForm();
@@ -272,8 +275,8 @@ export default function NewsPage() {
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-zinc-500' : ''} />
-              {isRefreshing ? 'Syncing...' : 'Refresh'}
+              {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
+              Refresh
             </Button>
             <Button 
               onClick={() => openForm()} 
@@ -289,7 +292,7 @@ export default function NewsPage() {
       {!showForm ? (
         <>
           {/* Stats Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {[
               {
                 id: 'all',
@@ -303,37 +306,15 @@ export default function NewsPage() {
                 badge: 'All News'
               },
               {
-                id: 'show',
-                label: 'Show',
-                value: stats.show,
+                id: 'published',
+                label: 'Published',
+                value: stats.published,
                 iconStyle: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
                 badgeStyle: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
                 sparklineColor: 'text-[#3c5748] dark:text-emerald-400',
                 icon: <CheckCircle2 size={17} />,
-                points: sparklines.show,
-                badge: 'Active'
-              },
-              {
-                id: 'draft',
-                label: 'Draft',
-                value: stats.draft,
-                iconStyle: 'text-[#5b4375] bg-[#f7f3f9] border-[#e6deed] dark:text-purple-400 dark:bg-purple-500/10 dark:border-purple-500/20',
-                badgeStyle: 'bg-[#f7f3f9] text-[#5b4375] border-[#e6deed] dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20',
-                sparklineColor: 'text-[#5b4375] dark:text-purple-400',
-                icon: <FileText size={17} />,
-                points: sparklines.draft,
-                badge: 'Draft'
-              },
-              {
-                id: 'archived',
-                label: 'Archived',
-                value: stats.archived,
-                iconStyle: 'text-[#6e5e50] bg-[#f7f4f0] border-[#e4ded6] dark:text-violet-400 dark:bg-violet-500/10 dark:border-violet-500/20',
-                badgeStyle: 'bg-[#f7f4f0] text-[#6e5e50] border-[#e4ded6] dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20',
-                sparklineColor: 'text-[#6e5e50] dark:text-violet-400',
-                icon: <Archive size={17} />,
-                points: sparklines.archived,
-                badge: 'Archived'
+                points: sparklines.published,
+                badge: 'Published'
               },
               {
                 id: 'hide',
@@ -442,26 +423,34 @@ export default function NewsPage() {
           </form>
 
           {/* Table */}
-          <NewsTable
-            news={newsList}
-            totalCount={totalCount}
-            pageSize={pageSize}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onEdit={handleEditNews}
-            onDelete={handleDeleteNews}
-            isLoading={isLoading}
-          />
+          <div className="relative">
+            {isRefreshing && (
+              <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+                <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+                  <Spinner size={20} />
+                </div>
+              </div>
+            )}
+            <NewsTable
+              news={newsList}
+              totalCount={totalCount}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onEdit={handleEditNews}
+              onDelete={handleDeleteNews}
+              onStatusChange={handleStatusChange}
+              isLoading={isLoading}
+            />
+          </div>
         </>
       ) : (
         <div className="animate-fade-in-up">
-          <Button
-            variant="ghost"
+          <StickyFormBackButton
+            label="Back to Database"
             onClick={closeForm}
-            className="mb-6 text-sm font-bold text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-800 p-2 h-auto gap-2 -ml-2 rounded-lg"
-          >
-            ← Back to Database
-          </Button>
+            isLoading={isActionLoading}
+          />
           <NewsForm
             initialData={editingNews}
             onSubmit={editingNews ? handleSaveNews : handleCreateNews}
@@ -470,8 +459,6 @@ export default function NewsPage() {
           />
         </div>
       )}
-
-      {isActionLoading && <LoadingOverlay message="Synchronizing with database..." />}
     </div>
   );
 }
