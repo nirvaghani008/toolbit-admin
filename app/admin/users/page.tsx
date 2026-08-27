@@ -11,6 +11,11 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import UsersTable, { UserRow } from '@/components/users/UsersTable';
+import UserDetailsDrawer from '@/components/users/UserDetailsDrawer';
+import {
+  UserFullDetails,
+  fetchAdminUserDetails,
+} from '@/lib/services/user-details-service';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -32,6 +37,43 @@ export default function UsersPage() {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const pageSize = 20;
 
+  // Selected user and zero re-query cache
+  const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
+  const [detailsCache, setDetailsCache] = useState<Record<string, UserFullDetails>>({});
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+
+  const loadUserDetails = async (userId: string, force = false) => {
+    if (!force && detailsCache[userId]) {
+      // Return cached telemetry data immediately without querying
+      return;
+    }
+
+    setDetailsLoading(true);
+    setDetailsError(null);
+
+    try {
+      const data = await fetchAdminUserDetails(userId);
+      setDetailsCache((prev) => ({ ...prev, [userId]: data }));
+    } catch (err: any) {
+      console.error('Error fetching user telemetry details:', err);
+      setDetailsError(err?.message || 'Failed to load complete user details.');
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const handleSelectUser = (user: UserRow) => {
+    setSelectedUser(user);
+    loadUserDetails(user.id);
+  };
+
+  const handleRefreshUserDetails = () => {
+    if (selectedUser) {
+      loadUserDetails(selectedUser.id, true);
+    }
+  };
+
   const fetchUsers = async (manual = false) => {
     if (manual) setIsRefreshing(true);
     setLoading(true);
@@ -39,18 +81,13 @@ export default function UsersPage() {
     try {
       const from = (currentPage - 1) * pageSize;
 
-      // Use SECURITY DEFINER RPC functions that can access auth.users + user_profiles
-      const [{ data: rows, error: rowsError }, { data: countData }] = await Promise.all([
-        supabase.rpc('get_admin_users', {
-          p_search: searchQuery || null,
-          p_sort: sortOrder,
-          p_limit: pageSize,
-          p_offset: from,
-        }),
-        supabase.rpc('get_admin_users_count', {
-          p_search: searchQuery || null,
-        }),
-      ]);
+      // Fetch users with consolidated total_count from get_admin_users
+      const { data: rows, error: rowsError } = await supabase.rpc('get_admin_users', {
+        p_search: searchQuery || null,
+        p_sort: sortOrder,
+        p_limit: pageSize,
+        p_offset: from,
+      });
 
       if (rowsError) {
         console.warn('get_admin_users error:', rowsError.message);
@@ -70,7 +107,19 @@ export default function UsersPage() {
         upvoted_count: u.upvoted_count ?? 0,
       }));
 
-      const total = Number(countData) || 0;
+      // total_count is provided directly in each row via COUNT(*) OVER()
+      let total = 0;
+      if (rows && rows.length > 0) {
+        if (rows[0].total_count !== undefined) {
+          total = Number(rows[0].total_count) || 0;
+        } else {
+          // Graceful fallback if migration has not been applied to live DB yet
+          const { data: fallbackCount } = await supabase.rpc('get_admin_users_count', {
+            p_search: searchQuery || null,
+          });
+          total = Number(fallbackCount) || rows.length;
+        }
+      }
 
       setUsers(merged);
       setTotalCount(total);
@@ -250,7 +299,19 @@ export default function UsersPage() {
         pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
+        onSelectUser={handleSelectUser}
         isLoading={loading}
+      />
+
+      {/* User Details Slide-over Drawer */}
+      <UserDetailsDrawer
+        user={selectedUser}
+        isOpen={!!selectedUser}
+        onClose={() => setSelectedUser(null)}
+        details={selectedUser ? detailsCache[selectedUser.id] || null : null}
+        isLoading={detailsLoading}
+        error={detailsError}
+        onRefresh={handleRefreshUserDetails}
       />
     </div>
   );

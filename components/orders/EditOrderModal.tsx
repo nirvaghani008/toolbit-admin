@@ -309,6 +309,12 @@ export default function EditOrderModal({
                 )}
               </div>
 
+              {status === 'refunded' && (
+                <div className="mb-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-600 dark:text-rose-400 leading-relaxed">
+                  <strong>Notice:</strong> Editing fields here only updates the database record. To process a real-time monetary refund to the customer through Dodo Payments and automatically revoke entitlements, use the <strong>&quot;Issue Refund&quot;</strong> button in the order actions.
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">

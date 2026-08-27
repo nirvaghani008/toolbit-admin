@@ -144,9 +144,56 @@ export default function KeywordTagInput({
             : [];
       setDbSuggestions(defaultList);
 
-      if (type === 'generic' || type === 'audience' || type === 'category') return;
+      if (type === 'generic' || type === 'audience') return;
 
       try {
+        if (type === 'category') {
+          const fetchedCats: string[] = [...DEFAULT_BLOG_CATEGORIES];
+
+          try {
+            const { data: bData } = await supabase
+              .from('blog_posts')
+              .select('categories')
+              .not('categories', 'is', null)
+              .limit(1000);
+
+            if (bData) {
+              bData.forEach((row: any) => {
+                if (Array.isArray(row.categories)) {
+                  row.categories.forEach((cat: string) => {
+                    if (cat && typeof cat === 'string' && cat.trim()) {
+                      fetchedCats.push(cat.trim());
+                    }
+                  });
+                } else if (typeof row.categories === 'string' && row.categories.trim()) {
+                  row.categories.split(',').forEach((c: string) => {
+                    const trimmed = c.trim();
+                    if (trimmed) fetchedCats.push(trimmed);
+                  });
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('Error fetching from blog_posts categories:', e);
+          }
+
+          const seen = new Set<string>();
+          const uniqueCats: string[] = [];
+          fetchedCats.forEach(c => {
+            const clean = c.trim();
+            if (!clean || clean === 'NULL' || clean === 'EMPTY') return;
+            const lower = clean.toLowerCase();
+            if (!seen.has(lower)) {
+              seen.add(lower);
+              uniqueCats.push(clean);
+            }
+          });
+
+          uniqueCats.sort((a, b) => a.localeCompare(b));
+          setDbSuggestions(uniqueCats);
+          return;
+        }
+
         if (isTagType) {
           const fetchedTags: string[] = [...DEFAULT_PARENT_TAGS];
 
@@ -338,6 +385,11 @@ export default function KeywordTagInput({
       } catch {}
 
       setDbSuggestions(prev => [...prev, trimmed]);
+    }
+
+    // Remember new custom category in suggestions state
+    if (isCategory && !dbSuggestions.some(db => db.toLowerCase() === trimmed.toLowerCase())) {
+      setDbSuggestions(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b)));
     }
 
     setShowSuggestions(false);

@@ -7,35 +7,53 @@ export const scrollToError = (errors: Record<string, string>) => {
   const firstErrorKey = Object.keys(errors)[0];
   if (!firstErrorKey) return;
 
-  // Defer execution slightly to allow collapsed accordion panels to expand
-  setTimeout(() => {
-    // Try standard selectors:
-    // 1. By name attribute
-    // 2. By ID
-    // 3. By data-field or data-name
-    // 4. By class name
-    const element = document.querySelector(`[name="${firstErrorKey}"]`) ||
+  const performScroll = () => {
+    const element =
+      document.querySelector(`[name="${firstErrorKey}"]`) ||
       document.getElementById(firstErrorKey) ||
       document.querySelector(`[data-field="${firstErrorKey}"]`) ||
-      document.querySelector(`.${firstErrorKey}`);
+      document.querySelector(`[data-name="${firstErrorKey}"]`) ||
+      document.querySelector(`.${firstErrorKey}`) ||
+      document.querySelector(`[id*="${firstErrorKey}"]`);
 
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Find the best element to scroll to (field container or element itself)
+      const targetElement = element.closest('.space-y-1\\.5') || element;
+      const rect = targetElement.getBoundingClientRect();
+      const currentScrollY = window.scrollY ?? window.pageYOffset ?? 0;
+      const headerOffset = 110; // Clearance for sticky navigation bar & back button
+      const targetY = currentScrollY + rect.top - headerOffset;
 
-      // Attempt to focus standard input/textarea/select
-      if (typeof (element as any).focus === 'function') {
-        (element as any).focus();
-      }
+      window.scrollTo({
+        top: Math.max(0, targetY),
+        behavior: 'smooth'
+      });
+
+      // Focus input without canceling the smooth scroll animation
+      setTimeout(() => {
+        if (typeof (element as any).focus === 'function') {
+          (element as any).focus({ preventScroll: true });
+        }
+      }, 350);
 
       // Add visual border highlight pulse
       element.classList.add('saas-input-error-highlight');
-
-      // Remove class after 3 pulses complete (0.45s x 3 = 1350ms)
       setTimeout(() => {
         element.classList.remove('saas-input-error-highlight');
-      }, 1400);
+      }, 1500);
+      return true;
     }
-  }, 100);
+    return false;
+  };
+
+  // Immediate attempt, with fallback retries if accordion panels are expanding
+  if (!performScroll()) {
+    setTimeout(() => {
+      if (!performScroll()) {
+        setTimeout(performScroll, 200);
+      }
+    }, 150);
+  }
 };
 
 /**

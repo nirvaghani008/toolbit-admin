@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import OrderTable from '@/components/orders/OrderTable';
 import OrderDetailsModal, { Order, Submitter } from '@/components/orders/OrderDetailsModal';
 import EditOrderModal from '@/components/orders/EditOrderModal';
+import RefundOrderModal from '@/components/orders/RefundOrderModal';
 
 export default function OrdersPage() {
   const confirmDelete = useConfirm();
@@ -25,6 +26,7 @@ export default function OrdersPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [refundingOrder, setRefundingOrder] = useState<Order | null>(null);
 
   const [stats, setStats] = useState({ all: 0, completed: 0, pending: 0, refunded: 0 });
   const [sparklines] = useState<Record<string, number[]>>({
@@ -392,6 +394,7 @@ export default function OrdersPage() {
           onPageChange={setCurrentPage}
           onViewDetails={(order) => setSelectedOrder(order)}
           onEdit={(order) => setEditingOrder(order)}
+          onRefund={(order) => setRefundingOrder(order)}
           onDelete={handleDelete}
           isLoading={loading}
         />
@@ -403,6 +406,7 @@ export default function OrdersPage() {
         isOpen={Boolean(selectedOrder)}
         onClose={() => setSelectedOrder(null)}
         onEdit={(order) => setEditingOrder(order)}
+        onRefund={(order) => setRefundingOrder(order)}
       />
 
       {/* Edit Order Modal */}
@@ -411,6 +415,23 @@ export default function OrdersPage() {
         isOpen={Boolean(editingOrder)}
         onClose={() => setEditingOrder(null)}
         onSaveSuccess={async (updatedOrder) => {
+          setOrders((prev) =>
+            prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o))
+          );
+          if (selectedOrder?.id === updatedOrder.id) {
+            setSelectedOrder((prev) => (prev ? { ...prev, ...updatedOrder } : null));
+          }
+          await fetchStats();
+          await fetchOrders();
+        }}
+      />
+
+      {/* Refund Order Modal */}
+      <RefundOrderModal
+        order={refundingOrder}
+        isOpen={Boolean(refundingOrder)}
+        onClose={() => setRefundingOrder(null)}
+        onRefundSuccess={async (updatedOrder) => {
           setOrders((prev) =>
             prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o))
           );

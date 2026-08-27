@@ -73,6 +73,9 @@ END;
 $$;
 
 -- 4. Update RPC: create_subadmin_user
+-- Drops the legacy 4-parameter overload to avoid duplicate/orphaned functions
+DROP FUNCTION IF EXISTS public.create_subadmin_user(text, text, text, jsonb);
+
 -- Allows Super Admins to provision admin or sub-admin accounts with preconfigured granular permissions
 CREATE OR REPLACE FUNCTION public.create_subadmin_user(
   p_email text,

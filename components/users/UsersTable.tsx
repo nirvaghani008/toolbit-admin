@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bookmark, ThumbsUp, Clock, Users } from 'lucide-react';
+import { Bookmark, ThumbsUp, Clock, Users, ChevronRight } from 'lucide-react';
 import Pagination from '@/components/common/Pagination';
 import {
   Table,
@@ -30,6 +30,7 @@ interface UsersTableProps {
   pageSize: number;
   currentPage: number;
   onPageChange: (page: number) => void;
+  onSelectUser?: (user: UserRow) => void;
   isLoading?: boolean;
 }
 
@@ -39,6 +40,7 @@ export default function UsersTable({
   pageSize,
   currentPage,
   onPageChange,
+  onSelectUser,
   isLoading = false,
 }: UsersTableProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -57,12 +59,13 @@ export default function UsersTable({
       <Table>
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[28%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">User</TableHead>
-            <TableHead className="w-[26%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Email</TableHead>
+            <TableHead className="w-[27%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">User</TableHead>
+            <TableHead className="w-[24%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Email</TableHead>
             <TableHead className="w-[12%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Saved Tools</TableHead>
             <TableHead className="w-[10%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Upvoted</TableHead>
             <TableHead className="w-[12%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Last Sign In</TableHead>
-            <TableHead className="w-[12%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Joined</TableHead>
+            <TableHead className="w-[11%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Joined</TableHead>
+            <TableHead className="w-[4%] px-2 py-3.5 text-right text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -90,12 +93,16 @@ export default function UsersTable({
                 <TableCell className="px-4 py-4">
                   <Skeleton className="h-3.5 w-24 rounded" />
                 </TableCell>
+                <TableCell className="px-2 py-4 text-right">
+                  <Skeleton className="h-3.5 w-4 ml-auto rounded" />
+                </TableCell>
               </TableRow>
             ))
           ) : users.length > 0 ? (
             users.map((user) => (
               <TableRow
                 key={user.id}
+                onClick={() => onSelectUser?.(user)}
                 onMouseEnter={() => setHoveredId(user.id)}
                 onMouseLeave={() => setHoveredId(null)}
                 className={`transition-colors duration-200 group cursor-pointer border-l-2 relative ${
@@ -167,11 +174,16 @@ export default function UsersTable({
                     {formatDate(user.created_at)}
                   </span>
                 </TableCell>
+                <TableCell className="px-2 py-4 text-right">
+                  <div className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[var(--text-muted)] group-hover:text-[var(--text-primary)] group-hover:bg-zinc-200/60 dark:group-hover:bg-zinc-700/60 transition-all">
+                    <ChevronRight size={14} />
+                  </div>
+                </TableCell>
               </TableRow>
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={6} className="h-48 text-center py-12">
+              <TableCell colSpan={7} className="h-48 text-center py-12">
                 <div className="flex flex-col items-center justify-center gap-2">
                   <div className="w-12 h-12 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-color)] flex items-center justify-center text-[var(--text-muted)]">
                     <Users size={22} className="opacity-60" />

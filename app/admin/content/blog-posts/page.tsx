@@ -92,43 +92,28 @@ export default function BlogPostsPage() {
 
   const fetchStats = async () => {
     try {
-      let all = 0, published = 0, pending = 0, draft = 0, rejected = 0, archived = 0;
+      const [
+        { count: cAll },
+        { count: cPub },
+        { count: cPen },
+        { count: cDraft },
+        { count: cRej },
+        { count: cArc }
+      ] = await Promise.all([
+        supabase.from('blog_posts').select('*', { count: 'exact', head: true }),
+        supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+        supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
+        supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
+        supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'archived')
+      ]);
 
-      const { data: statusCounts, error: countError } = await supabase.rpc('get_status_counts', {
-        tbl_name: 'blog_posts'
-      });
-
-      if (!countError && statusCounts) {
-        all = statusCounts.total || 0;
-        published = statusCounts.published || 0;
-        pending = statusCounts.pending || 0;
-        draft = statusCounts.draft || 0;
-        rejected = statusCounts.rejected || 0;
-        archived = statusCounts.archived || 0;
-      } else {
-        const [
-          { count: cAll },
-          { count: cPub },
-          { count: cPen },
-          { count: cDraft },
-          { count: cRej },
-          { count: cArc }
-        ] = await Promise.all([
-          supabase.from('blog_posts').select('*', { count: 'exact', head: true }),
-          supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'published'),
-          supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-          supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
-          supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
-          supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'archived')
-        ]);
-
-        all = cAll || 0;
-        published = cPub || 0;
-        pending = cPen || 0;
-        draft = cDraft || 0;
-        rejected = cRej || 0;
-        archived = cArc || 0;
-      }
+      const all = cAll || 0;
+      const published = cPub || 0;
+      const pending = cPen || 0;
+      const draft = cDraft || 0;
+      const rejected = cRej || 0;
+      const archived = cArc || 0;
 
       setStats({ all, published, pending, draft, rejected, archived });
 
@@ -165,7 +150,30 @@ export default function BlogPostsPage() {
 
       let query = supabase
         .from('blog_posts')
-        .select('*', { count: 'exact' });
+        .select(`
+          id,
+          title,
+          slug,
+          description,
+          featured_image_url,
+          author_name,
+          status,
+          categories,
+          tags,
+          meta_title,
+          meta_description,
+          reading_time_minutes,
+          view_count,
+          is_featured,
+          is_paid,
+          submission_tier,
+          ai_approved,
+          ai_denied_reason,
+          created_at,
+          updated_at,
+          external_source_url,
+          content_mdx
+        `, { count: 'exact' });
 
       // Apply Search
       if (searchQuery) {
@@ -232,7 +240,6 @@ export default function BlogPostsPage() {
       const { error } = await supabase.from('blog_posts').insert([formData]);
       if (error) throw error;
 
-      await fetchStats();
       await fetchBlogs(true);
       closeForm();
     } catch (err: any) {
@@ -256,7 +263,6 @@ export default function BlogPostsPage() {
 
       if (error) throw error;
 
-      await fetchStats();
       await fetchBlogs(true);
 
       closeForm();
@@ -282,7 +288,6 @@ export default function BlogPostsPage() {
       const { error } = await supabase.from('blog_posts').delete().eq('id', id);
       if (error) throw error;
 
-      await fetchStats();
       await fetchBlogs(true);
     } catch (err) {
       console.error('Error deleting blog:', err);

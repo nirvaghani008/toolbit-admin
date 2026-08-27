@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { supabase } from '@/lib/supabase';
 
 interface BlogFormProps {
   initialData?: any;
@@ -220,9 +221,19 @@ export default function BlogForm({
     }
   }, [initialData]);
 
-  const validate = () => {
+  const validate = async () => {
     const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/#\?][^\s]*)?$/i;
     const slugRegex = /^[a-z0-9-]+$/;
+
+    const countWords = (text: string): number => {
+      if (!text) return 0;
+      return text.trim().split(/\s+/).filter(Boolean).length;
+    };
+
+    const hasHtmlTags = (text: string): boolean => {
+      if (!text) return false;
+      return /<(?:\/?[a-zA-Z][^>]*|!--[\s\S]*?--)>/i.test(text);
+    };
 
     const isValidImageUrl = (val: string) => {
       if (!val) return true;
@@ -233,25 +244,39 @@ export default function BlogForm({
 
     const blogSchema = z.object({
       title: z.string().trim()
-        .min(1, 'title is required')
-        .min(10, 'title must be at least 10 characters'),
+        .min(1, 'Title is required')
+        .min(10, 'Title must be at least 10 characters')
+        .max(2000, 'Title cannot exceed 2,000 characters')
+        .refine(val => countWords(val) <= 120, 'Title cannot exceed 120 words'),
       slug: z.string().trim()
-        .min(1, 'slug is required')
-        .regex(slugRegex, 'slug must contain only lowercase letters, numbers, and hyphens'),
+        .min(1, 'Slug is required')
+        .regex(slugRegex, 'Slug must contain only lowercase letters, numbers, and hyphens'),
+      description: z.string().trim()
+        .min(1, 'Description is required')
+        .max(2000, 'Description cannot exceed 2,000 characters')
+        .refine(val => countWords(val) <= 160, 'Description cannot exceed 160 words')
+        .refine(val => !hasHtmlTags(val), 'Plain text only. HTML tags are not allowed in description'),
       content_mdx: z.string().trim()
-        .refine(val => val !== '' && val !== '<p></p>', 'content_mdx is required')
-        .refine(val => val.length >= 50, 'content_mdx must be at least 50 characters for better SEO')
-        .refine(val => !val.includes('data:image/'), 'content_mdx contains base64 image data that could not be uploaded to CDN cloud server'),
-      categories: z.array(z.string()).min(1, 'at least one category is required'),
+        .refine(val => val !== '' && val !== '<p></p>', 'Content MDX is required')
+        .refine(val => val.length >= 50, 'Content MDX must be at least 50 characters for better SEO')
+        .refine(val => !val.includes('data:image/'), 'Content contains base64 image data that could not be uploaded to CDN cloud server'),
+      categories: z.array(z.string())
+        .min(1, 'At least 1 category is required')
+        .max(3, 'Maximum 3 categories allowed'),
+      tags: z.array(z.string())
+        .max(5, 'Maximum 5 tags allowed')
+        .optional(),
       featured_image_url: z.string().trim()
-        .refine(val => !val.startsWith('data:image/'), 'featured_image_url must be a cloud CDN URL, base64 is not allowed')
-        .refine(isValidImageUrl, 'invalid featured_image_url format'),
-      external_source_url: z.string().trim().regex(urlRegex, 'invalid external_source_url format').or(z.literal('')),
+        .min(1, 'Featured image URL is required')
+        .refine(val => !val.startsWith('data:image/'), 'Featured image URL must be a cloud CDN URL, base64 is not allowed')
+        .refine(isValidImageUrl, 'Invalid featured image URL format'),
+      external_source_url: z.string().trim().regex(urlRegex, 'Invalid external source URL format').or(z.literal('')),
     });
 
     const validationData = {
       ...formData,
-      categories: selectedCategories
+      categories: selectedCategories,
+      tags: selectedTags
     };
 
     const result = blogSchema.safeParse(validationData);
@@ -262,6 +287,28 @@ export default function BlogForm({
         const path = issue.path[0] as string;
         newErrors[path] = issue.message;
       });
+    }
+
+    // Title uniqueness check against existing blog posts
+    const trimmedTitle = formData.title.trim();
+    if (trimmedTitle && !newErrors.title) {
+      try {
+        let query = supabase
+          .from('blog_posts')
+          .select('id, title')
+          .ilike('title', trimmedTitle);
+
+        if (initialData?.id) {
+          query = query.neq('id', initialData.id);
+        }
+
+        const { data: existingPosts, error: checkError } = await query.limit(1);
+        if (!checkError && existingPosts && existingPosts.length > 0) {
+          newErrors.title = 'Title must be unique. A post with this title already exists.';
+        }
+      } catch (err) {
+        console.warn('Error checking title uniqueness:', err);
+      }
     }
 
     setErrors(newErrors);
@@ -304,7 +351,7 @@ export default function BlogForm({
         }));
       }
 
-      if (!validate()) {
+      if (!(await validate())) {
         return;
       }
 
@@ -404,7 +451,7 @@ export default function BlogForm({
         id="article_core_section"
         title="Article Core"
         description="Primary identification and publishing status."
-        hasErrors={!!(errors.title || errors.slug || errors.content_mdx)}
+        hasErrors={!!(errors.title || errors.slug || errors.description || errors.content_mdx)}
         headerActions={
           <Badge
             variant={
@@ -434,7 +481,7 @@ export default function BlogForm({
 
         <div className="grid grid-cols-1 gap-6">
           <div className="space-y-1.5">
-            <label className={labelClass}>Title <span className="saas-label-required">*</span></label>
+            <label className={labelClass}>Title <span className="saas-label-required">*</span> <span className="text-[11px] font-normal text-[var(--text-muted)]">(Max 120 words, Unique)</span></label>
             <Input
               name="title"
               value={formData.title}
@@ -460,7 +507,7 @@ export default function BlogForm({
         </div>
 
         <div className="space-y-1.5 mt-6">
-          <label className={labelClass}>Description</label>
+          <label className={labelClass}>Description <span className="saas-label-required">*</span> <span className="text-[11px] font-normal text-[var(--text-muted)]">(Max 160 words, Plain text only)</span></label>
           <Textarea
             name="description"
             value={formData.description}
@@ -468,7 +515,9 @@ export default function BlogForm({
             placeholder="Brief description or teaser of the article..."
             rows={3}
             className={errors.description ? 'saas-input-error' : ''}
+            required
           />
+          {errors.description && <p className="saas-error-message">{errors.description}</p>}
         </div>
 
         <div className="space-y-1.5 mt-6">
@@ -501,15 +550,19 @@ export default function BlogForm({
         id="taxonomy_meta_section"
         title="Taxonomy & Meta"
         description="Categories, tags, and SEO settings."
-        hasErrors={!!errors.categories}
+        hasErrors={!!(errors.categories || errors.tags)}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-1.5">
-            <label className={labelClass}>Categories <span className="saas-label-required">*</span></label>
+            <label className={labelClass}>Categories <span className="saas-label-required">*</span> <span className="text-[11px] font-normal text-[var(--text-muted)]">(Min 1, Max 3)</span></label>
             <div className={`relative focus-within:z-50 ${errors.categories ? 'saas-error-wrapper' : ''}`}>
               <KeywordTagInput
                 selectedKeywords={selectedCategories}
                 onKeywordsChange={(cats) => {
+                  if (cats.length > 3) {
+                    setErrors(prev => ({ ...prev, categories: 'Maximum 3 categories allowed' }));
+                    return;
+                  }
                   setSelectedCategories(cats);
                   if (errors.categories) {
                     setErrors(prev => {
@@ -536,11 +589,15 @@ export default function BlogForm({
             {errors.categories && <p className="saas-error-message">{errors.categories}</p>}
           </div>
           <div className="space-y-1.5">
-            <label className={labelClass}>Tags</label>
+            <label className={labelClass}>Tags <span className="text-[11px] font-normal text-[var(--text-muted)]">(Max 5)</span></label>
             <div className={`relative focus-within:z-40 ${errors.tags ? 'saas-error-wrapper' : ''}`}>
               <KeywordTagInput
                 selectedKeywords={selectedTags}
                 onKeywordsChange={(tags) => {
+                  if (tags.length > 5) {
+                    setErrors(prev => ({ ...prev, tags: 'Maximum 5 tags allowed' }));
+                    return;
+                  }
                   setSelectedTags(tags);
                   if (errors.tags) {
                     setErrors(prev => {
@@ -643,7 +700,7 @@ export default function BlogForm({
       >
         <div className="space-y-6">
           <div className="space-y-1.5">
-            <label className={labelClass}>Featured Image URL</label>
+            <label className={labelClass}>Featured Image URL <span className="saas-label-required">*</span></label>
             <div className="flex gap-2.5">
               <Input
                 name="featured_image_url"
@@ -651,6 +708,7 @@ export default function BlogForm({
                 onChange={handleChange}
                 placeholder="https://..."
                 className={`flex-1 ${errors.featured_image_url ? 'saas-input-error' : ''}`}
+                required
               />
               <Button
                 type="button"

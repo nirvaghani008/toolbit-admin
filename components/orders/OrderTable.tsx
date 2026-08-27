@@ -21,6 +21,7 @@ import {
   User,
   Inbox,
   FileText,
+  RotateCcw,
 } from 'lucide-react';
 import {
   Order,
@@ -36,6 +37,7 @@ interface OrderTableProps {
   onPageChange: (page: number) => void;
   onViewDetails: (order: Order) => void;
   onEdit: (order: Order) => void;
+  onRefund?: (order: Order) => void;
   onDelete: (id: string) => void;
   isLoading?: boolean;
 }
@@ -116,6 +118,7 @@ export default function OrderTable({
   onPageChange,
   onViewDetails,
   onEdit,
+  onRefund,
   onDelete,
   isLoading = false,
 }: OrderTableProps) {
@@ -323,6 +326,26 @@ export default function OrderTable({
                       >
                         <Eye size={13} />
                       </Button>
+
+                      {onRefund &&
+                        order.status === 'completed' &&
+                        Boolean(order.dodo_payment_id) &&
+                        Number(order.amount_usd) > 0 &&
+                        !order.plan_id?.toLowerCase().startsWith('free_') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRefund(order);
+                          }}
+                          className="h-7 w-7 rounded-lg text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 dark:text-amber-400 dark:hover:text-amber-300 dark:hover:bg-amber-500/20 shadow-2xs cursor-pointer"
+                          title="Issue Refund via Dodo Payments"
+                          aria-label={`Refund order ${order.order_number}`}
+                        >
+                          <RotateCcw size={13} />
+                        </Button>
+                      )}
 
                       <Button
                         variant="ghost"

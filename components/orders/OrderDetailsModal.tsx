@@ -66,6 +66,7 @@ interface OrderDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onEdit?: (order: Order) => void;
+  onRefund?: (order: Order) => void;
 }
 
 export function formatPlanLabel(planId: string): string {
@@ -135,10 +136,12 @@ export default function OrderDetailsModal({
   isOpen,
   onClose,
   onEdit,
+  onRefund,
 }: OrderDetailsModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
 
   const handleCopy = async (text: string, field: string) => {
     try {
@@ -206,46 +209,58 @@ export default function OrderDetailsModal({
     ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
     : null;
 
+  const isPaidOrder =
+    Number(order.amount_usd) > 0 &&
+    !order.plan_id?.toLowerCase().startsWith('free_') &&
+    (order as any).is_paid !== false;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar p-6">
+      <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar p-6">
         <DialogHeader className="border-b border-[var(--border-color)]/60 pb-4 text-left">
-          <div className="flex flex-wrap items-center justify-between gap-2 pr-6">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-1.5 bg-[var(--bg-elevated)] px-2.5 py-1 rounded-lg border border-[var(--border-color)]/60">
-                <span className="font-mono text-sm font-bold text-[var(--text-primary)]">
-                  {order.order_number}
+          <div className="flex items-start justify-between gap-3 pr-6">
+            <div>
+              <DialogTitle className="text-base font-bold text-[var(--text-primary)]">
+                Order & Transaction Details
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Order #{order.order_number} details and transaction history
+              </DialogDescription>
+              <div className="text-xs text-[var(--text-muted)] flex flex-wrap items-center gap-2 mt-1.5">
+                <span className="inline-flex items-center gap-1 bg-[var(--bg-elevated)] px-2 py-0.5 rounded-md border border-[var(--border-color)]/60 font-mono text-xs font-bold text-[var(--text-primary)]">
+                  #{order.order_number}
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(order.order_number, 'order_number')}
+                    className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                    title={copiedField === 'order_number' ? 'Copied!' : 'Copy Order Number'}
+                    aria-label="Copy Order Number"
+                  >
+                    {copiedField === 'order_number' ? (
+                      <Check className="h-3 w-3 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy(order.order_number, 'order_number')}
-                  className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
-                  title={copiedField === 'order_number' ? 'Copied!' : 'Copy Order Number'}
-                  aria-label="Copy Order Number"
-                >
-                  {copiedField === 'order_number' ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-500" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                </button>
+                <span>•</span>
+                <Badge variant="outline" className="font-semibold text-xs border-[var(--border-color)] bg-[var(--bg-surface)]">
+                  {formatPlanLabel(order.plan_id)}
+                </Badge>
+                <span>•</span>
+                <span>
+                  Created on{' '}
+                  {new Date(order.created_at).toLocaleString('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </span>
               </div>
-              <Badge variant="slate" className="font-semibold">
-                {formatPlanLabel(order.plan_id)}
-              </Badge>
             </div>
-            {getStatusBadge(order.status)}
+            <div className="shrink-0 pt-0.5">
+              {getStatusBadge(order.status)}
+            </div>
           </div>
-          <DialogTitle className="text-base font-bold text-[var(--text-primary)] mt-2">
-            Order & Transaction Details
-          </DialogTitle>
-          <DialogDescription>
-            Created on{' '}
-            {new Date(order.created_at).toLocaleString('en-US', {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            })}
-          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
@@ -301,12 +316,31 @@ export default function OrderDetailsModal({
               <div className="text-sm font-semibold text-[var(--text-primary)]">
                 {order.submitter?.full_name || 'Anonymous User'}
               </div>
-              <div className="text-xs text-[var(--text-secondary)] font-medium truncate">
-                {order.submitter?.email || 'No email attached'}
+              <div className="text-xs text-[var(--text-secondary)] font-medium">
+                {order.submitter?.email ? (
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="truncate">{order.submitter.email}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(order.submitter!.email!, 'email')}
+                      className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer shrink-0"
+                      title={copiedField === 'email' ? 'Copied!' : 'Copy Email'}
+                      aria-label="Copy Email"
+                    >
+                      {copiedField === 'email' ? (
+                        <Check className="h-3 w-3 text-emerald-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[var(--text-muted)]">No email attached</span>
+                )}
               </div>
               {order.user_id && (
-                <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] font-mono truncate pt-1">
-                  <span>User ID: {order.user_id}</span>
+                <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] font-mono truncate pt-1">
+                  <span className="truncate">User ID: {order.user_id}</span>
                   <button
                     type="button"
                     onClick={() => handleCopy(order.user_id!, 'user_id')}
@@ -336,8 +370,21 @@ export default function OrderDetailsModal({
                 Billing Country: {order.billing_country || '—'}
               </div>
               {order.dodo_payment_id && (
-                <div className="text-[10px] text-[var(--text-muted)] font-mono truncate pt-1">
-                  Payment Ref: {order.dodo_payment_id}
+                <div className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] font-mono truncate pt-1">
+                  <span className="truncate">Payment Ref: {order.dodo_payment_id}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(order.dodo_payment_id!, 'dodo_payment_id')}
+                    className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer shrink-0"
+                    title={copiedField === 'dodo_payment_id' ? 'Copied!' : 'Copy Payment Reference'}
+                    aria-label="Copy Payment Reference"
+                  >
+                    {copiedField === 'dodo_payment_id' ? (
+                      <Check className="h-3 w-3 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </button>
                 </div>
               )}
             </div>
@@ -385,46 +432,44 @@ export default function OrderDetailsModal({
             </div>
           </div>
 
-          {/* Refund Details (if refunded) */}
-          {(order.refund_amount != null || order.refund_reason || order.refunded_at) && (
-            <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4 space-y-2">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-rose-500">
+          {/* Refund Details (ONLY if order status is 'refunded') */}
+          {order.status === 'refunded' && (
+            <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 dark:bg-amber-500/10 p-4 space-y-2 animate-fade-in">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
                 <RotateCcw className="h-3.5 w-3.5" />
                 Refund Information
               </div>
-              <div className="text-xs text-[var(--text-secondary)] space-y-1">
+              <div className="text-xs text-[var(--text-secondary)] space-y-1.5">
                 {order.refund_amount != null && (
-                  <div>
-                    <span className="font-semibold text-[var(--text-primary)]">Amount: </span>
-                    ${Number(order.refund_amount).toFixed(2)}
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-[var(--text-primary)]">Refunded Amount:</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400">${Number(order.refund_amount).toFixed(2)}</span>
                   </div>
                 )}
                 {order.refund_reason && (
                   <div>
                     <span className="font-semibold text-[var(--text-primary)]">Reason: </span>
-                    {order.refund_reason}
+                    <span className="text-[var(--text-secondary)]">{order.refund_reason}</span>
                   </div>
                 )}
                 {order.refunded_at && (
-                  <div>
-                    <span className="font-semibold text-[var(--text-primary)]">Refunded At: </span>
-                    {new Date(order.refunded_at).toLocaleString()}
+                  <div className="text-[11px] text-[var(--text-muted)] pt-0.5">
+                    Processed at: {new Date(order.refunded_at).toLocaleString()}
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Additional Metadata Attributes */}
+          {/* Additional Metadata Attributes in Single Column */}
           {order.metadata && typeof order.metadata === 'object' && Object.keys(order.metadata).length > 0 && (
-            <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-surface)] p-4 space-y-2">
+            <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-surface)] p-4 space-y-3">
               <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
                 Metadata Attributes
               </div>
-              <div className="flex flex-wrap gap-2 pt-1">
+              <div className="flex flex-col gap-2 pt-1">
                 {Object.entries(order.metadata).map(([key, val]) => {
                   if (
-                    typeof val === 'object' ||
                     key === 'tool_name' ||
                     key === 'tool_site_url' ||
                     key === 'title' ||
@@ -432,15 +477,70 @@ export default function OrderDetailsModal({
                   ) {
                     return null;
                   }
+
+                  // Special rendering for Guest Post Content MDX with expand/collapse
+                  if (key === 'content_mdx' || key === 'contentMdx') {
+                    const contentStr = String(val || '');
+                    return (
+                      <div
+                        key={key}
+                        className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 p-3 space-y-2"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-[var(--text-primary)]">
+                            Article Content (MDX)
+                          </span>
+                          <span className="text-[10px] text-[var(--text-muted)]">
+                            {contentStr.length} characters
+                          </span>
+                        </div>
+                        <div
+                          className={`text-xs text-[var(--text-secondary)] font-mono leading-relaxed whitespace-pre-wrap ${
+                            !isContentExpanded
+                              ? 'line-clamp-3'
+                              : 'max-h-60 overflow-y-auto custom-scrollbar p-2.5 rounded bg-[var(--bg-surface)] border border-[var(--border-color)]/40'
+                          }`}
+                        >
+                          {contentStr}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsContentExpanded(!isContentExpanded)}
+                          className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 hover:underline cursor-pointer pt-0.5 inline-block"
+                        >
+                          {isContentExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  if (typeof val === 'object' && val !== null) {
+                    return (
+                      <div
+                        key={key}
+                        className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 p-2.5 text-xs space-y-1"
+                      >
+                        <span className="font-bold text-[var(--text-primary)] capitalize block">
+                          {key.replace(/_/g, ' ')}:
+                        </span>
+                        <pre className="font-mono text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap overflow-x-auto max-h-32 p-1.5 rounded bg-[var(--bg-surface)] border border-[var(--border-color)]/30">
+                          {JSON.stringify(val, null, 2)}
+                        </pre>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={key}
-                      className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 text-xs font-medium text-[var(--text-secondary)]"
+                      className="flex items-center justify-between gap-4 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 text-xs"
                     >
-                      <span className="font-bold text-[var(--text-primary)] capitalize">
+                      <span className="font-bold text-[var(--text-primary)] capitalize shrink-0">
                         {key.replace(/_/g, ' ')}:
-                      </span>{' '}
-                      {String(val)}
+                      </span>
+                      <span className="font-medium text-[var(--text-secondary)] break-all text-right">
+                        {String(val)}
+                      </span>
                     </div>
                   );
                 })}
@@ -452,38 +552,18 @@ export default function OrderDetailsModal({
         <DialogFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-color)]/60 pt-4 mt-2">
           <div className="flex flex-wrap items-center gap-2">
             {order.invoice_url && (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDownloadInvoice}
-                  disabled={isDownloading}
-                  className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
-                  title="Download Invoice"
-                >
-                  {isDownloading ? <Spinner size={13} /> : <Download className="h-3.5 w-3.5" />}
-                  Download Invoice
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  asChild
-                  className="border-zinc-200 dark:border-zinc-700"
-                  title="Open Invoice in New Tab"
-                >
-                  <a
-                    href={order.invoice_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="gap-1.5 text-xs font-semibold"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Open in New Tab
-                  </a>
-                </Button>
-              </>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadInvoice}
+                disabled={isDownloading}
+                className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
+                title="Download Invoice"
+              >
+                {isDownloading ? <Spinner size={13} /> : <Download className="h-3.5 w-3.5" />}
+                Download Invoice
+              </Button>
             )}
 
             {order.receipt_url && (
@@ -502,7 +582,6 @@ export default function OrderDetailsModal({
                 >
                   <FileText className="h-3.5 w-3.5" />
                   View Receipt
-                  <ExternalLink className="h-3 w-3" />
                 </a>
               </Button>
             )}
@@ -515,6 +594,21 @@ export default function OrderDetailsModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {onRefund && order.status === 'completed' && Boolean(order.dodo_payment_id) && isPaidOrder && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onRefund(order);
+                }}
+                className="gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50 hover:bg-amber-50 dark:hover:bg-amber-950/30 cursor-pointer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Issue Refund
+              </Button>
+            )}
             {onEdit && (
               <Button
                 type="button"

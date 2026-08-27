@@ -46,7 +46,7 @@ export function normalizeNewsStatus(status?: string): string {
 export function getNewsStatusVariant(status?: string): BadgeVariant {
   switch (normalizeNewsStatus(status)) {
     case 'published': return 'success';
-    case 'hide': return 'slate';
+    case 'hide': return 'destructive';
     default: return 'default';
   }
 }
@@ -322,7 +322,7 @@ export default function NewsTable({
                               >
                                 <span className="flex items-center gap-1.5 truncate">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                    opt.value === 'published' ? 'bg-emerald-500' : 'bg-zinc-400'
+                                    opt.value === 'published' ? 'bg-emerald-500' : 'bg-rose-500'
                                   }`} />
                                   <span className="text-[11px] truncate">{opt.label}</span>
                                 </span>

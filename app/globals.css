@@ -231,6 +231,19 @@ select:active {
   animation: slideInLeft 0.3s ease forwards;
 }
 
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 .animate-count-up {
   animation: countUp 0.5s ease forwards;
 }

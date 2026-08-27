@@ -267,29 +267,29 @@ export default function ContactsPage() {
 
     setIsActionLoading(true);
     try {
-      // Stamp replied_at whenever a reply is actually made, regardless of the
-      // visibility status (Replied or Hide). Set the timestamp for a new or
-      // changed reply, preserve an existing timestamp on status-only edits, and
-      // only clear it when there is no reply message at all.
-      const trimmedReply = replyText.trim();
-      const isNewOrChangedReply =
-        !!trimmedReply && replyText !== (selectedContact.reply_message ?? '');
-      const repliedAt = trimmedReply
-        ? isNewOrChangedReply
-          ? new Date().toISOString()
-          : selectedContact.replied_at ?? new Date().toISOString()
-        : null;
+      // 1. Retrieve session access token for authenticated API call
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      const { error } = await supabase
-        .from('contacts')
-        .update({
-          reply_message: replyText,
-          status: selectedStatus,
-          replied_at: repliedAt,
-        })
-        .eq('contact_id', selectedContact.contact_id);
+      // 2. Dispatch response via backend API (handles SMTP email sending and DB update)
+      const res = await fetch('/api/contacts/reply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          contact_id: selectedContact.contact_id,
+          replyText,
+          selectedStatus,
+        }),
+      });
 
-      if (error) throw error;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to dispatch response. Please try again.');
+      }
+
       await fetchStats();
       await fetchContacts(true);
       closeReply();
