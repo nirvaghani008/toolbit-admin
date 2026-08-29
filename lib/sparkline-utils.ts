@@ -1,5 +1,13 @@
 import { supabase } from './supabase';
 
+interface SparklineCacheEntry {
+  timestamp: number;
+  data: any;
+}
+
+const cache = new Map<string, SparklineCacheEntry>();
+const CACHE_TTL_MS = 15_000; // 15-second cache for lightning-fast navigation & tab switching
+
 /**
  * Fetches 100% REAL sparkline trends for multiple statuses (or all) of a table in a single query.
  * Grouped strictly by exact YYYY-MM-DD dates without any fake or generated data.
@@ -8,13 +16,23 @@ import { supabase } from './supabase';
  * @param statuses Array of status strings (plus null/undefined for "all" trend)
  * @param dateColumn The date column to filter by (default: 'updated_at')
  * @param days Number of lookback days (default: 7)
+ * @param forceRefresh Bypass in-memory cache
  */
 export async function fetchSparklinesForStatuses(
   table: string,
   statuses: (string | null)[],
   dateColumn: string = 'updated_at',
-  days: number = 7
+  days: number = 7,
+  forceRefresh: boolean = false
 ): Promise<Record<string, number[]>> {
+  const cacheKey = `sparkline:${table}:${statuses.join(',')}:${dateColumn}:${days}`;
+  if (!forceRefresh && cache.has(cacheKey)) {
+    const entry = cache.get(cacheKey)!;
+    if (Date.now() - entry.timestamp < CACHE_TTL_MS) {
+      return entry.data;
+    }
+  }
+
   // Generate exact date keys for the last N days in YYYY-MM-DD format
   const dateKeys: string[] = [];
   const now = new Date();
@@ -46,7 +64,8 @@ export async function fetchSparklinesForStatuses(
       .from(table)
       .select(selectCols)
       .gte(dateColumn, startDateISO)
-      .limit(5000);
+      .order(dateColumn, { ascending: false })
+      .limit(10000);
 
     if (error) throw error;
 
@@ -72,6 +91,8 @@ export async function fetchSparklinesForStatuses(
         results[k] = dateKeys.map((dk) => statusMap[k][dk] || 0);
       });
     }
+
+    cache.set(cacheKey, { timestamp: Date.now(), data: results });
   } catch (err) {
     console.warn(`Error fetching real sparklines for ${table}:`, err);
   }
@@ -81,65 +102,69 @@ export async function fetchSparklinesForStatuses(
 
 /**
  * Fetches both exact status counts and 100% real date sparkline trends directly from Supabase.
+ * Executes all count queries and sparkline queries concurrently in parallel with zero RPC overhead.
  * 
  * @param table Table name
  * @param statuses Array of status strings to query
  * @param dateColumn Date column to filter/group by (default: 'updated_at')
  * @param days Lookback period in days (default: 7)
+ * @param forceRefresh Bypass cache
  */
 export async function fetchTableStatsAndSparklines(
   table: string,
   statuses: string[],
   dateColumn: string = 'updated_at',
-  days: number = 7
+  days: number = 7,
+  forceRefresh: boolean = false
 ): Promise<{ counts: Record<string, number>; sparklines: Record<string, number[]> }> {
+  const cacheKey = `stats_sparklines:${table}:${statuses.join(',')}:${dateColumn}:${days}`;
+  if (!forceRefresh && cache.has(cacheKey)) {
+    const entry = cache.get(cacheKey)!;
+    if (Date.now() - entry.timestamp < CACHE_TTL_MS) {
+      return entry.data;
+    }
+  }
+
+  const counts: Record<string, number> = {};
+
   try {
-    const { data, error } = await supabase.rpc('get_table_stats_and_sparklines', {
-      tbl_name: table,
-      status_list: statuses,
-      date_col: dateColumn,
-      days_back: days
+    // Execute total count, individual status counts, and sparkline query in parallel
+    const [totalRes, statusResults, realSparklines] = await Promise.all([
+      // 1. Total count (zero body bytes, HEAD count only)
+      supabase.from(table).select('*', { count: 'exact', head: true }),
+
+      // 2. Status counts (zero body bytes, HEAD count only)
+      Promise.all(
+        statuses.map(async (s) => {
+          const { count } = await supabase
+            .from(table)
+            .select('*', { count: 'exact', head: true })
+            .eq('status', s);
+          return { status: s, count: count || 0 };
+        })
+      ),
+
+      // 3. 7-day sparklines (minimal select: dateColumn, status)
+      fetchSparklinesForStatuses(table, [null, ...statuses], dateColumn, days, forceRefresh)
+    ]);
+
+    counts['total'] = totalRes.count || 0;
+    statusResults.forEach(({ status, count }) => {
+      counts[status] = count;
     });
 
-    if (!error && data?.counts && data?.sparklines) {
-      return {
-        counts: data.counts,
-        sparklines: data.sparklines
-      };
-    }
-  } catch {
-    // fallback to direct real query below
-  }
+    const result = {
+      counts,
+      sparklines: realSparklines
+    };
 
-  // 100% REAL DATABASE QUERY FALLBACK
-  const fallbackCounts: Record<string, number> = {};
-
-  try {
-    // 1. Get exact total count from database
-    const { count: totalCount } = await supabase
-      .from(table)
-      .select('*', { count: 'exact', head: true });
-    fallbackCounts['total'] = totalCount || 0;
-
-    // 2. Get exact status counts from database
-    await Promise.all(
-      statuses.map(async (s) => {
-        const { count } = await supabase
-          .from(table)
-          .select('*', { count: 'exact', head: true })
-          .eq('status', s);
-        fallbackCounts[s] = count || 0;
-      })
-    );
+    cache.set(cacheKey, { timestamp: Date.now(), data: result });
+    return result;
   } catch (err) {
-    console.warn(`Error fetching count stats for ${table}:`, err);
+    console.warn(`Error fetching stats and sparklines for ${table}:`, err);
+    return {
+      counts: {},
+      sparklines: {}
+    };
   }
-
-  // 3. Get 100% real daily date trends from database
-  const realSparklines = await fetchSparklinesForStatuses(table, [null, ...statuses], dateColumn, days);
-
-  return {
-    counts: fallbackCounts,
-    sparklines: realSparklines
-  };
 }

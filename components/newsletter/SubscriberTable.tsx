@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusChangeControl from '@/components/common/StatusChangeControl';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export interface Subscriber {
   id: number;
@@ -53,7 +54,7 @@ interface SubscriberTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onStatusChange: (id: number | string, newStatus: string) => Promise<void> | void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, email?: string) => void;
   isLoading?: boolean;
 }
 
@@ -103,7 +104,10 @@ export default function SubscriberTable({
   onDelete,
   isLoading = false,
 }: SubscriberTableProps) {
-  const [hoveredId, setHoveredId] = useState<number | string | null>(null);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('newsletter', 'update');
+  const canDelete = hasPermission('newsletter', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">
@@ -178,15 +182,19 @@ export default function SubscriberTable({
                   </TableCell>
 
                   <TableCell className="px-2 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                    <StatusChangeControl
-                      itemId={sub.id}
-                      currentStatus={normalizeSubscriberStatus(sub.status)}
-                      options={NEWSLETTER_STATUS_OPTIONS}
-                      itemLabel={sub.email || 'this subscriber'}
-                      onStatusChange={onStatusChange}
-                      getVariant={getSubscriberStatusVariant}
-                      formatStatus={formatSubscriberStatus}
-                    />
+                    {canUpdate ? (
+                      <StatusChangeControl
+                        itemId={sub.id}
+                        currentStatus={normalizeSubscriberStatus(sub.status)}
+                        options={NEWSLETTER_STATUS_OPTIONS}
+                        itemLabel={sub.email || 'this subscriber'}
+                        onStatusChange={onStatusChange}
+                        getVariant={getSubscriberStatusVariant}
+                        formatStatus={formatSubscriberStatus}
+                      />
+                    ) : (
+                      <SubscriberStatusBadge status={sub.status} />
+                    )}
                   </TableCell>
 
                   <TableCell className="px-4 py-4">
@@ -201,19 +209,23 @@ export default function SubscriberTable({
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(sub.id);
-                        }}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Subscriber"
-                        aria-label={`Delete subscriber ${sub.email}`}
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canDelete ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(sub.id, sub.email);
+                          }}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Subscriber"
+                          aria-label={`Delete subscriber ${sub.email}`}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

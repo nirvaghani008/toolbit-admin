@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusChangeControl from '@/components/common/StatusChangeControl';
+import { useAdmin } from '@/contexts/AdminContext';
 
 interface AdvertiseTableProps {
   data: any[];
@@ -23,7 +24,7 @@ interface AdvertiseTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (item: any) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
   statusFilter?: string;
@@ -55,6 +56,9 @@ export default function AdvertiseTable({
   isLoading = false
 }: AdvertiseTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('advertise', 'update');
+  const canDelete = hasPermission('advertise', 'delete');
 
   const getToolNameFromUrl = (url: string) => {
     try {
@@ -297,38 +301,54 @@ export default function AdvertiseTable({
 
                   {/* Status */}
                   <TableCell className="px-6 py-3.5 text-center">
-                    <StatusChangeControl
-                      itemId={item.id}
-                      currentStatus={item.status || 'inactive'}
-                      options={ADVERTISEMENT_STATUS_OPTIONS}
-                      itemLabel={toolName}
-                      onStatusChange={onStatusChange}
-                      getVariant={getStatusBadgeVariant}
-                      formatStatus={(status) => status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Inactive'}
-                    />
+                    {canUpdate && onStatusChange ? (
+                      <StatusChangeControl
+                        itemId={item.id}
+                        currentStatus={item.status || 'inactive'}
+                        options={ADVERTISEMENT_STATUS_OPTIONS}
+                        itemLabel={toolName}
+                        onStatusChange={onStatusChange}
+                        getVariant={getStatusBadgeVariant}
+                        formatStatus={(status) => status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Inactive'}
+                      />
+                    ) : (
+                      <Badge
+                        variant={getStatusBadgeVariant(item.status)}
+                        className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase"
+                      >
+                        {item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : 'Inactive'}
+                      </Badge>
+                    )}
                   </TableCell>
 
                   {/* Manage */}
                   <TableCell className="px-6 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(item)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Record"
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(item.id)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Record"
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canUpdate && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEdit(item)}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Record"
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(item.id, toolName)}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Record"
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+                      {!canUpdate && !canDelete && (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

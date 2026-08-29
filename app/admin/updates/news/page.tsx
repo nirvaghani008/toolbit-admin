@@ -9,6 +9,7 @@ import NewsForm from '@/components/news/NewsForm';
 import CountUp from '@/components/common/CountUp';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { 
   RefreshCw, Newspaper, CheckCircle2, EyeOff
 } from 'lucide-react';
@@ -17,6 +18,12 @@ import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  createNewsAction,
+  updateNewsAction,
+  updateNewsStatusAction,
+  deleteNewsAction
+} from './actions';
 
 export default function NewsPage() {
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
@@ -166,17 +173,28 @@ export default function NewsPage() {
     fetchNews();
   }, [fetchNews]);
 
-  const handleDeleteNews = async (id: number) => {
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
+  const handleDeleteNews = async (id: number, title?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete News Article',
+      itemName: title,
       message: 'Are you sure you want to permanently delete this news headline? This action cannot be undone.'
     });
     if (!confirmed) return;
 
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('news').delete().eq('news_id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteNewsAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete news item.');
+      }
 
       await fetchStats();
       await fetchNews(true);
@@ -194,11 +212,13 @@ export default function NewsPage() {
   const handleStatusChange = async (newsId: number, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('news')
-        .update({ status: newStatus })
-        .eq('news_id', newsId);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await updateNewsStatusAction(newsId, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update news status.');
+      }
 
       // Optimistically update the row in local state
       setNewsList(prev => prev.map(n => n.news_id === newsId ? { ...n, status: newStatus } : n));
@@ -215,19 +235,19 @@ export default function NewsPage() {
     if (!editingNews) return;
     setIsActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('news')
-        .update(data)
-        .eq('news_id', editingNews.news_id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await updateNewsAction(editingNews.news_id, data, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to save news article.');
+      }
+
       await fetchStats();
       await fetchNews(true);
       closeForm();
     } catch (err: any) {
       console.error('Error saving news article:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate news article. A news entry with this title or ID already exists.');
-      }
       throw new Error(err.message || 'An error occurred while saving news article.');
     } finally {
       setIsActionLoading(false);
@@ -237,26 +257,27 @@ export default function NewsPage() {
   const handleCreateNews = async (data: Partial<NewsItem>) => {
     setIsActionLoading(true);
     try {
-      let insertPayload: Record<string, any> = { ...data };
-      const { data: maxIdData } = await supabase.from('news').select('news_id').order('news_id', { ascending: false }).limit(1);
-      if (maxIdData && maxIdData.length > 0 && maxIdData[0].news_id) {
-        insertPayload.news_id = maxIdData[0].news_id + 1;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await createNewsAction(data, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create news article.');
       }
-      const { error } = await supabase.from('news').insert([insertPayload]);
-      if (error) throw error;
+
       await fetchStats();
       await fetchNews(true);
       closeForm();
     } catch (err: any) {
       console.error('Error creating news article:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate news article. A news entry with this title or ID already exists.');
-      }
       throw new Error(err.message || 'An error occurred while creating news article.');
     } finally {
       setIsActionLoading(false);
     }
   };
+
+  const { hasPermission } = useAdmin();
+  const canInsert = hasPermission('news', 'insert');
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -278,13 +299,15 @@ export default function NewsPage() {
               {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
               Refresh
             </Button>
-            <Button 
-              onClick={() => openForm()} 
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
-              suppressHydrationWarning
-            >
-              + New Article
-            </Button>
+            {canInsert && (
+              <Button 
+                onClick={() => openForm()} 
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
+                suppressHydrationWarning
+              >
+                + New Article
+              </Button>
+            )}
           </div>
         )}
       </div>

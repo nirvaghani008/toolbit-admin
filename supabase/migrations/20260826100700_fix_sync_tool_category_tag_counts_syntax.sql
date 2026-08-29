@@ -46,7 +46,8 @@ BEGIN
 
         IF target_cats IS NOT NULL AND array_length(target_cats, 1) > 0 THEN
             UPDATE public.categories c
-            SET status     = CASE
+            SET tool_count = sub.cnt,
+                status     = CASE
                                WHEN sub.cnt > 5  THEN 'show'
                                WHEN sub.cnt = 0  THEN 'hide'
                                ELSE c.status
@@ -79,7 +80,8 @@ BEGIN
 
         IF target_tags IS NOT NULL AND array_length(target_tags, 1) > 0 THEN
             UPDATE public.tags tg
-            SET status     = CASE
+            SET tool_count = sub.cnt,
+                status     = CASE
                                WHEN sub.cnt > 5  THEN 'show'
                                WHEN sub.cnt = 0  THEN 'hide'
                                ELSE tg.status

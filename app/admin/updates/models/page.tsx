@@ -193,7 +193,7 @@ export default function ModelsPage() {
     }
   }, [isAuthorized, canView, fetchModels]);
 
-  const handleDeleteModel = async (id: number) => {
+  const handleDeleteModel = async (id: number, name?: string) => {
     if (!canDelete) {
       alert('Access denied: You do not have permission to delete AI models.');
       return;
@@ -201,6 +201,7 @@ export default function ModelsPage() {
 
     const confirmed = await confirmDelete({
       title: 'Delete AI Model',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this AI Model record? This action cannot be undone.'
     });
     if (!confirmed) return;

@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export interface Contact {
   contact_id: number;
@@ -35,7 +36,7 @@ interface ContactTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onSelectContact: (contact: Contact) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   isLoading?: boolean;
 }
 
@@ -88,6 +89,9 @@ export default function ContactTable({
   isLoading = false,
 }: ContactTableProps) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('contacts', 'update');
+  const canDelete = hasPermission('contacts', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">
@@ -203,15 +207,17 @@ export default function ContactTable({
                     >
                       <Edit2 size={13} />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(contact.contact_id)}
-                      className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                      title="Delete Inquiry"
-                    >
-                      <Trash2 size={13} />
-                    </Button>
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(contact.contact_id, contact.name || contact.email || `Inquiry #${contact.contact_id}`)}
+                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                        title="Delete Inquiry"
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

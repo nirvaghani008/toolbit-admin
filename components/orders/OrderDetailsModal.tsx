@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
 import {
   ExternalLink,
   User,
@@ -26,7 +25,6 @@ import {
   Database,
   Copy,
   Check,
-  Download,
   Pencil,
 } from 'lucide-react';
 
@@ -139,8 +137,6 @@ export default function OrderDetailsModal({
   onRefund,
 }: OrderDetailsModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
 
   const handleCopy = async (text: string, field: string) => {
@@ -152,33 +148,6 @@ export default function OrderDetailsModal({
       }, 2000);
     } catch (err) {
       console.error('Failed to copy text:', err);
-    }
-  };
-
-  const handleDownloadInvoice = async () => {
-    if (!order?.invoice_url) return;
-    setIsDownloading(true);
-    setDownloadNotice(null);
-    try {
-      const response = await fetch(order.invoice_url);
-      if (!response.ok) throw new Error('Download failed');
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      const isPdf = blob.type === 'application/pdf' || order.invoice_url.toLowerCase().includes('.pdf');
-      link.download = `Invoice-${order.order_number}.${isPdf ? 'pdf' : 'html'}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-    } catch {
-      // If direct cross-origin fetch is blocked or hosted externally, open in new tab
-      window.open(order.invoice_url, '_blank', 'noopener,noreferrer');
-      setDownloadNotice('Opening invoice in new tab...');
-      setTimeout(() => setDownloadNotice(null), 4000);
-    } finally {
-      setIsDownloading(false);
     }
   };
 
@@ -216,54 +185,56 @@ export default function OrderDetailsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar p-6">
-        <DialogHeader className="border-b border-[var(--border-color)]/60 pb-4 text-left">
-          <div className="flex items-start justify-between gap-3 pr-6">
-            <div>
-              <DialogTitle className="text-base font-bold text-[var(--text-primary)]">
-                Order & Transaction Details
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                Order #{order.order_number} details and transaction history
-              </DialogDescription>
-              <div className="text-xs text-[var(--text-muted)] flex flex-wrap items-center gap-2 mt-1.5">
-                <span className="inline-flex items-center gap-1 bg-[var(--bg-elevated)] px-2 py-0.5 rounded-md border border-[var(--border-color)]/60 font-mono text-xs font-bold text-[var(--text-primary)]">
-                  #{order.order_number}
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(order.order_number, 'order_number')}
-                    className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-                    title={copiedField === 'order_number' ? 'Copied!' : 'Copy Order Number'}
-                    aria-label="Copy Order Number"
-                  >
-                    {copiedField === 'order_number' ? (
-                      <Check className="h-3 w-3 text-emerald-500" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </button>
-                </span>
-                <span>•</span>
-                <Badge variant="outline" className="font-semibold text-xs border-[var(--border-color)] bg-[var(--bg-surface)]">
-                  {formatPlanLabel(order.plan_id)}
-                </Badge>
-                <span>•</span>
-                <span>
-                  Created on{' '}
-                  {new Date(order.created_at).toLocaleString('en-US', {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })}
-                </span>
+      <DialogContent className="max-w-3xl sm:max-w-3xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
+        <div className="p-6 pb-4 border-b border-[var(--border-color)]/60 pr-14 shrink-0 bg-[var(--bg-surface)]">
+          <DialogHeader className="text-left">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <DialogTitle className="text-base font-bold text-[var(--text-primary)]">
+                  Order & Transaction Details
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Order #{order.order_number} details and transaction history
+                </DialogDescription>
+                <div className="text-xs text-[var(--text-muted)] flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="inline-flex items-center gap-1 bg-[var(--bg-elevated)] px-2 py-0.5 rounded-md border border-[var(--border-color)]/60 font-mono text-xs font-bold text-[var(--text-primary)]">
+                    #{order.order_number}
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(order.order_number, 'order_number')}
+                      className="p-0.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                      title={copiedField === 'order_number' ? 'Copied!' : 'Copy Order Number'}
+                      aria-label="Copy Order Number"
+                    >
+                      {copiedField === 'order_number' ? (
+                        <Check className="h-3 w-3 text-emerald-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                  </span>
+                  <span>•</span>
+                  <Badge variant="outline" className="font-semibold text-xs border-[var(--border-color)] bg-[var(--bg-surface)]">
+                    {formatPlanLabel(order.plan_id)}
+                  </Badge>
+                  <span>•</span>
+                  <span>
+                    Created on{' '}
+                    {new Date(order.created_at).toLocaleString('en-US', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </span>
+                </div>
+              </div>
+              <div className="shrink-0 pt-0.5">
+                {getStatusBadge(order.status)}
               </div>
             </div>
-            <div className="shrink-0 pt-0.5">
-              {getStatusBadge(order.status)}
-            </div>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
+        </div>
 
-        <div className="space-y-6 py-4">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 py-4 space-y-6">
           {/* Associated Tool Info */}
           <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-elevated)]/40 p-4">
             <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-3">
@@ -549,93 +520,96 @@ export default function OrderDetailsModal({
           )}
         </div>
 
-        <DialogFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-color)]/60 pt-4 mt-2">
-          <div className="flex flex-wrap items-center gap-2">
-            {order.invoice_url && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadInvoice}
-                disabled={isDownloading}
-                className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
-                title="Download Invoice"
-              >
-                {isDownloading ? <Spinner size={13} /> : <Download className="h-3.5 w-3.5" />}
-                Download Invoice
-              </Button>
-            )}
-
-            {order.receipt_url && (
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="border-zinc-200 dark:border-zinc-700"
-                title="View Receipt"
-              >
-                <a
-                  href={order.receipt_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="gap-1.5 text-xs font-semibold"
+        <div className="p-6 pt-4 border-t border-[var(--border-color)]/60 shrink-0 bg-[var(--bg-surface)]">
+          <DialogFooter className="flex flex-wrap items-center justify-between gap-3 p-0 m-0 border-none">
+            <div className="flex flex-wrap items-center gap-2">
+              {order.invoice_url && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 shadow-2xs transition-colors cursor-pointer"
+                  title="View Invoice"
                 >
-                  <FileText className="h-3.5 w-3.5" />
-                  View Receipt
-                </a>
-              </Button>
-            )}
+                  <a
+                    href={order.invoice_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-zinc-700 dark:text-zinc-300" />
+                    View Invoice
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
+                </Button>
+              )}
 
-            {downloadNotice && (
-              <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                {downloadNotice}
-              </span>
-            )}
-          </div>
+              {order.receipt_url && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="gap-1.5 text-xs font-semibold text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 shadow-2xs transition-colors cursor-pointer"
+                  title="View Receipt"
+                >
+                  <a
+                    href={order.receipt_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-zinc-700 dark:text-zinc-300" />
+                    View Receipt
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </a>
+                </Button>
+              )}
+            </div>
 
-          <div className="flex items-center gap-2">
-            {onRefund && order.status === 'completed' && Boolean(order.dodo_payment_id) && isPaidOrder && (
+            <div className="flex items-center gap-2">
+              {onRefund && order.status === 'completed' && Boolean(order.dodo_payment_id) && isPaidOrder && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    onRefund(order);
+                  }}
+                  className="gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50 hover:bg-amber-50 dark:hover:bg-amber-950/30 cursor-pointer"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Issue Refund
+                </Button>
+              )}
+              {onEdit && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    onEdit(order);
+                  }}
+                  className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {order.status === 'refunded' || order.status === 'cancelled' || order.status === 'failed'
+                    ? 'Edit Notes'
+                    : 'Edit Order'}
+                </Button>
+              )}
               <Button
-                type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  onClose();
-                  onRefund(order);
-                }}
-                className="gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50 hover:bg-amber-50 dark:hover:bg-amber-950/30 cursor-pointer"
+                onClick={onClose}
+                className="border-zinc-200 dark:border-zinc-700 cursor-pointer"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Issue Refund
+                Close
               </Button>
-            )}
-            {onEdit && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onClose();
-                  onEdit(order);
-                }}
-                className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                {order.status === 'refunded' || order.status === 'cancelled' || order.status === 'failed'
-                  ? 'Edit Notes'
-                  : 'Edit Order'}
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClose}
-              className="border-zinc-200 dark:border-zinc-700 cursor-pointer"
-            >
-              Close
-            </Button>
-          </div>
-        </DialogFooter>
+            </div>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

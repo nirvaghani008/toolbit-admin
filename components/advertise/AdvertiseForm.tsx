@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { scrollToError } from '@/lib/form-utils';
 import { useDebounce } from '@/lib/hooks/use-debounce';
 import CollapsibleSection from '../common/CollapsibleSection';
+import LaunchSchedulePicker from '../common/LaunchSchedulePicker';
 import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { DateField } from '@/components/ui/date-field';
@@ -12,8 +13,10 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
+import { checkAdvertiseSiteUrlAvailabilityAction } from '@/app/admin/submissions/advertise/actions';
+import { validateToolSiteUrlFormat, formatCanonicalSiteUrl } from '@/lib/url-normalize';
 
 interface AdvertiseFormProps {
   initialData?: any;
@@ -23,6 +26,23 @@ interface AdvertiseFormProps {
   onBusyChange?: (isBusy: boolean) => void;
 }
 
+const extractDateOnly = (val: any, defaultVal = ''): string => {
+  if (!val) return defaultVal;
+  const str = String(val).trim();
+  const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  try {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  } catch {}
+  return defaultVal;
+};
+
 export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoading = false, onBusyChange }: AdvertiseFormProps) {
   const [formData, setFormData] = useState({
     tool_id: '',
@@ -30,8 +50,8 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
     featured_type: [] as string[],
     status: 'active',
     order: '' as string | number,
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: '',
+    start_date: extractDateOnly(initialData?.start_date, new Date().toISOString().split('T')[0]),
+    end_date: extractDateOnly(initialData?.end_date, ''),
     social_platform: '',
     social_followers: '' as string | number,
     social_share_url: '',
@@ -50,6 +70,16 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
   const [toolsLoading, setToolsLoading] = useState(false);
   const [toolSearch, setToolSearch] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Tool site URL validation and duplicate check states
+  const [isCheckingSiteUrl, setIsCheckingSiteUrl] = useState(false);
+  const [siteUrlNotice, setSiteUrlNotice] = useState<{
+    type: 'error' | 'warning' | 'info' | 'success';
+    message: string;
+    adId?: number;
+    status?: string;
+  } | null>(null);
+  const lastCheckedUrlRef = useRef<string | null>(initialData?.tool_site_url || null);
 
   const isSelectionRef = useRef(false);
 
@@ -210,8 +240,8 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
   const isDirty = useMemo(() => {
     if (!initialData) return true;
     const initialFeaturedType = Array.isArray(initialData.featured_type) ? initialData.featured_type : (initialData.featured_type ? [initialData.featured_type] : []);
-    const initialStartDate = initialData.start_date ? new Date(initialData.start_date).toISOString().split('T')[0] : '';
-    const initialEndDate = initialData.end_date ? new Date(initialData.end_date).toISOString().split('T')[0] : '';
+    const initialStartDate = extractDateOnly(initialData.start_date, '');
+    const initialEndDate = extractDateOnly(initialData.end_date, '');
 
     const currentFeaturedType = [...formData.featured_type].sort().join(',');
     const comparisonFeaturedType = [...initialFeaturedType].sort().join(',');
@@ -238,8 +268,8 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
         featured_type: Array.isArray(initialData.featured_type) ? initialData.featured_type : (initialData.featured_type ? [initialData.featured_type] : []),
         status: initialData.status || 'active',
         order: initialData.order ?? initialData.display_order ?? initialData.order_index ?? '',
-        start_date: initialData.start_date ? new Date(initialData.start_date).toISOString().split('T')[0] : '',
-        end_date: initialData.end_date ? new Date(initialData.end_date).toISOString().split('T')[0] : '',
+        start_date: extractDateOnly(initialData.start_date, new Date().toISOString().split('T')[0]),
+        end_date: extractDateOnly(initialData.end_date, ''),
         social_platform: initialData.social_platform || '',
         social_followers: initialData.social_followers ?? '',
         social_share_url: initialData.social_share_url || '',
@@ -276,6 +306,112 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
     }
   };
 
+  const verifySiteUrl = async (rawUrl: string, autoFillTool = false) => {
+    const t = (rawUrl || '').trim();
+    if (!t) {
+      setSiteUrlNotice(null);
+      lastCheckedUrlRef.current = null;
+      return;
+    }
+
+    const formatValidation = validateToolSiteUrlFormat(t);
+    if (!formatValidation.isValid) {
+      setErrors(prev => ({
+        ...prev,
+        tool_site_url: formatValidation.error || 'Invalid Tool Site URL',
+      }));
+      setSiteUrlNotice(null);
+      lastCheckedUrlRef.current = t;
+      return;
+    }
+
+    const cleaned = formatValidation.cleaned || formatCanonicalSiteUrl(t);
+
+    if (cleaned !== t) {
+      setFormData(prev => ({ ...prev, tool_site_url: cleaned }));
+    }
+
+    if (lastCheckedUrlRef.current === cleaned && siteUrlNotice) {
+      return;
+    }
+    lastCheckedUrlRef.current = cleaned;
+
+    setErrors(prev => {
+      const n = { ...prev };
+      delete n.tool_site_url;
+      return n;
+    });
+
+    setIsCheckingSiteUrl(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await checkAdvertiseSiteUrlAvailabilityAction(
+        {
+          toolSiteUrl: cleaned,
+          excludeId: initialData?.id || null,
+        },
+        token
+      );
+
+      if (res.success && res.data) {
+        const checkData = res.data;
+
+        // If tool_id is not yet selected, and a matching published tool was found in ai_tools
+        if (autoFillTool && !formData.tool_id && checkData.matchedTool) {
+          handleSelectTool(checkData.matchedTool);
+        }
+
+        if (checkData.exists && checkData.type === 'active_ad' && checkData.ad) {
+          setSiteUrlNotice({
+            type: 'warning',
+            message: checkData.message || `Notice: Active campaign #${checkData.ad.id} already exists for this website.`,
+            adId: checkData.ad.id,
+            status: checkData.ad.status,
+          });
+        } else {
+          setSiteUrlNotice({
+            type: 'success',
+            message: 'Website URL is valid and ready.',
+          });
+        }
+      }
+    } catch (err: any) {
+      console.warn('Error checking ad site URL:', err?.message || err);
+    } finally {
+      setIsCheckingSiteUrl(false);
+    }
+  };
+
+  const handleSiteUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, tool_site_url: val }));
+    if (errors.tool_site_url) {
+      setErrors(prev => {
+        const n = { ...prev };
+        delete n.tool_site_url;
+        return n;
+      });
+    }
+    if (siteUrlNotice) {
+      setSiteUrlNotice(null);
+    }
+  };
+
+  const handleSiteUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    if (pasted && pasted.trim()) {
+      setTimeout(() => {
+        verifySiteUrl(pasted.trim(), true);
+      }, 50);
+    }
+  };
+
+  const handleSiteUrlBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    verifySiteUrl(val, !formData.tool_id);
+  };
+
   const validate = () => {
     const advertiseSchema = z.object({
       tool_id: z.union([z.string(), z.number()]).refine(val => {
@@ -285,6 +421,14 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
       start_date: z.string().trim().min(1, 'Start date is required'),
       end_date: z.string().trim().min(1, 'End date is required'),
       featured_type: z.array(z.string()).min(1, 'At least one placement type is required'),
+    }).refine(data => {
+      if (data.start_date && data.end_date) {
+        return data.end_date >= data.start_date;
+      }
+      return true;
+    }, {
+      message: 'End date must be on or after start date',
+      path: ['end_date'],
     });
 
     const result = advertiseSchema.safeParse(formData);
@@ -298,6 +442,12 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
     }
 
     setErrors(newErrors);
+
+    // Validate tool_site_url with dedicated syntax and format checks
+    const siteUrlValidation = validateToolSiteUrlFormat(formData.tool_site_url);
+    if (!siteUrlValidation.isValid) {
+      newErrors.tool_site_url = siteUrlValidation.error || 'Invalid Tool site URL';
+    }
 
     if (Object.keys(newErrors).length > 0) {
       scrollToError(newErrors);
@@ -356,8 +506,8 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
         featured_type: toNull(formData.featured_type),
         status: formData.status,
         display_order: toNull(formData.order) ? parseInt(formData.order.toString()) : 0,
-        start_date: toNull(formData.start_date),
-        end_date: toNull(formData.end_date),
+        start_date: formData.start_date ? new Date(formData.start_date).toISOString() : null,
+        end_date: formData.end_date ? new Date(formData.end_date).toISOString() : null,
         social_platform: toNull(formData.social_platform),
         social_followers: toNull(formData.social_followers) ? parseInt(formData.social_followers.toString()) : 0,
         social_share_url: toNull(formData.social_share_url),
@@ -422,6 +572,60 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Tool Site URL */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className={labelClass}>Tool Site URL <span className="saas-label-required">*</span></label>
+              {isCheckingSiteUrl && (
+                <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  <Spinner size={13} />
+                  <span>Checking database...</span>
+                </div>
+              )}
+              {!isCheckingSiteUrl && siteUrlNotice?.type === 'success' && (
+                <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  <CheckCircle2 size={13} />
+                  <span>Available</span>
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <Input
+                name="tool_site_url"
+                value={formData.tool_site_url}
+                onChange={handleSiteUrlChange}
+                onPaste={handleSiteUrlPaste}
+                onBlur={handleSiteUrlBlur}
+                className={`${errors.tool_site_url ? 'saas-input-error' : ''} ${siteUrlNotice?.type === 'success' ? 'border-emerald-500/50 dark:border-emerald-500/50' : ''}`}
+                placeholder="https://example.com"
+                required
+                suppressHydrationWarning
+              />
+              {isCheckingSiteUrl && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Spinner size={14} />
+                </div>
+              )}
+            </div>
+            {errors.tool_site_url && (
+              <p className="saas-error-message">
+                <AlertTriangle size={11} /> {errors.tool_site_url}
+              </p>
+            )}
+
+            {siteUrlNotice && siteUrlNotice.type === 'warning' && (
+              <div className="mt-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="space-y-1 flex-1">
+                  <div className="font-semibold text-amber-900 dark:text-amber-200">
+                    Existing Campaign Detected
+                  </div>
+                  <p className="leading-relaxed">{siteUrlNotice.message}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Tool Name Dropdown Search */}
           <div className="space-y-1 relative" id="tool_name_wrapper">
             <label className={labelClass}>Tool Name <span className="saas-label-required">*</span></label>
@@ -489,25 +693,6 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
               </p>
             )}
           </div>
-
-          {/* Tool Site URL */}
-          <div className="space-y-1">
-            <label className={labelClass}>Tool Site URL <span className="saas-label-required">*</span></label>
-            <Input
-              name="tool_site_url"
-              value={formData.tool_site_url}
-              onChange={handleChange}
-              className={errors.tool_site_url ? 'saas-input-error' : ''}
-              placeholder="https://toolbit.ai"
-              required
-              suppressHydrationWarning
-            />
-            {errors.tool_site_url && (
-              <p className="saas-error-message">
-                <AlertTriangle size={11} /> {errors.tool_site_url}
-              </p>
-            )}
-          </div>
         </div>
       </CollapsibleSection>
 
@@ -520,31 +705,52 @@ export default function AdvertiseForm({ initialData, onSubmit, onCancel, isLoadi
         className="relative z-0"
       >
         <div className="space-y-6">
-          {/* Row 1: Start Date and End Date (50% width each) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-1">
-              <label className={labelClass}>Start Date <span className="saas-label-required">*</span></label>
-              <DateField
-                name="start_date"
-                value={formData.start_date}
-                onChange={(value) => handleChange({ target: { name: 'start_date', value } } as React.ChangeEvent<HTMLInputElement>)}
-                error={!!errors.start_date}
-                required
-              />
-              {errors.start_date && (
-                <p className="saas-error-message">
-                  <AlertTriangle size={11} /> {errors.start_date}
-                </p>
-              )}
-            </div>
+          {/* Campaign Launch / Start Date Selection */}
+          <LaunchSchedulePicker
+            label="Campaign Start Date"
+            value={formData.start_date}
+            treatPastAsInstant={true}
+            onChange={(dateStr) => {
+              const newStartDate = dateStr || new Date().toISOString().split('T')[0];
+              setFormData(prev => {
+                let newEndDate = prev.end_date;
+                if (newEndDate && newEndDate < newStartDate) {
+                  newEndDate = '';
+                }
+                return {
+                  ...prev,
+                  start_date: newStartDate,
+                  end_date: newEndDate,
+                };
+              });
+              if (errors.start_date) {
+                setErrors(prev => {
+                  const n = { ...prev };
+                  delete n.start_date;
+                  return n;
+                });
+              }
+            }}
+            instantLabel="Instant Launch"
+            instantDescription="Campaign starts immediately today."
+            scheduleLabel="Schedule Launch"
+            scheduleDescription="Select campaign start date from tomorrow up to 1 month ahead."
+            disabled={isBusy}
+            error={errors.start_date}
+          />
+
+          {/* End Date */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
             <div className="space-y-1">
               <label className={labelClass}>End Date <span className="saas-label-required">*</span></label>
               <DateField
                 name="end_date"
                 value={formData.end_date}
+                minDate={formData.start_date}
                 onChange={(value) => handleChange({ target: { name: 'end_date', value } } as React.ChangeEvent<HTMLInputElement>)}
                 error={!!errors.end_date}
                 required
+                disabled={isBusy}
               />
               {errors.end_date && (
                 <p className="saas-error-message">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Edit2, Trash2, Tag, ExternalLink, Inbox } from 'lucide-react';
+import { Edit2, Trash2, Tag, Inbox } from 'lucide-react';
 import Pagination from '@/components/common/Pagination';
 import {
   Table,
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusChangeControl from '@/components/common/StatusChangeControl';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export interface TagItem {
   id?: number;
@@ -39,7 +40,7 @@ interface TagTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (tag: TagItem) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onStatusChange?: (tagId: number | string, newStatus: string) => Promise<void> | void;
   availableStatuses?: readonly string[];
   isLoading?: boolean;
@@ -106,16 +107,18 @@ export default function TagTable({
   availableStatuses,
   isLoading = false
 }: TagTableProps) {
-  const items = tags || [];
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('tags', 'update');
+  const canDelete = hasPermission('tags', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">
       <Table>
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[30%] px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tag Name</TableHead>
-            <TableHead className="w-[20%] px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Parent</TableHead>
+            <TableHead className="w-[30%] px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tag & Slug</TableHead>
+            <TableHead className="w-[20%] px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Parent Tag</TableHead>
             <TableHead className="w-[15%] px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tools Usage</TableHead>
             <TableHead className="w-[15%] px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Views Count</TableHead>
             <TableHead className="w-[10%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
@@ -136,7 +139,7 @@ export default function TagTable({
                   </div>
                 </TableCell>
                 <TableCell className="px-6 py-4">
-                  <Skeleton className="h-5 w-20 rounded-md" />
+                  <Skeleton className="h-4 w-12 rounded" />
                 </TableCell>
                 <TableCell className="px-6 py-4">
                   <div className="space-y-1.5">
@@ -145,113 +148,79 @@ export default function TagTable({
                   </div>
                 </TableCell>
                 <TableCell className="px-6 py-4">
-                  <Skeleton className="h-3.5 w-16 rounded" />
+                  <Skeleton className="h-4 w-12 rounded" />
                 </TableCell>
                 <TableCell className="px-4 py-4 text-center">
-                  <Skeleton className="h-5 w-16 mx-auto rounded-md" />
+                  <Skeleton className="h-5 w-14 rounded-full mx-auto" />
                 </TableCell>
                 <TableCell className="px-4 py-4 text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Skeleton className="w-7 h-7 rounded-lg" />
-                    <Skeleton className="w-7 h-7 rounded-lg" />
+                  <div className="flex justify-center gap-1.5">
+                    <Skeleton className="h-7 w-7 rounded-lg" />
+                    <Skeleton className="h-7 w-7 rounded-lg" />
                   </div>
                 </TableCell>
               </TableRow>
             ))
-          ) : items.length === 0 ? (
+          ) : tags.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="h-48 text-center py-10">
-                <div className="flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
-                  <div className="w-12 h-12 rounded-2xl bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]">
+              <TableCell colSpan={6} className="h-64 text-center">
+                <div className="flex flex-col items-center justify-center gap-2">
+                  <div className="p-3 bg-[var(--bg-elevated)] rounded-full text-[var(--text-muted)]">
                     <Inbox size={24} />
                   </div>
-                  <div className="text-sm font-bold text-[var(--text-primary)]">No tags found</div>
-                  <p className="text-xs text-[var(--text-muted)] font-medium max-w-sm">
-                    No tags match your search criteria or filter. Try clearing filters or creating a new tag.
-                  </p>
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">No tags found</p>
+                  <p className="text-xs text-[var(--text-muted)]">Try adjusting your filters or search keywords.</p>
                 </div>
               </TableCell>
             </TableRow>
           ) : (
-            items.map((tag, index) => {
-              const tagId = tag.id ?? index;
-              const rawName = tag.name || '';
-              const displayName = rawName.replace(/^#+/, '').trim();
-              const tagSlug = (tag.slug || '').toLowerCase();
-              const rawParent = tag.parent_tag || tag.parent || '';
-              const parentTag = rawParent.replace(/^#+/, '').trim();
+            tags.map((tag) => {
+              const tagId = (tag.id) as number;
+              const displayName = tag.name || '';
+              const slug = tag.slug || '';
+              const parentTag = tag.parent_tag || tag.parent;
               const toolCount = tag.tool_count ?? 0;
-              const subCount = items.filter(h => {
-                const p = (h.parent_tag || h.parent || '').replace(/^#+/, '').trim();
-                return p === displayName && displayName !== '';
-              }).length;
 
               return (
                 <TableRow
-                  key={`tag-${tagId}-${index}`}
-                  onClick={() => onEdit(tag)}
+                  key={tagId || slug}
                   onMouseEnter={() => setHoveredId(tagId)}
                   onMouseLeave={() => setHoveredId(null)}
-                  className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
-                    hoveredId === tagId
-                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
-                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
-                  }`}
+                  className="transition-colors group hover:bg-[var(--bg-elevated)]/30"
                 >
                   <TableCell className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                        <Tag size={16} />
+                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 flex items-center justify-center text-zinc-500 dark:text-zinc-400 shrink-0 group-hover:scale-105 transition-transform">
+                        <Tag size={17} />
                       </div>
-                      <div className="min-w-0 max-w-[260px]">
-                        <div className="text-xs font-bold text-[var(--text-primary)] tracking-tight truncate">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-[var(--text-primary)] tracking-tight">
                           {displayName}
-                        </div>
-                        {tag.status === 'show' ? (
-                          <a
-                            href={`https://toolbit.ai/tag/${tagSlug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-[10px] text-[var(--text-muted)] font-medium mt-0.5 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-                          >
-                            <span>/{tagSlug}</span>
-                            <ExternalLink size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </a>
-                        ) : (
-                          <span
-                            className="inline-block text-[10px] text-[var(--text-muted)] font-medium mt-0.5 cursor-not-allowed opacity-60"
-                            title="URL not active until shown"
-                          >
-                            /{tagSlug}
-                          </span>
-                        )}
+                        </span>
+                        <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                          /{slug}
+                        </span>
                       </div>
                     </div>
                   </TableCell>
 
                   <TableCell className="px-6 py-4">
                     {parentTag ? (
-                      <Badge variant="secondary" className="font-semibold text-[10px] lowercase-none tracking-normal">
+                      <Badge variant="outline" className="text-[9px] px-2 py-0.5 font-bold uppercase tracking-wider">
                         {parentTag}
                       </Badge>
                     ) : (
-                      <span className="text-[11px] text-[var(--text-muted)] font-medium italic opacity-50">
-                        None
+                      <span className="text-[9px] text-[var(--text-muted)] italic">
+                        —
                       </span>
                     )}
                   </TableCell>
 
                   <TableCell className="px-6 py-4">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[11px] font-bold text-[var(--text-primary)] tracking-tight">
-                        {toolCount} {toolCount === 1 ? 'Tool' : 'Tools'}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-[var(--text-primary)] tracking-tight">
+                        {toolCount.toLocaleString()} {toolCount === 1 ? 'Tool' : 'Tools'}
                       </span>
-                      {subCount > 0 && (
-                        <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                          {subCount} Nested
-                        </span>
-                      )}
                     </div>
                   </TableCell>
 
@@ -262,7 +231,7 @@ export default function TagTable({
                   </TableCell>
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                    {onStatusChange && tag.id != null ? (
+                    {canUpdate && onStatusChange && tag.id != null ? (
                       <StatusChangeControl
                         itemId={tag.id ?? ''}
                         currentStatus={tag.status}
@@ -279,26 +248,33 @@ export default function TagTable({
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(tag)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Record"
-                        aria-label={`Edit tag ${displayName}`}
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(tagId)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Record"
-                        aria-label={`Delete tag ${displayName}`}
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canUpdate && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEdit(tag)}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Record"
+                          aria-label={`Edit tag ${displayName}`}
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(tagId, displayName)}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Record"
+                          aria-label={`Delete tag ${displayName}`}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+                      {!canUpdate && !canDelete && (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

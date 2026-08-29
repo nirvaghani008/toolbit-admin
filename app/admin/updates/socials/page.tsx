@@ -9,6 +9,7 @@ import SocialForm from '@/components/socials/SocialForm';
 import CountUp from '@/components/common/CountUp';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import {
   RefreshCw, Share2, CheckCircle2, EyeOff, FileText, Star
 } from 'lucide-react';
@@ -17,6 +18,12 @@ import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  createSocialAction,
+  updateSocialAction,
+  updateSocialStatusAction,
+  deleteSocialAction
+} from './actions';
 
 export default function SocialsPage() {
   const [socialsList, setSocialsList] = useState<SocialItem[]>([]);
@@ -202,17 +209,28 @@ export default function SocialsPage() {
     fetchSocials();
   }, [fetchSocials]);
 
-  const handleDeleteSocial = async (id: number) => {
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
+  const handleDeleteSocial = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Social Post',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this social post update? This action cannot be undone.'
     });
     if (!confirmed) return;
 
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('socials').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteSocialAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete social post.');
+      }
 
       await fetchStats();
       await fetchSocials(true);
@@ -226,11 +244,13 @@ export default function SocialsPage() {
   const handleStatusChange = async (id: number | string, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('socials')
-        .update({ status: newStatus })
-        .eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await updateSocialStatusAction(id, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update status.');
+      }
 
       // Optimistically update local state, then refresh stat counters
       setSocialsList(prev => prev.map(s => (s.id === id ? { ...s, status: newStatus } : s)));
@@ -251,19 +271,19 @@ export default function SocialsPage() {
     if (!editingSocial) return;
     setIsActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('socials')
-        .update(data)
-        .eq('id', editingSocial.id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await updateSocialAction(editingSocial.id, data, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to save social post.');
+      }
+
       await fetchStats();
       await fetchSocials(true);
       closeForm();
     } catch (err: any) {
       console.error('Error saving social post:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate record. This social post item already exists.');
-      }
       throw new Error(err.message || 'An error occurred while saving social post.');
     } finally {
       setIsActionLoading(false);
@@ -273,23 +293,27 @@ export default function SocialsPage() {
   const handleCreateSocial = async (data: Partial<SocialItem>) => {
     setIsActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('socials')
-        .insert([data]);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await createSocialAction(data, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create social post.');
+      }
+
       await fetchStats();
       await fetchSocials(true);
       closeForm();
     } catch (err: any) {
       console.error('Error creating social post:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate record. This social post item already exists.');
-      }
       throw new Error(err.message || 'An error occurred while creating social post.');
     } finally {
       setIsActionLoading(false);
     }
   };
+
+  const { hasPermission } = useAdmin();
+  const canInsert = hasPermission('socials', 'insert');
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -311,13 +335,15 @@ export default function SocialsPage() {
               {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
               Refresh
             </Button>
-            <Button
-              onClick={() => openForm()}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
-              suppressHydrationWarning
-            >
-              + New Social Update
-            </Button>
+            {canInsert && (
+              <Button
+                onClick={() => openForm()}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
+                suppressHydrationWarning
+              >
+                + New Social Update
+              </Button>
+            )}
           </div>
         )}
       </div>

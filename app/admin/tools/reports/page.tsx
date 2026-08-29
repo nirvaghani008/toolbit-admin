@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import ReportTable, { ToolReport, Submitter, formatReportType } from '@/components/reports/ReportTable';
 import dynamic from 'next/dynamic';
+import { deleteToolReportAction } from './actions';
+import { updateToolAction } from '@/app/admin/tools/actions';
 
 const ToolForm = dynamic(() => import('@/components/tools/ToolForm'), {
   ssr: false,
@@ -73,21 +75,23 @@ export default function ToolReportsPage() {
   const handleUpdateTool = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('ai_tools')
-        .update({ ...formData, updated_at: new Date().toISOString() })
-        .eq('tool_id', editingTool.tool_id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Authentication required. Please log in.');
 
-      if (error) throw error;
+      const targetId = editingTool?.tool_id;
+      if (!targetId) throw new Error('Missing tool ID for update.');
+
+      const res = await updateToolAction(targetId, formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update tool.');
+      }
 
       await fetchStats();
       await fetchReports(true);
       closeForm();
     } catch (err: any) {
       console.error('Error updating tool:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This tool URL slug is already in use.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -102,7 +106,7 @@ export default function ToolReportsPage() {
     detailMismatch: 0,
     otherIssue: 0,
   });
-  const [sparklines] = useState<Record<string, number[]>>({
+  const [sparklines, setSparklines] = useState<Record<string, number[]>>({
     all: [0, 0, 0, 0, 0, 0, 0],
     notWorking: [0, 0, 0, 0, 0, 0, 0],
     falseInfo: [0, 0, 0, 0, 0, 0, 0],
@@ -130,7 +134,10 @@ export default function ToolReportsPage() {
         supabase.from('tool_reports').select('*', { count: 'exact', head: true }),
         supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', ['not working', 'not_working']),
         supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', ['false info', 'false_info']),
-        supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', ['needs review', 'need review', 'needs_review', 'need_review', 'need to review', 'need_to_review', 'nees review', 'nees_review']),
+        supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', [
+          'needs review', 'need review', 'needs_review', 'need_review',
+          'need to review', 'need_to_review', 'nees review', 'nees_review'
+        ]),
         supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', ['detail mismatch', 'detail_mismatch']),
       ]);
 
@@ -146,6 +153,78 @@ export default function ToolReportsPage() {
         otherIssue: cOther,
       });
       setRefreshKey((prev) => prev + 1);
+
+      // Fetch 100% REAL 7-day sparkline date trends in a single fast indexed query (zero custom DB functions)
+      try {
+        const now = new Date();
+        const dateKeys: string[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(now);
+          d.setDate(d.getDate() - i);
+          dateKeys.push(d.toISOString().slice(0, 10));
+        }
+        const startDateISO = dateKeys[0] + 'T00:00:00.000Z';
+
+        const { data: recentRecords } = await supabase
+          .from('tool_reports')
+          .select('created_at, report_type')
+          .gte('created_at', startDateISO)
+          .limit(5000);
+
+        if (recentRecords) {
+          const trendMaps: Record<string, Record<string, number>> = {
+            all: {},
+            notWorking: {},
+            falseInfo: {},
+            needsReview: {},
+            detailMismatch: {},
+            otherIssue: {},
+          };
+
+          Object.keys(trendMaps).forEach((k) => {
+            dateKeys.forEach((dk) => {
+              trendMaps[k][dk] = 0;
+            });
+          });
+
+          recentRecords.forEach((r: any) => {
+            if (!r.created_at) return;
+            const rDate = new Date(r.created_at).toISOString().slice(0, 10);
+            if (trendMaps.all[rDate] !== undefined) {
+              trendMaps.all[rDate]++;
+            }
+
+            const norm = (r.report_type || '').toLowerCase().trim();
+            if (norm === 'not working' || norm === 'not_working') {
+              if (trendMaps.notWorking[rDate] !== undefined) trendMaps.notWorking[rDate]++;
+            } else if (norm === 'false info' || norm === 'false_info') {
+              if (trendMaps.falseInfo[rDate] !== undefined) trendMaps.falseInfo[rDate]++;
+            } else if (
+              norm === 'needs review' || norm === 'need review' ||
+              norm === 'needs_review' || norm === 'need_review' ||
+              norm === 'need to review' || norm === 'need_to_review' ||
+              norm === 'nees review' || norm === 'nees_review'
+            ) {
+              if (trendMaps.needsReview[rDate] !== undefined) trendMaps.needsReview[rDate]++;
+            } else if (norm === 'detail mismatch' || norm === 'detail_mismatch') {
+              if (trendMaps.detailMismatch[rDate] !== undefined) trendMaps.detailMismatch[rDate]++;
+            } else {
+              if (trendMaps.otherIssue[rDate] !== undefined) trendMaps.otherIssue[rDate]++;
+            }
+          });
+
+          setSparklines({
+            all: dateKeys.map((dk) => trendMaps.all[dk] || 0),
+            notWorking: dateKeys.map((dk) => trendMaps.notWorking[dk] || 0),
+            falseInfo: dateKeys.map((dk) => trendMaps.falseInfo[dk] || 0),
+            needsReview: dateKeys.map((dk) => trendMaps.needsReview[dk] || 0),
+            detailMismatch: dateKeys.map((dk) => trendMaps.detailMismatch[dk] || 0),
+            otherIssue: dateKeys.map((dk) => trendMaps.otherIssue[dk] || 0),
+          });
+        }
+      } catch (trendErr) {
+        console.warn('Error calculating sparkline trends:', trendErr);
+      }
     } catch (err: any) {
       console.warn('Error fetching report stats:', err?.message || err);
     }
@@ -263,26 +342,36 @@ export default function ToolReportsPage() {
     if (searchInputValue === '') setSearchQuery('');
   }, [searchInputValue]);
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (currentPage !== 1) setCurrentPage(1);
     setSearchQuery(searchInputValue);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Report',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this tool report? This action cannot be undone.',
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('tool_reports').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteToolReportAction(id, token);
+      if (!res.success) throw new Error(res.error || 'Failed to delete report');
+
       await fetchStats();
       await fetchReports();
-    } catch (err) {
-      console.error('Error deleting report:', err);
+    } catch (err: any) {
+      console.error('Error deleting report:', err?.message || err);
     } finally {
       setIsRefreshing(false);
     }

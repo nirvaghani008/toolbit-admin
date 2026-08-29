@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Tag, Plus, X } from 'lucide-react';
+import { createTagAction } from '@/app/admin/tools/tags/actions';
+import { Tag, Folder, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
@@ -10,7 +11,7 @@ interface KeywordTagInputProps {
   selectedKeywords: string[];
   onKeywordsChange: (keywords: string[]) => void;
   placeholder?: string;
-  type?: 'category' | 'tag' | 'audience' | 'generic' | 'parent-category' | 'parent-tag';
+  type?: 'category' | 'tag' | 'audience' | 'generic' | 'parent-category' | 'parent-tag' | 'blog-category';
   singleSelect?: boolean;
   name?: string;
   hasError?: boolean;
@@ -43,40 +44,74 @@ export const DEFAULT_PARENT_CATEGORIES = [
   'Art & Creative',
   'Audio & Music',
   'Avatars & Characters',
+  'Business',
   'Business & Enterprise',
+  'Career & HR',
+  'Chatbots & Assistants',
   'Coding & Development',
   'Customer Support & CRM',
   'Data & Analytics',
   'Design & UI/UX',
+  'Detection & Safety',
   'E-commerce & Retail',
+  'Ecommerce',
   'Education & Learning',
+  'Education & Translation',
   'Email & Communication',
+  'Entertainment & Games',
   'Fashion & Beauty',
+  'Finance',
   'Finance & Accounting',
   'Gaming & Virtual Worlds',
+  'Health & Wellness',
   'HR & Recruitment',
+  'Image & Design',
+  'Image Analysis',
   'Image Generation & Editing',
+  'Interior & Architecture',
+  'Legal',
   'Legal & Compliance',
   'Life & Assistant',
+  'Marketing & Ads',
   'Medical & Healthcare',
+  'Music & Audio',
   'News & Information',
   'Operations & Management',
+  'Other',
   'Personal & Relationships',
+  'Productivity',
   'Productivity & Workflow',
   'Real Estate & Property',
+  'Research & Data',
   'Sales & Outreach',
   'Science & Research',
   'Security & Privacy',
   'SEO & Growth',
+  'Social Media',
   'Social Media & Community',
   'Sports & Fitness',
   'Travel & Hospitality',
+  'Travel & Navigation',
   'Video & Animation',
   'Voice & Speech',
-  'Writing & Copywriting'
+  'Writing & Copywriting',
+  'Writing & Editing'
 ];
 
 export const DEFAULT_PARENT_TAGS = DEFAULT_PARENT_CATEGORIES;
+
+const getDefaultSuggestions = (inputType: string) => {
+  if (inputType === 'parent-category' || inputType === 'category') {
+    return DEFAULT_PARENT_CATEGORIES;
+  }
+  if (inputType === 'parent-tag' || inputType === 'tag') {
+    return DEFAULT_PARENT_TAGS;
+  }
+  if (inputType === 'blog-category') {
+    return DEFAULT_BLOG_CATEGORIES;
+  }
+  return [];
+};
 
 export default function KeywordTagInput({
   selectedKeywords,
@@ -90,15 +125,7 @@ export default function KeywordTagInput({
   className
 }: KeywordTagInputProps) {
   const [inputValue, setInputValue] = useState(() => (singleSelect && selectedKeywords[0] ? selectedKeywords[0] : ''));
-  const [dbSuggestions, setDbSuggestions] = useState<string[]>(
-    type === 'parent-category' 
-      ? DEFAULT_PARENT_CATEGORIES 
-      : (type === 'parent-tag' || type === 'tag')
-        ? DEFAULT_PARENT_TAGS
-        : type === 'category' 
-          ? DEFAULT_BLOG_CATEGORIES 
-          : []
-  );
+  const [dbSuggestions, setDbSuggestions] = useState<string[]>(() => getDefaultSuggestions(type));
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -131,130 +158,24 @@ export default function KeywordTagInput({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [singleSelect, selectedKeywords]);
 
-  // Fetch recommendations from Supabase DB
+  // Fetch recommendations freshly from Supabase DB without global cache
   useEffect(() => {
-    const loadDbSuggestions = async () => {
-      const isTagType = type === 'parent-tag' || type === 'tag';
-      const defaultList = type === 'parent-category' 
-        ? DEFAULT_PARENT_CATEGORIES 
-        : isTagType
-          ? DEFAULT_PARENT_TAGS
-          : type === 'category' 
-            ? DEFAULT_BLOG_CATEGORIES 
-            : [];
-      setDbSuggestions(defaultList);
+    let isCancelled = false;
 
-      if (type === 'generic' || type === 'audience') return;
+    const loadDbSuggestions = async () => {
+      const defaultList = getDefaultSuggestions(type);
+      
+      if (type === 'generic' || type === 'audience') {
+        if (!isCancelled) setDbSuggestions(defaultList);
+        return;
+      }
+
+      if (!isCancelled) setDbSuggestions(defaultList);
 
       try {
-        if (type === 'category') {
-          const fetchedCats: string[] = [...DEFAULT_BLOG_CATEGORIES];
-
-          try {
-            const { data: bData } = await supabase
-              .from('blog_posts')
-              .select('categories')
-              .not('categories', 'is', null)
-              .limit(1000);
-
-            if (bData) {
-              bData.forEach((row: any) => {
-                if (Array.isArray(row.categories)) {
-                  row.categories.forEach((cat: string) => {
-                    if (cat && typeof cat === 'string' && cat.trim()) {
-                      fetchedCats.push(cat.trim());
-                    }
-                  });
-                } else if (typeof row.categories === 'string' && row.categories.trim()) {
-                  row.categories.split(',').forEach((c: string) => {
-                    const trimmed = c.trim();
-                    if (trimmed) fetchedCats.push(trimmed);
-                  });
-                }
-              });
-            }
-          } catch (e) {
-            console.warn('Error fetching from blog_posts categories:', e);
-          }
-
-          const seen = new Set<string>();
-          const uniqueCats: string[] = [];
-          fetchedCats.forEach(c => {
-            const clean = c.trim();
-            if (!clean || clean === 'NULL' || clean === 'EMPTY') return;
-            const lower = clean.toLowerCase();
-            if (!seen.has(lower)) {
-              seen.add(lower);
-              uniqueCats.push(clean);
-            }
-          });
-
-          uniqueCats.sort((a, b) => a.localeCompare(b));
-          setDbSuggestions(uniqueCats);
-          return;
-        }
-
-        if (isTagType) {
-          const fetchedTags: string[] = [...DEFAULT_PARENT_TAGS];
-
-          // 1. Fetch from 'tags' table
-          try {
-            const { data: tData } = await supabase
-              .from('tags')
-              .select('*')
-              .limit(1000);
-
-            if (tData) {
-              tData.forEach((row: any) => {
-                const rawName = row.name || row.slug;
-                if (rawName) {
-                  const cleanName = rawName.replace(/^#+/, '').trim();
-                  if (cleanName) fetchedTags.push(cleanName);
-                }
-              });
-            }
-          } catch (e) {
-            console.warn('Error fetching from tags table:', e);
-          }
-
-          // 2. Fetch from 'blog_posts' table tags column
-          try {
-            const { data: bData } = await supabase
-              .from('blog_posts')
-              .select('tags')
-              .not('tags', 'is', null)
-              .limit(500);
-
-            if (bData) {
-              bData.forEach((row: any) => {
-                if (Array.isArray(row.tags)) {
-                  row.tags.forEach((t: string) => {
-                    if (t) {
-                      const cleanName = t.replace(/^#+/, '').trim();
-                      if (cleanName) fetchedTags.push(cleanName);
-                    }
-                  });
-                } else if (typeof row.tags === 'string') {
-                  row.tags.split(',').forEach((t: string) => {
-                    const cleanName = t.replace(/^#+/, '').trim();
-                    if (cleanName) fetchedTags.push(cleanName);
-                  });
-                }
-              });
-            }
-          } catch (e) {
-            console.warn('Error fetching from blog_posts tags:', e);
-          }
-
-          const uniqueTags = Array.from(new Set(fetchedTags.filter(n => n && n !== '#' && n !== 'NULL' && n !== 'EMPTY')));
-          setDbSuggestions(uniqueTags);
-          return;
-        }
-
-        if (type === 'parent-category') {
+        if (type === 'category' || type === 'parent-category') {
           const fetchedCats: string[] = [...defaultList];
 
-          // 1. Fetch from 'categories' table
           try {
             const { data: cData } = await supabase
               .from('categories')
@@ -265,37 +186,74 @@ export default function KeywordTagInput({
               cData.forEach((row: any) => {
                 if (row.name) fetchedCats.push(row.name);
                 if (row.parent) fetchedCats.push(row.parent);
-                if (row.category_name) fetchedCats.push(row.category_name);
-                if (row.parent_category) fetchedCats.push(row.parent_category);
               });
             }
           } catch (e) {
             console.warn('Error fetching from categories table:', e);
           }
 
-          // 2. Fetch from 'blog_posts' table categories column
-          try {
-            const { data: bData } = await supabase
-              .from('blog_posts')
-              .select('categories')
-              .not('categories', 'is', null)
-              .limit(500);
+          const uniqueCats = Array.from(new Set(fetchedCats.filter(n => n && n !== 'NULL' && n !== 'EMPTY')));
+          if (!isCancelled) setDbSuggestions(uniqueCats);
+          return;
+        }
 
-            if (bData) {
-              bData.forEach((row: any) => {
-                if (Array.isArray(row.categories)) {
-                  fetchedCats.push(...row.categories);
-                } else if (typeof row.categories === 'string') {
-                  fetchedCats.push(...row.categories.split(',').map((c: string) => c.trim()));
+        if (type === 'parent-tag' || type === 'tag') {
+          const fetchedTags: string[] = [...DEFAULT_PARENT_TAGS];
+
+          // Fetch from dedicated 'tags' table
+          try {
+            const { data: tData } = await supabase
+              .from('tags')
+              .select('name, slug, parent_tag')
+              .limit(1000);
+
+            if (tData) {
+              tData.forEach((row: any) => {
+                const rawName = row.name || row.slug;
+                if (rawName) {
+                  const cleanName = rawName.replace(/^#+/, '').trim();
+                  if (cleanName) fetchedTags.push(cleanName);
+                }
+                if (row.parent_tag) {
+                  const cleanParent = row.parent_tag.replace(/^#+/, '').trim();
+                  if (cleanParent) fetchedTags.push(cleanParent);
                 }
               });
             }
           } catch (e) {
-            console.warn('Error fetching from blog_posts categories:', e);
+            console.warn('Error fetching from tags table:', e);
           }
 
-          const uniqueCats = Array.from(new Set(fetchedCats.filter(n => n && n !== 'NULL' && n !== 'EMPTY')));
-          setDbSuggestions(uniqueCats);
+          const uniqueTags = Array.from(new Set(fetchedTags.filter(n => n && n !== '#' && n !== 'NULL' && n !== 'EMPTY')));
+          if (!isCancelled) setDbSuggestions(uniqueTags);
+          return;
+        }
+
+        if (type === 'blog-category') {
+          const fetchedBlogCats: string[] = [...DEFAULT_BLOG_CATEGORIES];
+
+          try {
+            const { data: bData } = await supabase
+              .from('blog_posts')
+              .select('categories')
+              .limit(1000);
+
+            if (bData) {
+              bData.forEach((row: any) => {
+                if (Array.isArray(row.categories)) {
+                  row.categories.forEach((cat: string) => {
+                    if (cat && typeof cat === 'string') fetchedBlogCats.push(cat.trim());
+                  });
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('Error fetching from blog_posts table:', e);
+          }
+
+          const uniqueBlogCats = Array.from(new Set(fetchedBlogCats.filter(n => n && n !== 'NULL' && n !== 'EMPTY')));
+          if (!isCancelled) setDbSuggestions(uniqueBlogCats);
+          return;
         }
       } catch (err) {
         console.error('Error fetching suggestions:', err);
@@ -303,6 +261,10 @@ export default function KeywordTagInput({
     };
 
     loadDbSuggestions();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [type]);
 
   // Compute filtered suggestions whenever inputValue or selectedKeywords changes
@@ -349,7 +311,7 @@ export default function KeywordTagInput({
     if (!trimmed) return;
 
     // Categories match existing or default
-    const isCategory = type === 'category' || type === 'parent-category';
+    const isCategory = type === 'category' || type === 'parent-category' || type === 'blog-category';
     if (isCategory) {
       const match = dbSuggestions.find(db => db.toLowerCase() === trimmed.toLowerCase());
       if (match) {
@@ -376,13 +338,19 @@ export default function KeywordTagInput({
     if (isTagType && !dbSuggestions.some(db => db.toLowerCase() === trimmed.toLowerCase())) {
       const urlSlug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       
-      try {
-        await supabase.from('tags').insert([{
-          name: trimmed,
-          slug: urlSlug,
-          status: 'show'
-        }]);
-      } catch {}
+      (async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
+          if (token) {
+            await createTagAction({
+              name: trimmed,
+              slug: urlSlug,
+              status: 'show'
+            }, token);
+          }
+        } catch {}
+      })();
 
       setDbSuggestions(prev => [...prev, trimmed]);
     }
@@ -433,6 +401,8 @@ export default function KeywordTagInput({
       removeKeyword(selectedKeywords[selectedKeywords.length - 1]);
     }
   };
+
+  const isCategoryType = type === 'category' || type === 'parent-category' || type === 'blog-category';
 
   return (
     <div className="w-full" ref={containerRef}>
@@ -508,7 +478,11 @@ export default function KeywordTagInput({
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <Tag size={13} className={isSelected ? 'text-zinc-900 dark:text-zinc-100' : 'text-[var(--text-muted)] group-hover:text-zinc-900 dark:group-hover:text-zinc-100'} />
+                    {isCategoryType ? (
+                      <Folder size={13} className={isSelected ? 'text-zinc-900 dark:text-zinc-100' : 'text-[var(--text-muted)] group-hover:text-zinc-900 dark:group-hover:text-zinc-100'} />
+                    ) : (
+                      <Tag size={13} className={isSelected ? 'text-zinc-900 dark:text-zinc-100' : 'text-[var(--text-muted)] group-hover:text-zinc-900 dark:group-hover:text-zinc-100'} />
+                    )}
                     {s}
                   </span>
                   <Plus size={13} className={isSelected ? 'opacity-100 text-zinc-900 dark:text-zinc-100' : 'opacity-0 group-hover:opacity-100 text-zinc-600 dark:text-zinc-400'} />

@@ -16,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAdmin } from '@/contexts/AdminContext';
 
 // Proper visibility statuses for social posts.
 // The socials.status column has a DB CHECK constraint allowing only 'Show' / 'Hide'.
@@ -61,6 +62,7 @@ const RedditIcon = ({ size = 16, className = "" }: { size?: number; className?: 
 export interface SocialItem {
   id: number;
   title: string;
+  account_name?: string | null;
   description?: string | null;
   platform?: string;
   content_type?: string[];
@@ -83,7 +85,7 @@ interface SocialTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (item: SocialItem) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
@@ -101,6 +103,9 @@ export default function SocialTable({
 }: SocialTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
   const [previewSocial, setPreviewSocial] = useState<SocialItem | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('socials', 'update');
+  const canDelete = hasPermission('socials', 'delete');
 
   const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' => {
     const s = (status || 'show').toLowerCase();
@@ -335,15 +340,24 @@ export default function SocialTable({
 
                 {/* 7. Status with interactive dropdown */}
                 <TableCell className="px-2 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
-                  <StatusChangeControl
-                    itemId={item.id}
-                    currentStatus={item.status}
-                    options={SOCIAL_STATUS_OPTIONS}
-                    itemLabel={item.title || 'this social post'}
-                    onStatusChange={onStatusChange}
-                    getVariant={getStatusBadgeVariant}
-                    formatStatus={formatStatus}
-                  />
+                  {canUpdate && onStatusChange ? (
+                    <StatusChangeControl
+                      itemId={item.id}
+                      currentStatus={item.status}
+                      options={SOCIAL_STATUS_OPTIONS}
+                      itemLabel={item.title || 'this social post'}
+                      onStatusChange={onStatusChange}
+                      getVariant={getStatusBadgeVariant}
+                      formatStatus={formatStatus}
+                    />
+                  ) : (
+                    <Badge
+                      variant={getStatusBadgeVariant(item.status)}
+                      className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase"
+                    >
+                      {formatStatus(item.status)}
+                    </Badge>
+                  )}
                 </TableCell>
 
                 {/* 9. Manage */}
@@ -359,26 +373,30 @@ export default function SocialTable({
                     >
                       <Eye size={13} />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onEdit(item)}
-                      className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                      title="Edit Record"
-                      aria-label="Edit Record"
-                    >
-                      <Edit2 size={13} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(item.id)}
-                      className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                      title="Delete Record"
-                      aria-label="Delete Record"
-                    >
-                      <Trash2 size={13} />
-                    </Button>
+                    {canUpdate && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEdit(item)}
+                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                        title="Edit Record"
+                        aria-label="Edit Record"
+                      >
+                        <Edit2 size={13} />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(item.id, item.title || item.account_name || `Social Post #${item.id}`)}
+                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                        title="Delete Record"
+                        aria-label="Delete Record"
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

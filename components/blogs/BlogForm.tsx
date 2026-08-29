@@ -582,7 +582,7 @@ export default function BlogForm({
                   }
                 }}
                 placeholder="Select or type categories..."
-                type="category"
+                type="blog-category"
                 name="categories"
               />
             </div>

@@ -217,25 +217,27 @@ export default function RefundOrderModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isProcessing && onClose()}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto custom-scrollbar p-6">
-        {/* Header with Amber Theme */}
-        <DialogHeader className="border-b border-[var(--border-color)]/60 pb-4 text-left">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-600 dark:text-amber-400">
-              <RotateCcw className="h-4 w-4" />
+      <DialogContent className="max-w-xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
+        {/* Fixed Header with Amber Theme */}
+        <div className="p-6 pb-4 border-b border-[var(--border-color)]/60 pr-14 shrink-0 bg-[var(--bg-surface)]">
+          <DialogHeader className="text-left">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                <RotateCcw className="h-4 w-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-[var(--text-primary)]">
+                  Issue Refund via Dodo Payments
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Order #{order.order_number}
+                </DialogDescription>
+              </div>
             </div>
-            <div>
-              <DialogTitle className="text-base font-bold text-[var(--text-primary)]">
-                Issue Refund via Dodo Payments
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                Order #{order.order_number}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
+        </div>
 
-        <div className="space-y-4 py-3">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 py-4 space-y-4">
           {/* Order Snapshot Card */}
           <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-elevated)]/40 p-3.5 space-y-2.5 text-xs">
             {/* Plan Displayed First */}
@@ -472,7 +474,6 @@ export default function RefundOrderModal({
                 <>
                   <li>The submission tier in <span className="font-semibold text-zinc-900 dark:text-zinc-100">ai_tool_submissions</span> will revert to <span className="font-semibold text-zinc-900 dark:text-zinc-100">free_launch_tool</span> (<code className="text-[10px] text-zinc-700 dark:text-zinc-300 font-mono">is_paid = false</code>).</li>
                   <li>The complimentary 1-day sidebar ad in <span className="font-semibold text-zinc-900 dark:text-zinc-100">advertisement_tools</span> will be deactivated.</li>
-                  {/* <li>Expedited 24-hour review priority and blue verified badge will be removed.</li> */}
                 </>
               )}
 
@@ -480,7 +481,6 @@ export default function RefundOrderModal({
               {planType.includes('update_tool') && (
                 <>
                   <li>The tool update tier in <span className="font-semibold text-zinc-900 dark:text-zinc-100">ai_tool_submissions</span> will revert to <span className="font-semibold text-zinc-900 dark:text-zinc-100">free_update_tool</span> (<code className="text-[10px] text-zinc-700 dark:text-zinc-300 font-mono">is_paid = false</code>).</li>
-                  {/* <li>Expedited 24-hour review priority and blue verified badge will be removed. <em>(Note: No sidebar ad was attached to update plans)</em>.</li> */}
                 </>
               )}
 
@@ -505,39 +505,41 @@ export default function RefundOrderModal({
           )}
         </div>
 
-        {/* Footer with Amber Themed Action Button */}
-        <DialogFooter className="flex items-center justify-between gap-2 border-t border-[var(--border-color)]/60 pt-4 mt-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            disabled={isProcessing}
-            className="text-xs"
-          >
-            Cancel
-          </Button>
+        {/* Fixed Footer with Amber Themed Action Button */}
+        <div className="p-6 pt-4 border-t border-[var(--border-color)]/60 shrink-0 bg-[var(--bg-surface)]">
+          <DialogFooter className="flex items-center justify-between gap-2 p-0 m-0 border-none">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              disabled={isProcessing}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
 
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleProcessRefund}
-            disabled={isProcessing || Boolean(successMessage) || Boolean(partialError) || Boolean(reasonError)}
-            className="gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-          >
-            {isProcessing ? (
-              <>
-                <Spinner size={14} className="text-white" />
-                Contacting Dodo Payments...
-              </>
-            ) : (
-              <>
-                <RotateCcw className="h-3.5 w-3.5" />
-                Confirm & Issue Refund
-              </>
-            )}
-          </Button>
-        </DialogFooter>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleProcessRefund}
+              disabled={isProcessing || Boolean(successMessage) || Boolean(partialError) || Boolean(reasonError)}
+              className="gap-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+            >
+              {isProcessing ? (
+                <>
+                  <Spinner size={14} className="text-white" />
+                  Contacting Dodo Payments...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Confirm & Issue Refund
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

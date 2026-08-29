@@ -8,12 +8,19 @@ import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
-import { Tag, CheckCircle2, EyeOff, FileText, Archive, RefreshCw } from 'lucide-react';
+import { Tag, CheckCircle2, EyeOff, FileText, Archive, RefreshCw, Search, X } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  createTagAction,
+  updateTagAction,
+  updateTagStatusAction,
+  deleteTagAction
+} from './actions';
 
 const STATUS_METADATA: Record<string, { label: string; badge: string; icon: React.ReactNode; iconStyle: string; badgeStyle: string; sparklineColor: string }> = {
   show: {
@@ -125,7 +132,7 @@ export default function TagsPage() {
     }
   };
 
-  const fetchStats = async () => {
+  const fetchStats = async (forceRefresh = false) => {
     try {
       // 1. Fetch unique status values directly from tags table in Supabase
       const { data: statusRows } = await supabase
@@ -169,7 +176,8 @@ export default function TagsPage() {
         'tags',
         finalStatuses,
         'updated_at',
-        7
+        7,
+        forceRefresh
       );
 
       const statsObj: Record<string, number> = { all: counts.total || 0 };
@@ -189,38 +197,56 @@ export default function TagsPage() {
     setLoading(true);
 
     try {
-      if (manual) await fetchStats();
-      let query = supabase
-        .from('tags')
-        .select('*', { count: 'exact' });
+      const tagsQueryPromise = (async () => {
+        let query = supabase
+          .from('tags')
+          .select('id, name, slug, parent_tag, tool_count, views, status, updated_at, meta_title, meta_description, meta_keywords, description', { count: 'exact' });
 
-      // Apply Search
-      if (searchQuery) {
-        const cleanQuery = searchQuery.replace(/^#+/, '').trim();
-        query = query.or(`name.ilike.%${cleanQuery}%,slug.ilike.%${cleanQuery}%`);
+        // Apply Search across name, slug, and parent_tag with strict sanitization
+        if (searchQuery) {
+          const sanitized = searchQuery
+            .replace(/^#+/, '')
+            .replace(/[,()]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (sanitized) {
+            query = query.or(`name.ilike.%${sanitized}%,slug.ilike.%${sanitized}%,parent_tag.ilike.%${sanitized}%`);
+          }
+        }
+
+        // Apply Status Filter
+        if (statusFilter !== 'all') {
+          query = query.eq('status', statusFilter);
+        }
+
+        // Apply Sorting
+        const sortCol = (sortBy === 'created_at' || sortBy === 'updated_at') ? 'updated_at' : 'name';
+        query = query.order(sortCol, { ascending: sortOrder === 'asc' }).order('id', { ascending: sortOrder === 'asc' });
+
+        // Apply Pagination
+        const from = (currentPage - 1) * pageSize;
+        const to = from + pageSize - 1;
+        query = query.range(from, to);
+
+        const { data, count, error } = await query;
+        if (error) throw error;
+        return { data: data || [], count: count || 0 };
+      })();
+
+      if (manual) {
+        // Execute tags table query and fresh stats fetch in parallel
+        const [tagsResult] = await Promise.all([
+          tagsQueryPromise,
+          fetchStats(true)
+        ]);
+        setTags(tagsResult.data);
+        setTotalCount(tagsResult.count);
+        setRefreshKey(prev => prev + 1);
+      } else {
+        const tagsResult = await tagsQueryPromise;
+        setTags(tagsResult.data);
+        setTotalCount(tagsResult.count);
       }
-
-      // Apply Status Filter
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      // Apply Sorting
-      const sortCol = (sortBy === 'created_at' || sortBy === 'updated_at') ? 'updated_at' : 'name';
-      query = query.order(sortCol, { ascending: sortOrder === 'asc' }).order('id', { ascending: sortOrder === 'asc' });
-
-      // Apply Pagination
-      const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize - 1;
-      query = query.range(from, to);
-
-      const { data, count, error } = await query;
-
-      if (error) throw error;
-      setTags(data || []);
-      setTotalCount(count || 0);
-
-      if (manual) setRefreshKey(prev => prev + 1);
     } catch (err: any) {
       console.warn('Error fetching tags:', err?.message || err);
     } finally {
@@ -240,45 +266,36 @@ export default function TagsPage() {
   useEffect(() => {
     if (searchInputValue === '') {
       setSearchQuery('');
+      setCurrentPage(1);
     }
   }, [searchInputValue]);
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (currentPage !== 1) setCurrentPage(1);
-    setSearchQuery(searchInputValue);
+    setSearchQuery(searchInputValue.trim());
+  };
+
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
   };
 
   const handleAddTag = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const cleanName = (formData.name || '').trim().replace(/^#+/, '');
-      const cleanSlug = (formData.slug || '').trim().toLowerCase();
-      const cleanParent = (formData.parent_tag || formData.parent || '').trim().replace(/^#+/, '') || null;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
 
-      const dbPayload = {
-        name: cleanName,
-        slug: cleanSlug,
-        parent_tag: cleanParent,
-        status: formData.status || uniqueStatuses[0] || 'show',
-        meta_title: (formData.meta_title || '').trim() || null,
-        meta_description: (formData.meta_description || '').trim() || null,
-        meta_keywords: formData.meta_keywords ? (typeof formData.meta_keywords === 'string' ? formData.meta_keywords.trim() : formData.meta_keywords) : null,
-        description: (formData.description || '').trim() || null,
-        updated_at: new Date().toISOString()
-      };
+      const res = await createTagAction(formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create tag.');
+      }
 
-      const { error } = await supabase.from('tags').insert([dbPayload]);
-      if (error) throw error;
-
-      await fetchStats();
       await fetchTags(true);
       closeForm();
     } catch (err: any) {
       console.error('Error adding tag:', err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This URL is already in use by another tag.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -291,37 +308,18 @@ export default function TagsPage() {
       const targetId = editingTag?.id;
       if (!targetId) throw new Error('Missing tag ID for update.');
 
-      const cleanName = (formData.name || '').trim().replace(/^#+/, '');
-      const cleanSlug = (formData.slug || '').trim().toLowerCase();
-      const cleanParent = (formData.parent_tag || formData.parent || '').trim().replace(/^#+/, '') || null;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
 
-      const dbPayload = {
-        name: cleanName,
-        slug: cleanSlug,
-        parent_tag: cleanParent,
-        status: formData.status || uniqueStatuses[0] || 'show',
-        meta_title: (formData.meta_title || '').trim() || null,
-        meta_description: (formData.meta_description || '').trim() || null,
-        meta_keywords: formData.meta_keywords ? (typeof formData.meta_keywords === 'string' ? formData.meta_keywords.trim() : formData.meta_keywords) : null,
-        description: (formData.description || '').trim() || null,
-        updated_at: new Date().toISOString()
-      };
+      const res = await updateTagAction(targetId, formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update tag.');
+      }
 
-      const { error } = await supabase
-        .from('tags')
-        .update(dbPayload)
-        .eq('id', targetId);
-
-      if (error) throw error;
-
-      await fetchStats();
       await fetchTags(true);
       closeForm();
     } catch (err: any) {
       console.error('Error updating tag:', err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This URL is already in use by another tag.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -331,20 +329,18 @@ export default function TagsPage() {
   const handleStatusChange = async (tagId: number | string, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('tags')
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', tagId);
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      if (error) throw error;
+      const res = await updateTagStatusAction(tagId, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update tag status.');
+      }
 
       await fetchTags(true);
     } catch (err: any) {
-      const errorMsg = err?.message || err?.error_description || 'Unknown error';
-      console.error('Error updating tag status:', errorMsg, err?.details || '', err?.hint || '');
+      const errorMsg = err?.message || 'Unknown error';
+      console.error('Error updating tag status:', errorMsg);
       alert('Failed to update tag status: ' + errorMsg);
       throw err;
     } finally {
@@ -352,21 +348,27 @@ export default function TagsPage() {
     }
   };
 
-  const handleDeleteTag = async (id: number) => {
+  const handleDeleteTag = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Tag',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this tag? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('tags').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      await fetchStats();
+      const res = await deleteTagAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete tag.');
+      }
+
       await fetchTags(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting tag:', err);
+      alert(err.message || 'Failed to delete tag.');
     } finally {
       setIsRefreshing(false);
     }
@@ -410,6 +412,9 @@ export default function TagsPage() {
     return 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6';
   }, [statCards.length]);
 
+  const { hasPermission } = useAdmin();
+  const canInsert = hasPermission('tags', 'insert');
+
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
       {/* Page Header */}
@@ -430,13 +435,15 @@ export default function TagsPage() {
               {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
               Refresh
             </Button>
-            <Button
-              onClick={() => openForm()}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
-              suppressHydrationWarning
-            >
-              + New Tag
-            </Button>
+            {canInsert && (
+              <Button
+                onClick={() => openForm()}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
+                suppressHydrationWarning
+              >
+                + New Tag
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -495,17 +502,35 @@ export default function TagsPage() {
 
           <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1 flex gap-2">
-              <Input
-                type="text"
-                placeholder="Search across all tags (name or slug)..."
-                value={searchInputValue}
-                onChange={(e) => setSearchInputValue(e.target.value)}
-                className="flex-1 h-11 px-4 text-sm"
-                suppressHydrationWarning
-              />
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                <Input
+                  type="text"
+                  placeholder="Search across all tags (name, slug, parent tag)..."
+                  value={searchInputValue}
+                  onChange={(e) => setSearchInputValue(e.target.value)}
+                  className="w-full h-11 pl-10 pr-9 text-sm"
+                  suppressHydrationWarning
+                />
+                {searchInputValue && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInputValue('');
+                      setSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-0.5 rounded-md cursor-pointer transition-colors"
+                    title="Clear search"
+                    aria-label="Clear search"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
               <Button
                 type="submit"
-                className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95"
+                className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95 cursor-pointer"
                 suppressHydrationWarning
               >
                 Search

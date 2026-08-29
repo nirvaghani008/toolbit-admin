@@ -165,8 +165,9 @@ export default function UserDetailsDrawer({
   const [copiedOrderNum, setCopiedOrderNum] = useState<string | null>(null);
   const [prevUserId, setPrevUserId] = useState<string | null>(null);
 
-  // Tab horizontal scroll ref & states
+  // Tab & KPI ribbon horizontal scroll refs & states
   const tabsRef = useRef<HTMLDivElement>(null);
+  const kpiRibbonRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -184,7 +185,7 @@ export default function UserDetailsDrawer({
     return () => window.removeEventListener('resize', checkScroll);
   }, [checkScroll, isOpen, activeTab]);
 
-  // Native non-passive horizontal wheel listener for buttery smooth mouse roller scrolling
+  // Native non-passive horizontal wheel listener for buttery smooth mouse roller scrolling on tabs
   useEffect(() => {
     const el = tabsRef.current;
     if (!el) return;
@@ -201,6 +202,24 @@ export default function UserDetailsDrawer({
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [isOpen, checkScroll]);
+
+  // Native non-passive horizontal wheel listener for KPI metrics ribbon
+  useEffect(() => {
+    const el = kpiRibbonRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (delta !== 0) {
+        e.preventDefault();
+        el.scrollLeft += delta;
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [isOpen, details]);
 
   const handleScrollTabs = (direction: 'left' | 'right') => {
     if (tabsRef.current) {
@@ -252,8 +271,6 @@ export default function UserDetailsDrawer({
       return cols.includes(selectedCollection);
     });
   }, [details, selectedCollection]);
-
-  if (!mounted || !isOpen || !user) return null;
 
   const handleCopyUuid = () => {
     const idToCopy = details?.profile?.id || user?.id;
@@ -356,9 +373,11 @@ export default function UserDetailsDrawer({
           </span>
         );
     }
-  };  const summary = details?.summary || {
-    saved_count: user.saved_count || 0,
-    upvoted_count: user.upvoted_count || 0,
+  };
+
+  const summary = details?.summary || {
+    saved_count: user?.saved_count || 0,
+    upvoted_count: user?.upvoted_count || 0,
     submissions_count: 0,
     updates_count: 0,
     advertisements_count: 0,
@@ -371,10 +390,26 @@ export default function UserDetailsDrawer({
   };
 
   const contactsCount = details?.contacts?.length ?? summary.contacts_count ?? 0;
-  const completedOrdersCount = details?.orders?.filter((o) => o.status === 'completed').length || 0;
+
+  // Filter only paid & completed orders (excluding free/zero-cost orders or is_paid === false)
+  const isPaidOrder = useCallback((order: any) => {
+    return (
+      Number(order.amount_usd) > 0 &&
+      !order.plan_id?.toLowerCase().startsWith('free_') &&
+      order.is_paid !== false
+    );
+  }, []);
+
+  const paidCompletedOrders = React.useMemo(() => {
+    return (details?.orders || []).filter(
+      (o) => o.status === 'completed' && isPaidOrder(o)
+    );
+  }, [details?.orders, isPaidOrder]);
+
+  const paidCompletedOrdersCount = paidCompletedOrders.length;
 
   // Full Tabs list with separated Launches, Updates, Orders, Billing, Reviews, Reports, Inquiries
-  const allTabs: { id: TabType; label: string; count?: number; icon: React.ReactNode }[] = [
+  const allTabs: { id: TabType; label: string; count?: number; icon: React.ReactNode }[] = React.useMemo(() => [
     { id: 'overview', label: 'Overview', icon: <Layers size={13} /> },
     {
       id: 'saved',
@@ -421,7 +456,7 @@ export default function UserDetailsDrawer({
     {
       id: 'billing',
       label: 'Billing',
-      count: completedOrdersCount,
+      count: paidCompletedOrdersCount,
       icon: <Receipt size={13} />,
     },
     {
@@ -442,18 +477,18 @@ export default function UserDetailsDrawer({
       count: summary.tool_reports_count,
       icon: <AlertTriangle size={13} />,
     },
-  ];
+  ], [summary, paidCompletedOrdersCount, contactsCount]);
 
   // Dynamic Tab Visibility: Only show Overview + tabs that have > 0 records
   const tabs = React.useMemo(() => {
     return allTabs.filter((tab) => {
       if (tab.id === 'overview') return true;
       if (tab.id === 'billing') {
-        return summary.total_spend_usd > 0 || completedOrdersCount > 0;
+        return summary.total_spend_usd > 0 || paidCompletedOrdersCount > 0;
       }
       return typeof tab.count === 'number' ? tab.count > 0 : false;
     });
-  }, [allTabs, summary.total_spend_usd, completedOrdersCount]);
+  }, [allTabs, summary.total_spend_usd, paidCompletedOrdersCount]);
 
   // Fallback to overview if active tab has 0 records or is not in visible tabs
   useEffect(() => {
@@ -479,6 +514,8 @@ export default function UserDetailsDrawer({
     ];
     return list.filter((item) => Number(item.count) > 0);
   }, [summary, contactsCount]);
+
+  if (!mounted || !isOpen || !user) return null;
 
   const drawerContent = (
     <div className="fixed inset-0 z-[100] overflow-hidden">
@@ -575,7 +612,10 @@ export default function UserDetailsDrawer({
 
             {/* ── KPI METRICS RIBBON (Dynamic) ────────────── */}
             {kpiMetrics.length > 0 && (
-              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60 overflow-x-auto scrollbar-none py-0.5">
+              <div
+                ref={kpiRibbonRef}
+                className="flex items-center gap-2 mt-4 pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60 overflow-x-auto scrollbar-none py-0.5 overscroll-x-contain"
+              >
                 {kpiMetrics.map((stat) => (
                   <button
                     key={`kpi-${stat.id}`}
@@ -1138,17 +1178,7 @@ export default function UserDetailsDrawer({
                                 {getStatusBadge(tool.status)}
                               </div>
 
-                              <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800/80 text-[11px]">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {tool.collections?.map((col, idx) => (
-                                    <span
-                                      key={`col-${idx}`}
-                                      className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-semibold text-zinc-600 dark:text-zinc-400"
-                                    >
-                                      {col}
-                                    </span>
-                                  ))}
-                                </div>
+                              <div className="flex items-center justify-end pt-2 border-t border-zinc-100 dark:border-zinc-800/80 text-[11px]">
                                 <div className="flex items-center gap-2.5 shrink-0">
                                   {liveUrl && (
                                     <a
@@ -1229,18 +1259,7 @@ export default function UserDetailsDrawer({
                                 {getStatusBadge(tool.status)}
                               </div>
 
-                              <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800/80 text-[11px]">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {tool.pricing_model ? (
-                                    <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 capitalize">
-                                      {tool.pricing_model}
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-semibold">
-                                      <ThumbsUp size={9} /> Upvoted
-                                    </span>
-                                  )}
-                                </div>
+                              <div className="flex items-center justify-end pt-2 border-t border-zinc-100 dark:border-zinc-800/80 text-[11px]">
                                 <div className="flex items-center gap-2.5 shrink-0">
                                   {liveUrl && (
                                     <a
@@ -1773,7 +1792,7 @@ export default function UserDetailsDrawer({
                             Completed Transactions
                           </span>
                           <span className="text-lg font-extrabold text-zinc-900 dark:text-zinc-100">
-                            {details.orders?.filter((o) => o.status === 'completed').length || 0} Orders
+                            {paidCompletedOrdersCount} Orders
                           </span>
                         </div>
                       </div>
@@ -1795,7 +1814,7 @@ export default function UserDetailsDrawer({
 
                     {/* Invoices List - only showing paid (completed) orders */}
                     {(() => {
-                      const paidOrders = details.orders?.filter((o) => o.status === 'completed') || [];
+                      const paidOrders = paidCompletedOrders;
                       return (
                         <div className="border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl overflow-hidden shadow-2xs">
                           <Table>

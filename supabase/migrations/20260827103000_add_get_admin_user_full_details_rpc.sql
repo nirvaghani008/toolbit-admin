@@ -1,8 +1,21 @@
 -- Migration: 20260827103000_add_get_admin_user_full_details_rpc.sql
 -- Description: Create an optimized, single-query RPC function to fetch complete user details,
 -- including profile auth metadata, saved tools (with ai_tools info), upvoted tools (with ai_tools info),
--- new tool launches/submissions, update requests, advertisements, guest posts, orders/billing, reviews, and reports.
+-- new tool launches/submissions, update requests, advertisements, guest posts, orders/billing, reviews, reports, and contact inquiries.
 
+-- 1. Add nullable user_id column referencing auth.users(id) on delete set null
+ALTER TABLE public.contacts 
+  ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- 2. Performance indexes for contacts
+CREATE INDEX IF NOT EXISTS idx_contacts_user_id 
+  ON public.contacts (user_id) 
+  WHERE user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_email_lower 
+  ON public.contacts (lower(email));
+
+-- 3. Create or replace get_admin_user_full_details RPC function
 CREATE OR REPLACE FUNCTION public.get_admin_user_full_details(p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -21,6 +34,7 @@ DECLARE
   v_orders jsonb := '[]'::jsonb;
   v_reviews jsonb := '[]'::jsonb;
   v_tool_reports jsonb := '[]'::jsonb;
+  v_contacts jsonb := '[]'::jsonb;
   v_total_spend numeric := 0;
 BEGIN
   -- 1. Strict admin / subadmin authorization check
@@ -325,7 +339,30 @@ BEGIN
   LEFT JOIN public.ai_tools t ON t.tool_id = tr.tool_id
   WHERE tr.user_id = p_user_id;
 
-  -- 12. Build Final Consolidated JSON
+  -- 12. Fetch Contact Inquiries (matched by user_id OR email)
+  SELECT COALESCE(jsonb_agg(
+    jsonb_build_object(
+      'contact_id', c.contact_id,
+      'name', c.name,
+      'email', c.email,
+      'subject', c.subject,
+      'message', c.message,
+      'status', c.status,
+      'reply_message', c.reply_message,
+      'replied_at', c.replied_at,
+      'created_at', c.created_at
+    ) ORDER BY c.created_at DESC
+  ), '[]'::jsonb)
+  INTO v_contacts
+  FROM public.contacts c
+  WHERE c.user_id = p_user_id 
+     OR (
+       v_profile->>'email' IS NOT NULL 
+       AND v_profile->>'email' <> '' 
+       AND LOWER(c.email) = LOWER(v_profile->>'email')
+     );
+
+  -- 13. Build Final Consolidated JSON
   v_result := jsonb_build_object(
     'profile', v_profile,
     'summary', jsonb_build_object(
@@ -338,7 +375,8 @@ BEGIN
       'orders_count', jsonb_array_length(v_orders),
       'total_spend_usd', v_total_spend,
       'reviews_count', jsonb_array_length(v_reviews),
-      'tool_reports_count', jsonb_array_length(v_tool_reports)
+      'tool_reports_count', jsonb_array_length(v_tool_reports),
+      'contacts_count', jsonb_array_length(v_contacts)
     ),
     'saved_tools', v_saved_tools,
     'upvoted_tools', v_upvoted_tools,
@@ -348,7 +386,8 @@ BEGIN
     'blog_posts', v_blog_posts,
     'orders', v_orders,
     'reviews', v_reviews,
-    'tool_reports', v_tool_reports
+    'tool_reports', v_tool_reports,
+    'contacts', v_contacts
   );
 
   RETURN v_result;

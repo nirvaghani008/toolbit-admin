@@ -132,6 +132,7 @@ export interface OrderItem {
   invoice_url: string | null;
   receipt_url: string | null;
   created_at: string;
+  is_paid?: boolean;
 }
 
 export interface ReviewItem {

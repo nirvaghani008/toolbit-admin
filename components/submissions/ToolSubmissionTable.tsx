@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getToolSubmissionStatusOption } from '@/lib/tool-submissions';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export interface ToolSubmission {
   id: number;
@@ -50,7 +51,7 @@ interface ToolSubmissionTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (tool: ToolSubmission) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onPreview: (tool: ToolSubmission) => void;
   isLoading?: boolean;
 }
@@ -70,6 +71,9 @@ export default function ToolSubmissionTable({
   isLoading = false,
 }: ToolSubmissionTableProps) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('tool_submissions', 'update');
+  const canDelete = hasPermission('tool_submissions', 'delete');
 
   const extractCategories = (t: any): string[] => {
     const info = t?.tool_info || {};
@@ -349,35 +353,52 @@ export default function ToolSubmissionTable({
 
                   {/* Status */}
                   <TableCell className="px-2 py-4 text-center">
-                    <Badge
-                      variant={getStatusBadgeVariant(tool.status)}
-                      className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase"
-                    >
-                      {formatStatus(tool.status)}
-                    </Badge>
+                    <div className="flex flex-col items-center gap-1">
+                      <Badge
+                        variant={getStatusBadgeVariant(tool.status)}
+                        className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase"
+                      >
+                        {formatStatus(tool.status)}
+                      </Badge>
+                      {tool.scheduled_launch_date && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400 font-semibold whitespace-nowrap"
+                          title={`Scheduled Launch Date: ${String(tool.scheduled_launch_date).split('T')[0]}`}
+                        >
+                          📅 {String(tool.scheduled_launch_date).split('T')[0]}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
 
                   {/* Manage Actions */}
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(tool)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Record"
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(tool.id)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Record"
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canUpdate && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEdit(tool)}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Record"
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(tool.id, toolName)}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Record"
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+                      {!canUpdate && !canDelete && (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

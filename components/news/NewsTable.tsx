@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Portal } from '@/components/ui/portal';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export interface NewsItem {
   news_id: number;
@@ -66,7 +67,7 @@ interface NewsTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (item: NewsItem) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, title?: string) => void;
   onStatusChange?: (newsId: number, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
@@ -126,6 +127,9 @@ export default function NewsTable({
   const [openStatusDropdownId, setOpenStatusDropdownId] = useState<number | null>(null);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ item: NewsItem; newStatus: string } | null>(null);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('news', 'update');
+  const canDelete = hasPermission('news', 'delete');
 
   // Close dropdown on outside click or escape
   useEffect(() => {
@@ -275,25 +279,34 @@ export default function NewsTable({
                   </span>
                 </TableCell>
 
-                {/* 5. Status with interactive dropdown */}
-                <TableCell className="px-3 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                  <div className="relative inline-block text-left">
-                    <button
-                      type="button"
-                      onClick={() => setOpenStatusDropdownId(openStatusDropdownId === item.news_id ? null : item.news_id)}
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer group/status focus:outline-none"
-                      title="Click to change status"
-                    >
+                {/* 5. Status dropdown */}
+                <TableCell className="px-4 py-4 text-center">
+                  <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
+                    {canUpdate ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpenStatusDropdownId(openStatusDropdownId === item.news_id ? null : item.news_id)}
+                        className="inline-flex items-center gap-1.5 p-1 -m-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors group/status focus:outline-none cursor-pointer"
+                        title="Click to change status"
+                      >
+                        <Badge
+                          variant={getStatusBadgeVariant(item.status)}
+                          className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase cursor-pointer"
+                        >
+                          {formatStatus(item.status)}
+                        </Badge>
+                        <ChevronDown size={11} className={`text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)] transition-transform duration-200 ${openStatusDropdownId === item.news_id ? 'rotate-180' : ''}`} />
+                      </button>
+                    ) : (
                       <Badge
                         variant={getStatusBadgeVariant(item.status)}
-                        className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase cursor-pointer"
+                        className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase"
                       >
                         {formatStatus(item.status)}
                       </Badge>
-                      <ChevronDown size={11} className={`text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)] transition-transform duration-200 ${openStatusDropdownId === item.news_id ? 'rotate-180' : ''}`} />
-                    </button>
+                    )}
 
-                    {openStatusDropdownId === item.news_id && (
+                    {canUpdate && openStatusDropdownId === item.news_id && (
                       <div
                         className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 mt-1.5 w-38 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-1 animate-in fade-in zoom-in-95 duration-150 text-left"
                         onClick={(e) => e.stopPropagation()}
@@ -339,26 +352,33 @@ export default function NewsTable({
                 {/* 6. Manage Actions */}
                 <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-center gap-1.5">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onEdit(item)}
-                      className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                      title="Edit Record"
-                      aria-label={`Edit news article ${item.title}`}
-                    >
-                      <Edit2 size={13} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(item.news_id)}
-                      className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                      title="Delete Record"
-                      aria-label={`Delete news article ${item.title}`}
-                    >
-                      <Trash2 size={13} />
-                    </Button>
+                    {canUpdate && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEdit(item)}
+                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                        title="Edit Record"
+                        aria-label={`Edit news article ${item.title}`}
+                      >
+                        <Edit2 size={13} />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(item.news_id, item.title)}
+                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                        title="Delete Record"
+                        aria-label={`Delete news article ${item.title}`}
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    )}
+                    {!canUpdate && !canDelete && (
+                      <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

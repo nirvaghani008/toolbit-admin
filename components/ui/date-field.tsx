@@ -50,6 +50,8 @@ export interface DateFieldProps extends Omit<
   required?: boolean;
   error?: boolean;
   placeholder?: string;
+  minDate?: string | Date;
+  maxDate?: string | Date;
 }
 
 export function DateField({
@@ -61,6 +63,8 @@ export function DateField({
   required = false,
   error = false,
   placeholder = 'Select date',
+  minDate,
+  maxDate,
   className,
   ...buttonProps
 }: DateFieldProps) {
@@ -167,6 +171,16 @@ export function DateField({
     triggerRef.current?.focus();
   };
 
+  const disabledMatcher = React.useMemo(() => {
+    const min = typeof minDate === 'string' ? inputValueToDate(minDate) : minDate;
+    const max = typeof maxDate === 'string' ? inputValueToDate(maxDate) : maxDate;
+    if (!min && !max) return undefined;
+    const matchers: any[] = [];
+    if (min) matchers.push({ before: min });
+    if (max) matchers.push({ after: max });
+    return matchers.length === 1 ? matchers[0] : matchers;
+  }, [minDate, maxDate]);
+
   return (
     <div ref={containerRef} className="relative w-full">
       <button
@@ -226,7 +240,8 @@ export function DateField({
             mode="single"
             selected={selectedDate}
             onSelect={handleSelect}
-            defaultMonth={selectedDate || new Date()}
+            disabled={disabledMatcher}
+            defaultMonth={selectedDate || (typeof minDate === 'string' ? inputValueToDate(minDate) : minDate) || new Date()}
             autoFocus
           />
         </div>,

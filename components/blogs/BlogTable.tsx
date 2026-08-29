@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Portal } from '@/components/ui/portal';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export const BLOG_STATUS_OPTIONS = [
   { value: 'published', label: 'Published' },
@@ -52,7 +53,7 @@ interface BlogTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (blog: BlogPost) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onPreview: (blog: BlogPost) => void;
   onStatusChange?: (blogId: number, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
@@ -92,6 +93,9 @@ export default function BlogTable({
   const [openStatusDropdownId, setOpenStatusDropdownId] = useState<number | null>(null);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ blog: BlogPost; newStatus: string } | null>(null);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('blog_posts', 'update');
+  const canDelete = hasPermission('blog_posts', 'delete');
 
   // Close dropdown on outside click or escape
   useEffect(() => {
@@ -121,6 +125,16 @@ export default function BlogTable({
     if (s === 'draft') return 'violet';
     if (s === 'rejected') return 'destructive';
     return 'slate';
+  };
+
+  const formatStatus = (status: string): string => {
+    if (!status) return 'Archived';
+    const s = status.toLowerCase();
+    if (s === 'published') return 'Published';
+    if (s === 'pending') return 'Pending';
+    if (s === 'draft') return 'Draft';
+    if (s === 'rejected') return 'Rejected';
+    return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
   return (
@@ -211,235 +225,251 @@ export default function BlogTable({
               const isAiTeam = (blog.author_name || '').includes('Toolbit AI');
 
               return (
-                <TableRow
-                  key={blog.id}
-                  onMouseEnter={() => setHoveredId(blog.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
-                    hoveredId === blog.id
-                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
-                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
-                  }`}
-                >
-                  {/* Title & Slug */}
-                  <TableCell className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 p-1 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-all">
-                        <FileText size={16} />
-                      </div>
-                      <div className="max-w-[280px] min-w-0">
-                        <button
-                          onClick={() => onPreview(blog)}
-                          className="text-xs font-semibold text-[var(--text-primary)] hover:text-zinc-900 dark:hover:text-zinc-100 tracking-tight truncate transition-colors text-left block w-full cursor-pointer"
-                          title="Click to preview article"
-                        >
-                          {blog.title || 'Untitled Article'}
-                        </button>
-                        <div className="text-[10px] text-[var(--text-muted)] font-mono truncate mt-0.5">
-                          /{blog.slug}
+                  <TableRow
+                    key={blog.id}
+                    onMouseEnter={() => setHoveredId(blog.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
+                      hoveredId === blog.id
+                        ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
+                        : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
+                    }`}
+                  >
+                    {/* Title & Slug */}
+                    <TableCell className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 p-1 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-all">
+                          <FileText size={16} />
+                        </div>
+                        <div className="max-w-[280px] min-w-0">
+                          <button
+                            onClick={() => onPreview(blog)}
+                            className="text-xs font-semibold text-[var(--text-primary)] hover:text-zinc-900 dark:hover:text-zinc-100 tracking-tight truncate transition-colors text-left block w-full cursor-pointer"
+                            title="Click to preview article"
+                          >
+                            {blog.title || 'Untitled Article'}
+                          </button>
+                          <div className="text-[10px] text-[var(--text-muted)] font-mono truncate mt-0.5">
+                            /{blog.slug}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </TableCell>
+                    </TableCell>
 
-                  {/* Author */}
-                  <TableCell className="px-4 py-4">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 flex items-center justify-center shrink-0 shadow-2xs">
-                        {isAiTeam ? (
-                          <Shield size={12} className="shrink-0 text-zinc-700 dark:text-zinc-300" />
-                        ) : (
-                          <User size={12} className="shrink-0" />
+                    {/* Author */}
+                    <TableCell className="px-4 py-4">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 flex items-center justify-center shrink-0 shadow-2xs">
+                          {isAiTeam ? (
+                            <Shield size={12} className="shrink-0 text-zinc-700 dark:text-zinc-300" />
+                          ) : (
+                            <User size={12} className="shrink-0" />
+                          )}
+                        </div>
+                        <span
+                          className="text-xs font-semibold text-[var(--text-primary)] truncate max-w-[130px]"
+                          title={blog.author_name || 'Anonymous'}
+                        >
+                          {blog.author_name || <span className="text-[var(--text-muted)] italic">—</span>}
+                        </span>
+                      </div>
+                    </TableCell>
+
+                    {/* Categories */}
+                    <TableCell className="px-4 py-4">
+                      <div className="flex flex-wrap gap-1 items-center">
+                        {categories.slice(0, 2).map((c: string, i: number) => (
+                          <Badge
+                            key={i}
+                            variant="slate"
+                            className="px-2 py-0.5 text-[9px] font-semibold"
+                          >
+                            {c}
+                          </Badge>
+                        ))}
+                        {categories.length > 2 && (
+                          <span className="text-[9px] text-[var(--text-muted)] font-bold ml-0.5">
+                            +{categories.length - 2}
+                          </span>
+                        )}
+                        {categories.length === 0 && (
+                          <span className="text-[10px] text-[var(--text-muted)] italic">—</span>
                         )}
                       </div>
-                      <span
-                        className="text-xs font-semibold text-[var(--text-primary)] truncate max-w-[130px]"
-                        title={blog.author_name || 'Anonymous'}
-                      >
-                        {blog.author_name || <span className="text-[var(--text-muted)] italic">—</span>}
-                      </span>
-                    </div>
-                  </TableCell>
+                    </TableCell>
 
-                  {/* Categories */}
-                  <TableCell className="px-4 py-4">
-                    <div className="flex flex-wrap gap-1 items-center">
-                      {categories.slice(0, 2).map((c: string, i: number) => (
-                        <Badge
-                          key={i}
-                          variant="slate"
-                          className="px-2 py-0.5 text-[9px] font-semibold"
-                        >
-                          {c}
+                    {/* Featured */}
+                    <TableCell className="px-2 py-4 text-center">
+                      {blog.is_featured ? (
+                        <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">TRUE</Badge>
+                      ) : (
+                        <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">FALSE</Badge>
+                      )}
+                    </TableCell>
+
+                    {/* Paid / Free */}
+                    <TableCell className="px-2 py-4 text-center">
+                      {blog.is_paid ? (
+                        <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">$ Paid</Badge>
+                      ) : (
+                        <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">Free</Badge>
+                      )}
+                    </TableCell>
+
+                    {/* AI Moderation */}
+                    <TableCell className="px-2 py-4 text-center">
+                      {blog.ai_approved === true ? (
+                        <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider whitespace-nowrap">
+                          ✓ AI Approved
                         </Badge>
-                      ))}
-                      {categories.length > 2 && (
-                        <span className="text-[9px] text-[var(--text-muted)] font-bold ml-0.5">
-                          +{categories.length - 2}
+                      ) : blog.ai_approved === false ? (
+                        <div className="relative group/reason inline-block cursor-help whitespace-nowrap">
+                          <Badge
+                            variant="destructive"
+                            className="text-[9px] px-2 py-0.5 font-bold tracking-wider hover:bg-rose-500/20 inline-flex items-center gap-1 cursor-help whitespace-nowrap"
+                          >
+                            ✕ AI Denied
+                          </Badge>
+                          {/* Hover Popover */}
+                          <div
+                            className={`hidden group-hover/reason:block absolute left-1/2 -translate-x-1/2 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl text-[11px] leading-relaxed z-[9999] border border-slate-700 pointer-events-none whitespace-normal ${
+                              idx === 0 ? 'top-full mt-2' : 'bottom-full mb-2'
+                            }`}
+                          >
+                            <div className="font-bold text-rose-400 mb-1 flex items-center gap-1 whitespace-nowrap">
+                              <span>✕ AI Rejection Reason</span>
+                            </div>
+                            <p className="text-slate-200 font-sans">
+                              {blog.ai_denied_reason || 'No specific rejection reason recorded.'}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider whitespace-nowrap">
+                          ⏱ Pending
+                        </Badge>
+                      )}
+                    </TableCell>
+
+                    {/* Stats */}
+                    <TableCell className="px-3 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+                          {(blog.view_count || 0).toLocaleString()} Views
                         </span>
-                      )}
-                      {categories.length === 0 && (
-                        <span className="text-[10px] text-[var(--text-muted)] italic">—</span>
-                      )}
-                    </div>
-                  </TableCell>
-
-                  {/* Featured */}
-                  <TableCell className="px-2 py-4 text-center">
-                    {blog.is_featured ? (
-                      <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">TRUE</Badge>
-                    ) : (
-                      <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">FALSE</Badge>
-                    )}
-                  </TableCell>
-
-                  {/* Paid / Free */}
-                  <TableCell className="px-2 py-4 text-center">
-                    {blog.is_paid ? (
-                      <Badge variant="success" className="text-[9px] px-2 py-0.5 font-extrabold tracking-wider">$ Paid</Badge>
-                    ) : (
-                      <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">Free</Badge>
-                    )}
-                  </TableCell>
-
-                  {/* AI Moderation */}
-                  <TableCell className="px-2 py-4 text-center">
-                    {blog.ai_approved === true ? (
-                      <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider whitespace-nowrap">
-                        ✓ AI Approved
-                      </Badge>
-                    ) : blog.ai_approved === false ? (
-                      <div className="relative group/reason inline-block cursor-help whitespace-nowrap">
-                        <Badge
-                          variant="destructive"
-                          className="text-[9px] px-2 py-0.5 font-bold tracking-wider hover:bg-rose-500/20 inline-flex items-center gap-1 cursor-help whitespace-nowrap"
-                        >
-                          ✕ AI Denied
-                        </Badge>
-                        {/* Hover Popover */}
-                        <div
-                          className={`hidden group-hover/reason:block absolute left-1/2 -translate-x-1/2 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl text-[11px] leading-relaxed z-[9999] border border-slate-700 pointer-events-none whitespace-normal ${
-                            idx === 0 ? 'top-full mt-2' : 'bottom-full mb-2'
-                          }`}
-                        >
-                          <div className="font-bold text-rose-400 mb-1 flex items-center gap-1 whitespace-nowrap">
-                            <span>✕ AI Rejection Reason</span>
-                          </div>
-                          <p className="text-slate-200 font-sans">
-                            {blog.ai_denied_reason || 'No specific rejection reason recorded.'}
-                          </p>
-                        </div>
                       </div>
-                    ) : (
-                      <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider whitespace-nowrap">
-                        ⏱ Pending
-                      </Badge>
-                    )}
-                  </TableCell>
+                    </TableCell>
 
-                  {/* Stats */}
-                  <TableCell className="px-3 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-[11px] font-semibold text-[var(--text-primary)]">
-                        {(blog.view_count || 0).toLocaleString()} Views
-                      </span>
-                    </div>
-                  </TableCell>
+                    {/* Status — interactive dropdown */}
+                    <TableCell className="px-2 py-4 text-center">
+                      <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
+                        {canUpdate ? (
+                          <button
+                            type="button"
+                            onClick={() => setOpenStatusDropdownId(openStatusDropdownId === blog.id ? null : blog.id)}
+                            className="inline-flex items-center gap-1.5 p-1 -m-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors group/status focus:outline-none cursor-pointer"
+                            title="Click to change status"
+                          >
+                            <Badge
+                              variant={getStatusBadgeVariant(blog.status)}
+                              className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase cursor-pointer"
+                            >
+                              {formatStatus(blog.status)}
+                            </Badge>
+                            <ChevronDown size={11} className={`text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)] transition-transform duration-200 ${openStatusDropdownId === blog.id ? 'rotate-180' : ''}`} />
+                          </button>
+                        ) : (
+                          <Badge
+                            variant={getStatusBadgeVariant(blog.status)}
+                            className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase"
+                          >
+                            {formatStatus(blog.status)}
+                          </Badge>
+                        )}
 
-                  {/* Status — interactive dropdown */}
-                  <TableCell className="px-2 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                    <div className="relative inline-block text-left">
-                      <button
-                        type="button"
-                        onClick={() => setOpenStatusDropdownId(openStatusDropdownId === blog.id ? null : blog.id)}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer group/status focus:outline-none"
-                        title="Click to change status"
-                      >
-                        <Badge
-                          variant={getStatusBadgeVariant(blog.status)}
-                          className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase cursor-pointer"
-                        >
-                          {blog.status ? blog.status.charAt(0).toUpperCase() + blog.status.slice(1) : 'Draft'}
-                        </Badge>
-                        <ChevronDown size={11} className={`text-[var(--text-muted)] group-hover/status:text-[var(--text-primary)] transition-transform duration-200 ${openStatusDropdownId === blog.id ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {openStatusDropdownId === blog.id && (
-                        <div
-                          className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 mt-1.5 w-36 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-1 animate-in fade-in zoom-in-95 duration-150 text-left"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase px-2.5 py-1 tracking-wider border-b border-[var(--border-color)]/60 mb-1">
-                            Change Status
+                        {canUpdate && openStatusDropdownId === blog.id && (
+                          <div
+                            className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 mt-1.5 w-38 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 p-1 animate-in fade-in zoom-in-95 duration-150 text-left"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase px-2.5 py-1 tracking-wider border-b border-[var(--border-color)]/60 mb-1">
+                              Change Status
+                            </div>
+                            <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-0.5">
+                              {BLOG_STATUS_OPTIONS.map((opt) => {
+                                const isCurrent = (blog.status || '').toLowerCase() === opt.value;
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenStatusDropdownId(null);
+                                      if (!isCurrent) {
+                                        setPendingStatusChange({ blog, newStatus: opt.value });
+                                      }
+                                    }}
+                                    className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                                      isCurrent
+                                        ? 'bg-zinc-100 dark:bg-zinc-800 font-bold text-zinc-900 dark:text-zinc-100'
+                                        : 'text-[var(--text-secondary)] hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100'
+                                    }`}
+                                  >
+                                    <span className="flex items-center gap-1.5 truncate">
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                        opt.value === 'published' ? 'bg-emerald-500' :
+                                        opt.value === 'pending' ? 'bg-amber-500' :
+                                        opt.value === 'draft' ? 'bg-violet-500' :
+                                        opt.value === 'rejected' ? 'bg-rose-500' :
+                                        'bg-zinc-400'
+                                      }`} />
+                                      <span className="text-[11px] truncate">{opt.label}</span>
+                                    </span>
+                                    {isCurrent && <Check size={12} className="text-zinc-900 dark:text-zinc-100 shrink-0 ml-1" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                          <div className="space-y-0.5">
-                            {BLOG_STATUS_OPTIONS.map((opt) => {
-                              const isCurrent = (blog.status || '').toLowerCase() === opt.value.toLowerCase();
-                              return (
-                                <button
-                                  key={opt.value}
-                                  type="button"
-                                  onClick={() => {
-                                    setOpenStatusDropdownId(null);
-                                    if (!isCurrent) {
-                                      setPendingStatusChange({ blog, newStatus: opt.value });
-                                    }
-                                  }}
-                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                                    isCurrent
-                                      ? 'bg-zinc-100 dark:bg-zinc-800 font-bold text-zinc-900 dark:text-zinc-100'
-                                      : 'text-[var(--text-secondary)] hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100'
-                                  }`}
-                                >
-                                  <span className="flex items-center gap-1.5 truncate">
-                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                      opt.value === 'published' ? 'bg-emerald-500' :
-                                      opt.value === 'pending' ? 'bg-amber-500' :
-                                      opt.value === 'draft' ? 'bg-violet-500' :
-                                      opt.value === 'rejected' ? 'bg-rose-500' :
-                                      'bg-zinc-400'
-                                    }`} />
-                                    <span className="text-[11px] truncate">{opt.label}</span>
-                                  </span>
-                                  {isCurrent && <Check size={12} className="text-zinc-900 dark:text-zinc-100 shrink-0 ml-1" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
+                        )}
+                      </div>
+                    </TableCell>
 
-                  {/* Manage */}
-                  <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(blog)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Record"
-                        aria-label="Edit Post"
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(blog.id)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Record"
-                        aria-label="Delete Post"
-                      >
-                        <Trash2 size={13} />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
+                    {/* Manage */}
+                    <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1.5">
+                        {canUpdate && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onEdit(blog)}
+                            className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                            title="Edit Record"
+                            aria-label="Edit Post"
+                          >
+                            <Edit2 size={13} />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onDelete(blog.id, blog.title)}
+                            className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                            title="Delete Record"
+                            aria-label="Delete Post"
+                          >
+                            <Trash2 size={13} />
+                          </Button>
+                        )}
+                        {!canUpdate && !canDelete && (
+                          <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
         </TableBody>
       </Table>
 

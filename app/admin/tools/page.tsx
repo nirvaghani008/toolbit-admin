@@ -11,9 +11,16 @@ import { Database, CheckCircle2, AlertTriangle, AlertCircle, EyeOff, PauseCircle
 import Sparkline from '@/components/common/Sparkline';
 import dynamic from 'next/dynamic';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  createToolAction,
+  updateToolAction,
+  updateToolStatusAction,
+  deleteToolAction
+} from './actions';
 
 const ToolForm = dynamic(() => import('@/components/tools/ToolForm'), {
   ssr: false,
@@ -199,11 +206,21 @@ export default function ToolsPage() {
   // Server-side filtering is handled in fetchTools
   const filteredTools = tools;
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleAddTool = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const { error } = await supabase.from('ai_tools').insert([formData]);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await createToolAction(formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create tool.');
+      }
 
       // Auto refresh stats and tools
       await fetchStats();
@@ -211,9 +228,6 @@ export default function ToolsPage() {
       closeForm();
     } catch (err: any) {
       console.error('Error adding tool:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This tool URL slug is already in use.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -223,12 +237,16 @@ export default function ToolsPage() {
   const handleUpdateTool = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('ai_tools')
-        .update({ ...formData, updated_at: new Date().toISOString() })
-        .eq('tool_id', editingTool.tool_id);
+      const targetId = editingTool?.tool_id;
+      if (!targetId) throw new Error('Missing tool ID for update.');
 
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await updateToolAction(targetId, formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update tool.');
+      }
 
       await fetchStats();
       await fetchTools(true);
@@ -236,9 +254,6 @@ export default function ToolsPage() {
       closeForm();
     } catch (err: any) {
       console.error('Error updating tool:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This tool URL slug is already in use.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -248,22 +263,20 @@ export default function ToolsPage() {
   const handleStatusChange = async (toolId: number | string, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('ai_tools')
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('tool_id', toolId);
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      if (error) throw error;
+      const res = await updateToolStatusAction(toolId, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update tool status.');
+      }
 
       // Optimistically update tools in local state
       setTools(prev => prev.map(t => t.tool_id === toolId ? { ...t, status: newStatus, updated_at: new Date().toISOString() } : t));
       await fetchStats();
     } catch (err: any) {
-      const errorMsg = err?.message || err?.error_description || 'Unknown error';
-      console.error('Error updating tool status:', errorMsg, err?.details || '', err?.hint || '');
+      const errorMsg = err?.message || 'Unknown error';
+      console.error('Error updating tool status:', errorMsg);
       alert('Failed to update tool status: ' + errorMsg);
       throw err;
     } finally {
@@ -271,25 +284,35 @@ export default function ToolsPage() {
     }
   };
 
-  const handleDeleteTool = async (id: number) => {
+  const handleDeleteTool = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete AI Tool',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this AI tool? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('ai_tools').delete().eq('tool_id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteToolAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete tool.');
+      }
 
       await fetchStats();
       await fetchTools(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting tool:', err);
+      alert(err.message || 'Failed to delete tool.');
     } finally {
       setIsRefreshing(false);
     }
   };
+
+  const { hasPermission } = useAdmin();
+  const canInsert = hasPermission('tools', 'insert');
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -311,13 +334,15 @@ export default function ToolsPage() {
               {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
               Refresh
             </Button>
-            <Button
-              onClick={() => openForm()}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
-              suppressHydrationWarning
-            >
-              + New Tool
-            </Button>
+            {canInsert && (
+              <Button
+                onClick={() => openForm()}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
+                suppressHydrationWarning
+              >
+                + New Tool
+              </Button>
+            )}
           </div>
         )}
       </div>

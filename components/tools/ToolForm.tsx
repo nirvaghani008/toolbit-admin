@@ -3,12 +3,20 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { createCategoryAction } from '@/app/admin/tools/categories/actions';
+import { createTagAction } from '@/app/admin/tools/tags/actions';
 import KeywordTagInput from '../categories/KeywordTagInput';
 import RichTextEditor from '../common/RichTextEditor';
-import { Plus, Upload, AlertCircle } from 'lucide-react';
+import { Plus, Upload, AlertCircle, Globe, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { uploadImageFile } from '@/lib/image-upload';
 import { scrollToError, slugify } from '@/lib/form-utils';
+import { checkToolSiteUrlAvailabilityAction } from '@/app/admin/tools/actions';
+import {
+  validateToolSiteUrlFormat,
+  formatCanonicalSiteUrl,
+  deriveToolNameFromUrl,
+} from '@/lib/url-normalize';
 import {
   getToolSubmissionStatus,
   getToolSubmissionStatusOption,
@@ -22,6 +30,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import CollapsibleSection from '../common/CollapsibleSection';
+import LaunchSchedulePicker from '../common/LaunchSchedulePicker';
 
 const btnNeutralClass = "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-xl transition-all shadow-2xs cursor-pointer";
 const btnProClass = "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-xl transition-all shadow-2xs cursor-pointer";
@@ -67,6 +76,28 @@ interface ToolFormProps {
   onBusyChange?: (isBusy: boolean) => void;
 }
 
+const extractScheduledDate = (data: any, inf: any): string | null => {
+  const raw = data?.scheduled_launch_date ||
+    data?.scheduledLaunchDate ||
+    inf?.scheduled_launch_date ||
+    inf?.scheduledLaunchDate ||
+    null;
+  if (!raw) return null;
+  const str = String(raw).trim();
+  const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  try {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  } catch {}
+  return null;
+};
+
 export default function ToolForm({
   initialData,
   onSubmit,
@@ -94,6 +125,7 @@ export default function ToolForm({
     business_email: initialData?.business_email || '',
     is_verified: initialData?.is_verified ?? false,
     tool_domain: initialData?.tool_domain || '',
+    scheduled_launch_date: extractScheduledDate(initialData, info),
 
     // Fields inside tool_info
     toolName: info.toolName || '',
@@ -246,6 +278,18 @@ export default function ToolForm({
   const [showIntegrations, setShowIntegrations] = useState(false);
   const [showSocials, setShowSocials] = useState(false);
 
+  // Tool site URL validation and duplicate check states
+  const [isCheckingSiteUrl, setIsCheckingSiteUrl] = useState(false);
+  const [siteUrlNotice, setSiteUrlNotice] = useState<{
+    type: 'error' | 'warning' | 'info' | 'success';
+    message: string;
+    toolId?: number;
+    toolSlug?: string;
+    status?: string;
+  } | null>(null);
+  const [isDuplicateConflict, setIsDuplicateConflict] = useState(false);
+  const lastCheckedUrlRef = useRef<string | null>(initialData?.tool_site_url || null);
+
   useEffect(() => {
     if (initialData) {
       const i = initialData.tool_info || {};
@@ -268,6 +312,7 @@ export default function ToolForm({
         business_email: initialData.business_email || '',
         is_verified: initialData.is_verified ?? false,
         tool_domain: initialData.tool_domain || '',
+        scheduled_launch_date: extractScheduledDate(initialData, i),
         toolName: i.toolName || '',
         tagline: i.tagline || '',
         overview: i.overview || '',
@@ -514,6 +559,161 @@ export default function ToolForm({
   const removeIntegration = (index: number) => setIntegrations(integrations.filter((_, i) => i !== index));
   const updateIntegration = (index: number, value: string) => setIntegrations(integrations.map((it, i) => i === index ? value : it));
 
+  const verifySiteUrl = async (rawUrl: string, autoFillMetadata = false) => {
+    const t = (rawUrl || '').trim();
+    if (!t) {
+      setSiteUrlNotice(null);
+      setIsDuplicateConflict(false);
+      lastCheckedUrlRef.current = null;
+      return;
+    }
+
+    // 1. Syntax / format validation
+    const formatValidation = validateToolSiteUrlFormat(t);
+    if (!formatValidation.isValid) {
+      setErrors(prev => ({
+        ...prev,
+        tool_site_url: formatValidation.error || 'Invalid Tool Site URL',
+      }));
+      setSiteUrlNotice(null);
+      setIsDuplicateConflict(false);
+      lastCheckedUrlRef.current = t;
+      return;
+    }
+
+    const cleaned = formatValidation.cleaned || formatCanonicalSiteUrl(t);
+
+    // Update form if cleaned format differs
+    if (cleaned !== t) {
+      setFormData(prev => ({
+        ...prev,
+        tool_site_url: cleaned,
+        tool_domain: formatValidation.domain || prev.tool_domain,
+      }));
+    } else if (formatValidation.domain && !formData.tool_domain) {
+      setFormData(prev => ({ ...prev, tool_domain: formatValidation.domain || prev.tool_domain }));
+    }
+
+    // Auto-fill tool name and slug if new tool form and fields are empty
+    if (autoFillMetadata && !initialData) {
+      const derivedName = deriveToolNameFromUrl(cleaned);
+      if (derivedName) {
+        setFormData(prev => {
+          const next = { ...prev };
+          if (!prev.toolName || prev.toolName.trim() === '') {
+            next.toolName = derivedName;
+          }
+          if (!prev.tool_url || prev.tool_url.trim() === '') {
+            next.tool_url = slugify(derivedName);
+          }
+          return next;
+        });
+        setErrors(prev => {
+          const n = { ...prev };
+          delete n.toolName;
+          delete n.tool_url;
+          return n;
+        });
+      }
+    }
+
+    // Prevent repeated checks for the exact same URL if result already exists
+    if (lastCheckedUrlRef.current === cleaned && (siteUrlNotice || isDuplicateConflict)) {
+      return;
+    }
+    lastCheckedUrlRef.current = cleaned;
+
+    // Clear previous format error for tool_site_url
+    setErrors(prev => {
+      const n = { ...prev };
+      delete n.tool_site_url;
+      return n;
+    });
+
+    // 2. Query database via checkToolSiteUrlAvailabilityAction
+    setIsCheckingSiteUrl(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      const res = await checkToolSiteUrlAvailabilityAction(
+        {
+          toolSiteUrl: cleaned,
+          excludeToolId: isSubmission ? null : initialData?.tool_id || null,
+        },
+        token
+      );
+
+      if (res.success && res.data) {
+        const checkData = res.data;
+        if (checkData.exists && checkData.type === 'published' && checkData.tool) {
+          setIsDuplicateConflict(true);
+          setErrors(prev => ({
+            ...prev,
+            tool_site_url: `This website URL is already in use by "${checkData.tool!.tool_name}".`,
+          }));
+          setSiteUrlNotice({
+            type: 'error',
+            message: checkData.message || `Already registered to "${checkData.tool.tool_name}"`,
+            toolId: checkData.tool.tool_id,
+            toolSlug: checkData.tool.tool_url,
+            status: checkData.tool.status,
+          });
+        } else if (checkData.exists && checkData.type === 'submission' && checkData.submission) {
+          setIsDuplicateConflict(false);
+          setSiteUrlNotice({
+            type: 'warning',
+            message: checkData.message || `Notice: Active submission #${checkData.submission.id} exists for this website.`,
+            toolId: checkData.submission.id,
+            toolSlug: checkData.submission.tool_url,
+            status: checkData.submission.status,
+          });
+        } else {
+          setIsDuplicateConflict(false);
+          setSiteUrlNotice({
+            type: 'success',
+            message: 'Website URL is valid and available.',
+          });
+        }
+      } else if (res.error) {
+        console.warn('URL availability check warning:', res.error);
+      }
+    } catch (err: any) {
+      console.warn('Error checking URL availability:', err?.message || err);
+    } finally {
+      setIsCheckingSiteUrl(false);
+    }
+  };
+
+  const handleSiteUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFormData(prev => ({ ...prev, tool_site_url: val }));
+    setIsDuplicateConflict(false);
+    if (errors.tool_site_url) {
+      setErrors(prev => {
+        const n = { ...prev };
+        delete n.tool_site_url;
+        return n;
+      });
+    }
+    if (siteUrlNotice) {
+      setSiteUrlNotice(null);
+    }
+  };
+
+  const handleSiteUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pastedText = e.clipboardData.getData('text');
+    if (pastedText && pastedText.trim()) {
+      setTimeout(() => {
+        verifySiteUrl(pastedText.trim(), true);
+      }, 50);
+    }
+  };
+
+  const handleSiteUrlBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    verifySiteUrl(val, !initialData);
+  };
+
   const validate = () => {
     const isValidUrlFormat = (val: string) => {
       if (!val || typeof val !== 'string' || !val.trim()) return true;
@@ -593,6 +793,14 @@ export default function ToolForm({
     }
 
     setErrors(newErrors);
+
+    // Also check tool_site_url with dedicated validation
+    const siteUrlValidation = validateToolSiteUrlFormat(formData.tool_site_url);
+    if (!siteUrlValidation.isValid) {
+      newErrors.tool_site_url = siteUrlValidation.error || 'Invalid Tool Site URL';
+    } else if (isDuplicateConflict) {
+      newErrors.tool_site_url = 'This website URL is already registered to another tool in the database.';
+    }
 
     if (Object.keys(newErrors).length > 0) {
       scrollToError(newErrors);
@@ -744,6 +952,9 @@ export default function ToolForm({
 
       // Auto-create missing categories & tags in DB tables
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
         for (const cat of selectedCategories) {
           if (!cat || !cat.trim()) continue;
           const catName = cat.trim();
@@ -751,17 +962,17 @@ export default function ToolForm({
           const { data: existing } = await supabase
             .from('categories')
             .select('id')
-            .or(`category_name.ilike.${catName},name.ilike.${catName},category_url.eq.${slug}`)
+            .or(`name.ilike.${catName},slug.eq.${slug}`)
             .limit(1);
 
           if (!existing || existing.length === 0) {
-            await supabase.from('categories').insert([{
-              category_name: catName,
-              category_url: slug,
-              status: 'show',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }]);
+            if (token) {
+              await createCategoryAction({
+                name: catName,
+                slug: slug,
+                status: 'show',
+              }, token);
+            }
           }
         }
 
@@ -779,12 +990,13 @@ export default function ToolForm({
             .limit(1);
 
           if (!existingTag || existingTag.length === 0) {
-            await supabase.from('tags').insert([{
-              name: rawTag,
-              slug: slug,
-              status: 'show',
-              created_at: new Date().toISOString()
-            }]);
+            if (token) {
+              await createTagAction({
+                name: rawTag,
+                slug: slug,
+                status: 'show',
+              }, token);
+            }
           }
         }
       } catch (autoErr) {
@@ -797,6 +1009,7 @@ export default function ToolForm({
         tool_screenshot_url: toNull(formData.tool_screenshot_url),
         favicon_url: toNull(formData.favicon_url),
         status: formData.status,
+        scheduled_launch_date: formData.scheduled_launch_date ? new Date(formData.scheduled_launch_date).toISOString() : null,
         ...(isSubmission ? {
           full_name: toNull(formData.full_name),
           business_email: toNull(formData.business_email),
@@ -896,6 +1109,80 @@ export default function ToolForm({
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className={labelClass}>Tool Site Url <span className="saas-label-required">*</span></label>
+                {isCheckingSiteUrl && (
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                    <Spinner size={13} />
+                    <span>Checking database...</span>
+                  </div>
+                )}
+                {!isCheckingSiteUrl && siteUrlNotice?.type === 'success' && (
+                  <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    <CheckCircle2 size={13} />
+                    <span>Available</span>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <Input
+                  name="tool_site_url"
+                  value={formData.tool_site_url || ''}
+                  onChange={handleSiteUrlChange}
+                  onPaste={handleSiteUrlPaste}
+                  onBlur={handleSiteUrlBlur}
+                  placeholder="https://example.com"
+                  className={`${errors.tool_site_url || isDuplicateConflict ? 'saas-input-error' : ''} ${siteUrlNotice?.type === 'success' ? 'border-emerald-500/50 dark:border-emerald-500/50' : ''}`}
+                  required
+                />
+                {isCheckingSiteUrl && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Spinner size={14} />
+                  </div>
+                )}
+              </div>
+              {errors.tool_site_url && <p className="saas-error-message">{errors.tool_site_url}</p>}
+
+              {/* Conflict / Notice Box */}
+              {siteUrlNotice && siteUrlNotice.type === 'error' && (
+                <div className="mt-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-300 text-xs flex items-start gap-2">
+                  <AlertCircle size={15} className="mt-0.5 shrink-0 text-red-600 dark:text-red-400" />
+                  <div className="space-y-1 flex-1">
+                    <div className="font-semibold text-red-800 dark:text-red-200">
+                      Duplicate Tool Detected in Database
+                    </div>
+                    <p className="leading-relaxed">
+                      {siteUrlNotice.message}
+                    </p>
+                    {siteUrlNotice.toolSlug && (
+                      <div className="pt-1 flex items-center gap-2">
+                        <span className="font-mono bg-red-500/10 px-1.5 py-0.5 rounded text-[11px]">
+                          Slug: {siteUrlNotice.toolSlug}
+                        </span>
+                        {siteUrlNotice.status && (
+                          <span className="font-mono bg-red-500/10 px-1.5 py-0.5 rounded text-[11px] uppercase">
+                            Status: {siteUrlNotice.status}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {siteUrlNotice && siteUrlNotice.type === 'warning' && (
+                <div className="mt-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2">
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="space-y-1 flex-1">
+                    <div className="font-semibold text-amber-900 dark:text-amber-200">
+                      Active Submission In Queue
+                    </div>
+                    <p className="leading-relaxed">{siteUrlNotice.message}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
               <label className={labelClass}>Tool Name <span className="saas-label-required">*</span></label>
               <Input name="toolName" value={formData.toolName || ''} onChange={handleChange} placeholder="toolName" className={errors.toolName ? 'saas-input-error' : ''} required />
               {errors.toolName && <p className="saas-error-message">{errors.toolName}</p>}
@@ -909,11 +1196,6 @@ export default function ToolForm({
               <label className={labelClass}>Slug <span className="saas-label-required">*</span></label>
               <Input name="tool_url" value={formData.tool_url || ''} onChange={handleChange} placeholder="slug" className={`font-mono text-sm ${errors.tool_url ? 'saas-input-error' : ''}`} required />
               {errors.tool_url && <p className="saas-error-message">{errors.tool_url}</p>}
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Tool Site Url <span className="saas-label-required">*</span></label>
-              <Input name="tool_site_url" value={formData.tool_site_url || ''} onChange={handleChange} placeholder="tool_site_url" className={errors.tool_site_url ? 'saas-input-error' : ''} required />
-              {errors.tool_site_url && <p className="saas-error-message">{errors.tool_site_url}</p>}
             </div>
           </div>
 
@@ -1202,6 +1484,16 @@ export default function ToolForm({
                 <option value="true">True</option>
               </Select>
             </div>
+          </div>
+
+          <div className="pt-6 border-t border-[var(--border-color)]">
+            <LaunchSchedulePicker
+              value={formData.scheduled_launch_date}
+              onChange={(dateStr) => {
+                setFormData(prev => ({ ...prev, scheduled_launch_date: dateStr }));
+              }}
+              disabled={isBusy}
+            />
           </div>
         </div>
       </CollapsibleSection>

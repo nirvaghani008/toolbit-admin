@@ -99,10 +99,26 @@ export async function verifyAdminPermission(
   // Sub-admin check against granular permissions JSONB
   if (roleName === 'subadmin') {
     const perms = (roleData.permissions || {}) as Record<string, any>;
-    const modulePerms = perms[module];
     const permKey = `can_${action}`;
 
-    const isPermitted = modulePerms && Boolean(modulePerms[permKey]);
+    // 1. Direct module permission check
+    let isPermitted = perms[module] && Boolean(perms[module][permKey]);
+
+    // 2. Parent group fallback inheritance:
+    // tools -> categories, tags, reviews, reports
+    if (!isPermitted && ['categories', 'tags', 'reviews', 'reports'].includes(module)) {
+      isPermitted = perms['tools'] && Boolean(perms['tools'][permKey]);
+    }
+
+    // submissions -> tool_submissions, advertise
+    if (!isPermitted && ['tool_submissions', 'advertise'].includes(module)) {
+      isPermitted = perms['submissions'] && Boolean(perms['submissions'][permKey]);
+    }
+
+    // users -> newsletter
+    if (!isPermitted && module === 'newsletter') {
+      isPermitted = perms['users'] && Boolean(perms['users'][permKey]);
+    }
 
     if (isPermitted) {
       return {

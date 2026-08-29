@@ -28,6 +28,7 @@ import {
   formatPlanLabel,
   getStatusBadge,
 } from '@/components/orders/OrderDetailsModal';
+import { useAdmin } from '@/contexts/AdminContext';
 
 interface OrderTableProps {
   orders: Order[];
@@ -38,7 +39,7 @@ interface OrderTableProps {
   onViewDetails: (order: Order) => void;
   onEdit: (order: Order) => void;
   onRefund?: (order: Order) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, name?: string) => void;
   isLoading?: boolean;
 }
 
@@ -123,6 +124,9 @@ export default function OrderTable({
   isLoading = false,
 }: OrderTableProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('submissions', 'update');
+  const canDelete = hasPermission('submissions', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">
@@ -327,7 +331,7 @@ export default function OrderTable({
                         <Eye size={13} />
                       </Button>
 
-                      {onRefund &&
+                      {canUpdate && onRefund &&
                         order.status === 'completed' &&
                         Boolean(order.dodo_payment_id) &&
                         Number(order.amount_usd) > 0 &&
@@ -347,34 +351,42 @@ export default function OrderTable({
                         </Button>
                       )}
 
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(order);
-                        }}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Order"
-                        aria-label={`Edit order ${order.order_number}`}
-                      >
-                        <Pencil size={13} />
-                      </Button>
+                      {canUpdate && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(order);
+                          }}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Order"
+                          aria-label={`Edit order ${order.order_number}`}
+                        >
+                          <Pencil size={13} />
+                        </Button>
+                      )}
 
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(order.id);
-                        }}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Order"
-                        aria-label={`Delete order ${order.order_number}`}
-                        suppressHydrationWarning
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(order.id, order.order_number ? `Order #${order.order_number}` : `Order ${order.id}`);
+                          }}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Order"
+                          aria-label={`Delete order ${order.order_number}`}
+                          suppressHydrationWarning
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+
+                      {!canUpdate && !canDelete && (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

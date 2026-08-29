@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import PlanBadge, { getPlanCategory } from '@/components/common/PlanBadge';
 import StatusChangeControl from '@/components/common/StatusChangeControl';
+import { useAdmin } from '@/contexts/AdminContext';
 
 // Canonical ai_tools visibility statuses. The `ai_tools.status` column is
 // free-form text (DB default `hide`) with no CHECK constraint; these are the
@@ -62,7 +63,8 @@ interface ToolTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (tool: Tool) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
+  onPreview?: (tool: Tool) => void;
   onStatusChange?: (toolId: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
@@ -78,11 +80,23 @@ export default function ToolTable({
   onPageChange,
   onEdit,
   onDelete,
+  onPreview,
   onStatusChange,
   isLoading = false
 }: ToolTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
-  const [previewTool, setPreviewTool] = useState<Tool | null>(null);
+  const [internalPreviewTool, setInternalPreviewTool] = useState<Tool | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('tools', 'update');
+  const canDelete = hasPermission('tools', 'delete');
+
+  const handlePreview = (tool: Tool) => {
+    if (onPreview) {
+      onPreview(tool);
+    } else {
+      setInternalPreviewTool(tool);
+    }
+  };
 
   const getStatusBadgeVariant = (status: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' => {
     const s = (status || '').toLowerCase();
@@ -197,6 +211,7 @@ export default function ToolTable({
             ) : (
               tools.map((tool, idx) => {
                 const info = tool.tool_info || {};
+                const toolName = info.toolName || info.name || (tool.tool_url ? tool.tool_url.replace(/^https?:\/\//i, '') : `Tool #${tool.tool_id}`);
                 const categories = extractCategories(tool);
 
                 const rawPricing =
@@ -224,6 +239,7 @@ export default function ToolTable({
                 return (
                   <TableRow
                     key={tool.tool_id || idx}
+                    onClick={() => handlePreview(tool)}
                     onMouseEnter={() => setHoveredId(tool.tool_id)}
                     onMouseLeave={() => setHoveredId(null)}
                     className={`transition-all duration-200 group cursor-pointer border-l-2 relative hover:z-[99] ${
@@ -239,9 +255,13 @@ export default function ToolTable({
                         <div className="flex flex-col max-w-[220px]">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <button
-                              onClick={() => setPreviewTool(tool)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePreview(tool);
+                              }}
                               className="text-xs font-semibold text-[var(--text-primary)] transition-colors line-clamp-1 text-left hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
-                              title="Click to preview"
+                              title="Click to preview tool"
                             >
                               {info.toolName || info.name || 'Unnamed Tool'}
                             </button>
@@ -259,6 +279,7 @@ export default function ToolTable({
                               href={siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`}
                               target="_blank"
                               rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
                               className="text-[10px] text-[var(--text-muted)] font-medium hover:text-zinc-900 dark:hover:text-zinc-200 flex items-center gap-1 mt-0.5"
                             >
                               {(() => {
@@ -354,38 +375,64 @@ export default function ToolTable({
 
                     {/* Status with interactive dropdown */}
                     <TableCell className="px-2 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <StatusChangeControl
-                        itemId={tool.tool_id}
-                        currentStatus={tool.status}
-                        options={TOOL_STATUS_OPTIONS}
-                        itemLabel={info.toolName || tool.tool_url || 'this tool'}
-                        onStatusChange={onStatusChange}
-                        getVariant={getStatusBadgeVariant}
-                        formatStatus={formatStatus}
-                      />
+                      <div className="flex flex-col items-center gap-1">
+                        {canUpdate && onStatusChange ? (
+                          <StatusChangeControl
+                            itemId={tool.tool_id}
+                            currentStatus={tool.status}
+                            options={TOOL_STATUS_OPTIONS}
+                            itemLabel={info.toolName || tool.tool_url || 'this tool'}
+                            onStatusChange={onStatusChange}
+                            getVariant={getStatusBadgeVariant}
+                            formatStatus={formatStatus}
+                          />
+                        ) : (
+                          <Badge
+                            variant={getStatusBadgeVariant(tool.status)}
+                            className="text-[9px] px-2 py-0.5 font-bold tracking-wider uppercase whitespace-nowrap"
+                          >
+                            {formatStatus(tool.status)}
+                          </Badge>
+                        )}
+                        {tool.scheduled_launch_date && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400 font-semibold whitespace-nowrap"
+                            title={`Scheduled Launch Date: ${String(tool.scheduled_launch_date).split('T')[0]}`}
+                          >
+                            📅 {String(tool.scheduled_launch_date).split('T')[0]}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
 
                     {/* Manage */}
                     <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => onEdit(tool)}
-                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                          title="Edit Record"
-                        >
-                          <Edit2 size={13} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => onDelete(tool.tool_id)}
-                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                          title="Delete Record"
-                        >
-                          <Trash2 size={13} />
-                        </Button>
+                        {canUpdate && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onEdit(tool)}
+                            className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                            title="Edit Record"
+                          >
+                            <Edit2 size={13} />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onDelete(tool.tool_id, toolName)}
+                            className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                            title="Delete Record"
+                          >
+                            <Trash2 size={13} />
+                          </Button>
+                        )}
+                        {!canUpdate && !canDelete && (
+                          <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -403,10 +450,10 @@ export default function ToolTable({
         />
       </div>
 
-      {previewTool && (
+      {!onPreview && internalPreviewTool && (
         <ToolPreviewModal
-          tool={previewTool}
-          onClose={() => setPreviewTool(null)}
+          tool={internalPreviewTool}
+          onClose={() => setInternalPreviewTool(null)}
         />
       )}
     </>

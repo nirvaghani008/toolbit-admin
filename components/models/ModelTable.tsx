@@ -54,7 +54,7 @@ interface ModelTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (model: Model) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
   canEdit?: boolean;
@@ -391,7 +391,7 @@ export default function ModelTable({
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => onDelete(model.id)}
+                          onClick={() => onDelete(model.id, model.name)}
                           className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
                           title="Delete Record"
                           aria-label={`Delete model ${model.name}`}

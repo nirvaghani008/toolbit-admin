@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusChangeControl from '@/components/common/StatusChangeControl';
+import { useAdmin } from '@/contexts/AdminContext';
 
 interface Category {
   id?: number;
@@ -39,7 +40,7 @@ interface CategoryTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (category: Category) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onStatusChange?: (categoryId: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
 }
@@ -64,6 +65,9 @@ export default function CategoryTable({
   isLoading = false
 }: CategoryTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('categories', 'update');
+  const canDelete = hasPermission('categories', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">
@@ -101,92 +105,67 @@ export default function CategoryTable({
                   </div>
                 </TableCell>
                 <TableCell className="px-4 py-4">
-                  <Skeleton className="h-3.5 w-16 rounded" />
+                  <Skeleton className="h-4 w-12 rounded" />
                 </TableCell>
                 <TableCell className="px-2 py-4 text-center">
-                  <Skeleton className="h-5 w-16 mx-auto rounded-md" />
+                  <Skeleton className="h-5 w-14 rounded-full mx-auto" />
                 </TableCell>
                 <TableCell className="px-4 py-4 text-center">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <Skeleton className="w-7 h-7 rounded-lg" />
-                    <Skeleton className="w-7 h-7 rounded-lg" />
+                  <div className="flex justify-center gap-1.5">
+                    <Skeleton className="h-7 w-7 rounded-lg" />
+                    <Skeleton className="h-7 w-7 rounded-lg" />
                   </div>
                 </TableCell>
               </TableRow>
             ))
           ) : categories.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="h-48 text-center py-10">
-                <div className="flex flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
-                  <div className="w-12 h-12 rounded-2xl bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)]">
+              <TableCell colSpan={6} className="h-64 text-center">
+                <div className="flex flex-col items-center justify-center gap-2">
+                  <div className="p-3 bg-[var(--bg-elevated)] rounded-full text-[var(--text-muted)]">
                     <Inbox size={24} />
                   </div>
-                  <div className="text-sm font-bold text-[var(--text-primary)]">No categories found</div>
-                  <p className="text-xs text-[var(--text-muted)] font-medium max-w-sm">
-                    No categories match your search criteria or filter. Try clearing filters or creating a new category.
-                  </p>
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">No categories found</p>
+                  <p className="text-xs text-[var(--text-muted)]">Try adjusting your filters or search keywords.</p>
                 </div>
               </TableCell>
             </TableRow>
           ) : (
-            categories.map((category, index) => {
-              const categoryName = category.name || category.category_name || '';
-              const categorySlug = category.slug || category.category_url || '';
-              const parentCat = category.parent || category.parent_category || '';
+            categories.map((category) => {
+              const catId = (category.id || category.category_id) as number;
+              const categoryName = category.category_name || category.name || '';
+              const categorySlug = category.category_url || category.slug || '';
+              const parentCategory = category.parent_category || category.parent;
               const toolCount = category.tool_count ?? category.category_counter ?? 0;
-              const catId = category.id ?? category.category_id ?? index;
-              const subCount = categories.filter(
-                (c) => (c.parent || c.parent_category) === categoryName && categoryName !== ''
-              ).length;
+              const subCount = categories.filter(c => (c.parent_category || c.parent) === categoryName).length;
 
               return (
                 <TableRow
-                  key={`category-${catId}-${index}`}
-                  onClick={() => onEdit(category)}
+                  key={catId || categorySlug}
                   onMouseEnter={() => setHoveredId(catId)}
                   onMouseLeave={() => setHoveredId(null)}
-                  className={`transition-all duration-200 group cursor-pointer border-l-2 relative ${
-                    hoveredId === catId
-                      ? 'border-l-zinc-900 bg-zinc-100/70 dark:border-l-zinc-300 dark:bg-zinc-800/40'
-                      : 'border-l-transparent hover:bg-zinc-50/80 dark:hover:bg-zinc-800/20'
-                  }`}
+                  className="transition-colors group hover:bg-[var(--bg-elevated)]/30"
                 >
                   <TableCell className="px-4 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 p-1 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-all">
-                        <Folder size={16} />
+                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 flex items-center justify-center text-zinc-500 dark:text-zinc-400 shrink-0 group-hover:scale-105 transition-transform">
+                        <Folder size={17} />
                       </div>
-                      <div className="min-w-0 max-w-[260px]">
-                        <div className="text-xs font-semibold text-[var(--text-primary)] transition-colors line-clamp-1 text-left">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-[var(--text-primary)] tracking-tight">
                           {categoryName}
-                        </div>
-                        {category.status === 'show' ? (
-                          <a
-                            href={`https://toolbit.ai/category/${categorySlug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-[10px] text-[var(--text-muted)] font-medium hover:text-zinc-900 dark:hover:text-zinc-200 flex items-center gap-1 mt-0.5"
-                          >
-                            <span>/{categorySlug}</span>
-                            <ExternalLink size={8} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </a>
-                        ) : (
-                          <span
-                            className="inline-block text-[10px] text-[var(--text-muted)] font-medium mt-0.5 cursor-not-allowed opacity-60"
-                            title="URL not active until shown"
-                          >
-                            /{categorySlug}
-                          </span>
-                        )}
+                        </span>
+                        <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                          /{categorySlug}
+                        </span>
                       </div>
                     </div>
                   </TableCell>
 
                   <TableCell className="px-4 py-4">
-                    {parentCat ? (
-                      <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-semibold capitalize">
-                        {parentCat}
+                    {parentCategory ? (
+                      <Badge variant="outline" className="text-[9px] px-2 py-0.5 font-bold uppercase tracking-wider">
+                        {parentCategory}
                       </Badge>
                     ) : (
                       <span className="text-[9px] text-[var(--text-muted)] italic">
@@ -215,7 +194,7 @@ export default function CategoryTable({
                   </TableCell>
 
                   <TableCell className="px-2 py-4 text-center">
-                    {onStatusChange && (category.id != null || category.category_id != null) ? (
+                    {canUpdate && onStatusChange && (category.id != null || category.category_id != null) ? (
                       <StatusChangeControl
                         itemId={category.id ?? category.category_id ?? ''}
                         currentStatus={category.status}
@@ -235,26 +214,33 @@ export default function CategoryTable({
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(category)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Record"
-                        aria-label={`Edit category ${categoryName}`}
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(catId)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Record"
-                        aria-label={`Delete category ${categoryName}`}
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canUpdate && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEdit(category)}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Record"
+                          aria-label={`Edit category ${categoryName}`}
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(catId, categoryName)}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Record"
+                          aria-label={`Delete category ${categoryName}`}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+                      {!canUpdate && !canDelete && (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

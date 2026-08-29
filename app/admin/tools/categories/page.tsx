@@ -11,9 +11,16 @@ import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
 import { Folder, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  createCategoryAction,
+  updateCategoryAction,
+  updateCategoryStatusAction,
+  deleteCategoryAction
+} from './actions';
 
 export default function CategoriesPage() {
   const confirmDelete = useConfirm();
@@ -75,13 +82,14 @@ export default function CategoriesPage() {
     }
   };
 
-  const fetchStats = async () => {
+  const fetchStats = async (forceRefresh = false) => {
     try {
       const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
         'categories',
         ['show', 'hide'],
         'updated_at',
-        7
+        7,
+        forceRefresh
       );
 
       setStats({
@@ -105,14 +113,17 @@ export default function CategoriesPage() {
     setLoading(true);
 
     try {
-      if (manual) await fetchStats();
+      if (manual) await fetchStats(true);
       let query = supabase
         .from('categories')
-        .select('*', { count: 'exact' });
+        .select('id, name, slug, parent, tool_count, views, status, updated_at, meta_title, meta_description, meta_keywords, description', { count: 'exact' });
 
       // Apply Search across name, slug, parent
       if (searchQuery) {
-        query = query.or(`name.ilike.%${searchQuery}%,slug.ilike.%${searchQuery}%,parent.ilike.%${searchQuery}%`);
+        const sanitized = searchQuery.replace(/[,()]/g, ' ').trim();
+        if (sanitized) {
+          query = query.or(`name.ilike.%${sanitized}%,slug.ilike.%${sanitized}%,parent.ilike.%${sanitized}%`);
+        }
       }
 
       // Apply Status Filter
@@ -167,35 +178,26 @@ export default function CategoriesPage() {
   // Server-side filtering is handled in fetchCategories
   const filteredCategories = categories;
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleAddCategory = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const dbPayload = {
-        name: (formData.category_name || formData.name || '').trim(),
-        slug: (formData.category_url || formData.slug || '').trim(),
-        parent: (formData.parent_category || formData.parent || '').trim() || null,
-        status: formData.status || 'show',
-        meta_title: (formData.meta_title || '').trim() || null,
-        meta_description: (formData.meta_description || '').trim() || null,
-        meta_keywords: formData.meta_keywords ? (typeof formData.meta_keywords === 'string' ? formData.meta_keywords.trim() : formData.meta_keywords) : null,
-        description: (formData.description || '').trim() || null,
-        updated_at: new Date().toISOString()
-      };
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
 
-      const { error } = await supabase
-        .from('categories')
-        .insert([dbPayload]);
+      const res = await createCategoryAction(formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create category.');
+      }
 
-      if (error) throw error;
-
-      await fetchStats();
       await fetchCategories(true);
       closeForm();
     } catch (err: any) {
       console.error('Error adding category:', err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This URL is already in use by another category.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -208,33 +210,18 @@ export default function CategoriesPage() {
       const targetId = editingCategory?.id ?? editingCategory?.category_id;
       if (!targetId) throw new Error('Missing category ID for update.');
 
-      const dbPayload = {
-        name: (formData.category_name || formData.name || '').trim(),
-        slug: (formData.category_url || formData.slug || '').trim(),
-        parent: (formData.parent_category || formData.parent || '').trim() || null,
-        status: formData.status || 'show',
-        meta_title: (formData.meta_title || '').trim() || null,
-        meta_description: (formData.meta_description || '').trim() || null,
-        meta_keywords: formData.meta_keywords ? (typeof formData.meta_keywords === 'string' ? formData.meta_keywords.trim() : formData.meta_keywords) : null,
-        description: (formData.description || '').trim() || null,
-        updated_at: new Date().toISOString()
-      };
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
 
-      const { error } = await supabase
-        .from('categories')
-        .update(dbPayload)
-        .eq('id', targetId);
+      const res = await updateCategoryAction(targetId, formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update category.');
+      }
 
-      if (error) throw error;
-
-      await fetchStats();
       await fetchCategories(true);
       closeForm();
     } catch (err: any) {
       console.error('Error updating category:', err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This URL is already in use by another category.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -244,20 +231,18 @@ export default function CategoriesPage() {
   const handleStatusChange = async (categoryId: number | string, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('categories')
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', categoryId);
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      if (error) throw error;
+      const res = await updateCategoryStatusAction(categoryId, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update category status.');
+      }
 
       await fetchCategories(true);
     } catch (err: any) {
-      const errorMsg = err?.message || err?.error_description || 'Unknown error';
-      console.error('Error updating category status:', errorMsg, err?.details || '', err?.hint || '');
+      const errorMsg = err?.message || 'Unknown error';
+      console.error('Error updating category status:', errorMsg);
       alert('Failed to update category status: ' + errorMsg);
       throw err;
     } finally {
@@ -265,21 +250,27 @@ export default function CategoriesPage() {
     }
   };
 
-  const handleDeleteCategory = async (id: number) => {
+  const handleDeleteCategory = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Category',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this category? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('categories').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      await fetchStats();
+      const res = await deleteCategoryAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete category.');
+      }
+
       await fetchCategories(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting category:', err);
+      alert(err.message || 'Failed to delete category.');
     } finally {
       setIsRefreshing(false);
     }
@@ -288,6 +279,9 @@ export default function CategoriesPage() {
   const handleEditClick = (category: any) => {
     openForm(category);
   };
+
+  const { hasPermission } = useAdmin();
+  const canInsert = hasPermission('categories', 'insert');
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -309,13 +303,15 @@ export default function CategoriesPage() {
               {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
               Refresh
             </Button>
-            <Button
-              onClick={() => openForm()}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
-              suppressHydrationWarning
-            >
-              + New Category
-            </Button>
+            {canInsert && (
+              <Button
+                onClick={() => openForm()}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
+                suppressHydrationWarning
+              >
+                + New Category
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -364,11 +360,10 @@ export default function CategoriesPage() {
                 <button
                   key={stat.id}
                   onClick={() => { setStatusFilter(prev => prev === stat.id ? 'all' : stat.id as any); setCurrentPage(1); }}
-                  className={`group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col text-left rounded-2xl border shadow-2xs cursor-pointer ${
-                    isSelected
+                  className={`group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col text-left rounded-2xl border shadow-2xs cursor-pointer ${isSelected
                       ? 'bg-[#ebe8e2] dark:bg-zinc-800/90 border-zinc-700 dark:border-zinc-500 shadow-xs'
                       : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30'
-                  }`}
+                    }`}
                   suppressHydrationWarning
                 >
                   <Sparkline

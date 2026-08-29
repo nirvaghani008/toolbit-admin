@@ -15,6 +15,11 @@ import OrderTable from '@/components/orders/OrderTable';
 import OrderDetailsModal, { Order, Submitter } from '@/components/orders/OrderDetailsModal';
 import EditOrderModal from '@/components/orders/EditOrderModal';
 import RefundOrderModal from '@/components/orders/RefundOrderModal';
+import {
+  getOrderStatsAction,
+  getOrdersAction,
+  deleteOrderAction,
+} from './actions';
 
 export default function OrdersPage() {
   const confirmDelete = useConfirm();
@@ -52,16 +57,20 @@ export default function OrdersPage() {
     { value: 'amount_usd-asc', label: 'Amount (Low to High)' },
   ];
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const fetchStats = async () => {
     try {
-      const [{ count: cAll }, { count: cCompleted }, { count: cPending }, { count: cRefunded }] = await Promise.all([
-        supabase.from('orders').select('*', { count: 'exact', head: true }),
-        supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
-        supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'refunded'),
-      ]);
-      setStats({ all: cAll || 0, completed: cCompleted || 0, pending: cPending || 0, refunded: cRefunded || 0 });
-      setRefreshKey(prev => prev + 1);
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await getOrderStatsAction(token);
+      if (res.success && res.stats) {
+        setStats(res.stats);
+        setRefreshKey(prev => prev + 1);
+      }
     } catch (err: any) {
       console.warn('Error fetching order stats:', err?.message || err);
     }
@@ -73,117 +82,27 @@ export default function OrdersPage() {
     try {
       if (manual) fetchStats();
 
-      let query = supabase.from('orders').select('*', { count: 'exact' });
+      const token = await getAuthToken();
+      if (!token) return;
 
-      if (searchQuery) {
-        const term = searchQuery.trim().replace(/,/g, '');
-        if (term) {
-          // Find matching user_ids by searching user names and emails from auth.users via get_admin_users
-          let matchedUserIds: string[] = [];
-          try {
-            const { data: userMatches } = await supabase.rpc('get_admin_users', {
-              p_search: term,
-              p_sort: 'created_at-desc',
-              p_limit: 100,
-              p_offset: 0,
-            });
-            if (userMatches && userMatches.length > 0) {
-              matchedUserIds = userMatches.map((u: any) => u.id).filter(Boolean);
-            }
-          } catch (e) {
-            console.warn('Error matching users by name/email:', e);
-          }
+      const res = await getOrdersAction(
+        {
+          page: currentPage,
+          pageSize,
+          search: searchQuery,
+          status: statusFilter,
+          sortBy,
+          sortOrder,
+        },
+        token
+      );
 
-          const orClauses: string[] = [
-            `order_number.ilike.%${term}%`,
-            `plan_id.ilike.%${term}%`,
-            `payment_method.ilike.%${term}%`,
-            `dodo_payment_id.ilike.%${term}%`,
-            `metadata->>tool_name.ilike.%${term}%`,
-            `metadata->>tool_url.ilike.%${term}%`,
-          ];
-
-          // Direct user_id match if term is a valid UUID
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term);
-          if (isUuid) {
-            orClauses.push(`user_id.eq.${term}`);
-          }
-
-          // Match orders belonging to users found by name or email
-          if (matchedUserIds.length > 0) {
-            orClauses.push(`user_id.in.(${matchedUserIds.slice(0, 50).join(',')})`);
-          }
-
-          const lower = term.toLowerCase();
-          if (lower.includes('launch')) {
-            orClauses.push('plan_id.ilike.%launch_tool%');
-          }
-          if (lower.includes('update')) {
-            orClauses.push('plan_id.ilike.%update_tool%');
-          }
-          if (lower.includes('guest')) {
-            orClauses.push('plan_id.ilike.%guest_post%');
-          }
-          if (lower.includes('adver')) {
-            orClauses.push('plan_id.ilike.%advertise%');
-          }
-          if (lower.includes('free')) {
-            orClauses.push('plan_id.ilike.%free_%');
-          }
-          if (lower.includes('paid')) {
-            orClauses.push('plan_id.ilike.%paid_%');
-          }
-
-          query = query.or(orClauses.join(','));
-        }
+      if (res.success && res.data) {
+        setOrders(res.data);
+        setTotalCount(res.count ?? 0);
+      } else if (res.error) {
+        console.warn('Error fetching orders:', res.error);
       }
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-
-      query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-
-      const from = (currentPage - 1) * pageSize;
-      query = query.range(from, from + pageSize - 1);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      // Fetch submitters using get_users_by_ids RPC with get_admin_users fallback
-      const userMap: Record<string, Submitter> = {};
-      const userIds = [...new Set((data || []).map((o: any) => o.user_id).filter(Boolean))];
-      if (userIds.length > 0) {
-        try {
-          const { data: usersData, error: rpcErr } = await supabase.rpc('get_users_by_ids', { p_ids: userIds });
-          let list = usersData;
-          if (rpcErr || !list || list.length === 0) {
-            const { data: fallbackData } = await supabase.rpc('get_admin_users', { p_search: '', p_sort: 'created_at-desc', p_limit: 5000, p_offset: 0 });
-            list = fallbackData;
-          }
-
-          (list || []).forEach((u: any) => {
-            if (u?.id) {
-              userMap[String(u.id).toLowerCase().trim()] = {
-                id: u.id,
-                email: u.email || null,
-                full_name: u.full_name || u.name || null,
-                avatar_url: u.avatar_url || u.picture || null,
-              };
-            }
-          });
-        } catch (e) {
-          console.warn('Error fetching order submitters:', e);
-        }
-      }
-
-      const enriched: Order[] = (data || []).map((o: any) => {
-        const sKey = o.user_id ? String(o.user_id).toLowerCase().trim() : '';
-        return {
-          ...o,
-          submitter: sKey ? userMap[sKey] || null : null,
-        };
-      });
-
-      setOrders(enriched);
-      setTotalCount(count || 0);
     } catch (err: any) {
       console.warn('Error fetching orders:', err?.message || err);
     } finally {
@@ -202,16 +121,19 @@ export default function OrdersPage() {
     setSearchQuery(searchInputValue);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Order',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this order? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('orders').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) return;
+      const res = await deleteOrderAction(id, token);
+      if (!res.success) throw new Error(res.error || 'Failed to delete order');
       await fetchStats();
       await fetchOrders();
     } catch (err) {

@@ -14,6 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export interface Submitter {
   id: string;
@@ -108,7 +109,7 @@ interface ReportTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEditTool: (report: ToolReport) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   isLoading?: boolean;
 }
 
@@ -122,7 +123,10 @@ export default function ReportTable({
   onDelete,
   isLoading = false,
 }: ReportTableProps) {
-  const [hoveredId, setHoveredId] = useState<number | string | null>(null);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdateTool = hasPermission('tools', 'update');
+  const canDeleteReport = hasPermission('reports', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">
@@ -245,26 +249,33 @@ export default function ReportTable({
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEditTool(report)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Reported Tool"
-                        aria-label={`Edit reported tool ${toolName}`}
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(report.id)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Report"
-                        aria-label={`Delete report #${report.id}`}
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canUpdateTool && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEditTool(report)}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Reported Tool"
+                          aria-label={`Edit reported tool ${toolName}`}
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                      )}
+                      {canDeleteReport && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(report.id, `Report #${report.id} (${toolName})`)}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Report"
+                          aria-label={`Delete report #${report.id}`}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+                      {!canUpdateTool && !canDeleteReport && (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

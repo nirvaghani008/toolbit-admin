@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { z } from 'zod';
 import { scrollToError, slugify } from '@/lib/form-utils';
 import { supabase } from '@/lib/supabase';
+import { createTagAction } from '@/app/admin/tools/tags/actions';
 import CollapsibleSection from '../common/CollapsibleSection';
 import { Plus, Trash2, AlertTriangle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -344,6 +345,9 @@ export default function SocialForm({
       setErrors({});
 
       // Auto-create missing tags in tags DB table
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       for (const tag of selectedTags) {
         if (!tag || !tag.trim()) continue;
         const tagName = tag.trim();
@@ -354,7 +358,9 @@ export default function SocialForm({
             .select('id')
             .or(`name.ilike.${tagName},slug.eq.${slug}`);
           if (!existingTag || existingTag.length === 0) {
-            await supabase.from('tags').insert([{ name: tagName, slug, status: 'show' }]);
+            if (token) {
+              await createTagAction({ name: tagName, slug, status: 'show' }, token);
+            }
           }
         } catch {
           // ignore tag auto-creation errors if table schema differs

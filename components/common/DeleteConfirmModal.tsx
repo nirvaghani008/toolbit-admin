@@ -10,6 +10,7 @@ interface DeleteConfirmModalProps {
   isOpen: boolean;
   title?: string;
   message?: string;
+  itemName?: string;
   onConfirm: () => void;
   onCancel: () => void;
   confirmText?: string;
@@ -21,6 +22,7 @@ export default function DeleteConfirmModal({
   isOpen,
   title = 'Confirm Delete',
   message = 'Are you sure you want to delete this item? This action cannot be undone.',
+  itemName,
   onConfirm,
   onCancel,
   confirmText = 'Delete',
@@ -89,6 +91,18 @@ export default function DeleteConfirmModal({
             </p>
           </div>
         </div>
+
+        {/* Highlighted Selected Item Display */}
+        {itemName && (
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/60 border border-[var(--border-color)] overflow-hidden shadow-2xs">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-muted)] shrink-0 select-none">
+              Deleting:
+            </span>
+            <span className="text-xs font-semibold text-[var(--text-primary)] truncate" title={itemName}>
+              {itemName}
+            </span>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex items-center justify-end gap-2.5 mt-2 border-t border-[var(--border-color)]/50 pt-4">

@@ -11,9 +11,16 @@ import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
 import { Database, Clock, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  createAdvertiseAction,
+  updateAdvertiseAction,
+  updateAdvertiseStatusAction,
+  deleteAdvertiseAction
+} from './actions';
 
 export default function AdvertiseSubmissionsPage() {
   const confirmDelete = useConfirm();
@@ -81,54 +88,39 @@ export default function AdvertiseSubmissionsPage() {
 
   const fetchStats = async () => {
     try {
-      let all = 0, active = 0, inactive = 0, expired = 0;
-
-      const { data: statusCounts, error: countError } = await supabase.rpc('get_status_counts', {
-        tbl_name: 'advertisement_tools'
-      });
-
-      if (!countError && statusCounts) {
-        all = statusCounts.total || 0;
-        active = statusCounts.active || 0;
-        inactive = statusCounts.inactive || 0;
-        expired = statusCounts.expired || 0;
-      } else {
-        const [
-          { count: cAll },
-          { count: cAct },
-          { count: cIna },
-          { count: cExp }
-        ] = await Promise.all([
-          supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }),
-          supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-          supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }).eq('status', 'inactive'),
-          supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }).eq('status', 'expired')
-        ]);
-
-        all = cAll || 0;
-        active = cAct || 0;
-        inactive = cIna || 0;
-        expired = cExp || 0;
-      }
-
-      setStats({ all, active, inactive, expired });
-
-      try {
-        const trends = await fetchSparklinesForStatuses(
+      const [
+        { count: cAll },
+        { count: cAct },
+        { count: cIna },
+        { count: cExp },
+        trends
+      ] = await Promise.all([
+        supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }),
+        supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }).eq('status', 'inactive'),
+        supabase.from('advertisement_tools').select('*', { count: 'exact', head: true }).eq('status', 'expired'),
+        fetchSparklinesForStatuses(
           'advertisement_tools',
           [null, 'active', 'inactive', 'expired'],
           'updated_at',
           7
-        );
+        )
+      ]);
 
+      const all = cAll || 0;
+      const active = cAct || 0;
+      const inactive = cIna || 0;
+      const expired = cExp || 0;
+
+      setStats({ all, active, inactive, expired });
+
+      if (trends) {
         setSparklines({
           all: trends['all'] || [],
           active: trends['active'] || [],
           inactive: trends['inactive'] || [],
           expired: trends['expired'] || []
         });
-      } catch (trendErr) {
-        console.warn('Sparklines trend fetch warning:', trendErr);
       }
     } catch (err: any) {
       console.warn('Error fetching advertise tool stats:', err?.message || err);
@@ -350,9 +342,17 @@ export default function AdvertiseSubmissionsPage() {
     return data && data.length > 0 ? data[0] : null;
   };
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleAddItem = async (formData: any) => {
     setIsActionLoading(true);
     try {
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
       const { data: { user } } = await supabase.auth.getUser();
       const payload = sanitizePayload(formData);
       if (user?.id && !payload.user_id) {
@@ -370,15 +370,10 @@ export default function AdvertiseSubmissionsPage() {
         }
       }
 
-      const { error } = await supabase
-        .from('advertisement_tools')
-        .insert([{
-          ...payload,
-          updated_at: new Date().toISOString(),
-          created_at: new Date().toISOString()
-        }]);
-
-      if (error) throw error;
+      const res = await createAdvertiseAction(payload, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create advertisement.');
+      }
 
       await fetchStats();
       await fetchAdvertiseTools(true);
@@ -394,12 +389,18 @@ export default function AdvertiseSubmissionsPage() {
   const handleUpdateItem = async (formData: any) => {
     setIsActionLoading(true);
     try {
+      const targetId = editingItem?.id;
+      if (!targetId) throw new Error('Missing advertisement ID for update.');
+
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
       const payload = sanitizePayload(formData);
 
       // Prevent an edit from creating a second live placement for the same tool.
       // We exclude the row being edited so re-saving an existing placement is fine.
       if (payload.status === 'active' || payload.status === 'inactive') {
-        const conflict = await findLivePlacementForTool(payload.tool_id, editingItem?.id);
+        const conflict = await findLivePlacementForTool(payload.tool_id, targetId);
         if (conflict) {
           throw new Error(
             `Another ${conflict.status} advertisement already exists for this tool. Set that placement to "expired" or edit it instead.`
@@ -407,12 +408,10 @@ export default function AdvertiseSubmissionsPage() {
         }
       }
 
-      const { error } = await supabase
-        .from('advertisement_tools')
-        .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('id', editingItem.id);
-
-      if (error) throw error;
+      const res = await updateAdvertiseAction(targetId, payload, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update advertisement.');
+      }
 
       await fetchStats();
       await fetchAdvertiseTools(true);
@@ -428,21 +427,19 @@ export default function AdvertiseSubmissionsPage() {
   const handleStatusChange = async (id: number | string, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('advertisement_tools')
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      if (error) throw error;
+      const res = await updateAdvertiseStatusAction(id, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update advertise status.');
+      }
 
       await fetchStats();
       await fetchAdvertiseTools();
     } catch (err: any) {
-      const errorMsg = err?.message || err?.error_description || 'Unknown error';
-      console.error('Error updating advertise status:', errorMsg, err?.details || '', err?.hint || '');
+      const errorMsg = err?.message || 'Unknown error';
+      console.error('Error updating advertise status:', errorMsg);
       alert('Failed to update advertise status: ' + errorMsg);
       throw err;
     } finally {
@@ -450,21 +447,28 @@ export default function AdvertiseSubmissionsPage() {
     }
   };
 
-  const handleDeleteItem = async (id: number) => {
+  const handleDeleteItem = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Remove Advertise Tool',
+      itemName: name,
       message: 'Are you sure you want to remove this advertise tool placement? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('advertisement_tools').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteAdvertiseAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete advertisement.');
+      }
 
       await fetchStats();
       await fetchAdvertiseTools(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting advertise tool:', err);
+      alert(err.message || 'Failed to delete advertise placement.');
     } finally {
       setIsRefreshing(false);
     }
@@ -473,6 +477,9 @@ export default function AdvertiseSubmissionsPage() {
   const handleEditClick = (item: any) => {
     openForm(item);
   };
+
+  const { hasPermission } = useAdmin();
+  const canInsert = hasPermission('advertise', 'insert');
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -496,13 +503,15 @@ export default function AdvertiseSubmissionsPage() {
               {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
               Refresh
             </Button>
-            <Button
-              onClick={() => openForm()}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
-              suppressHydrationWarning
-            >
-              + New Record
-            </Button>
+            {canInsert && (
+              <Button
+                onClick={() => openForm()}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
+                suppressHydrationWarning
+              >
+                + New Record
+              </Button>
+            )}
           </div>
         )}
       </div>

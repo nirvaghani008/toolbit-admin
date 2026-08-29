@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import ContactTable, { Contact } from '@/components/contacts/ContactTable';
 import ContactReplyView from '@/components/contacts/ContactReplyView';
+import { deleteContactAction } from './actions';
 
 const contactReplySchema = z.object({
   selectedStatus: z.string(),
@@ -114,38 +115,24 @@ export default function ContactsPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      let allCount = 0,
-        newCount = 0,
-        repliedCount = 0,
-        hideCount = 0;
+      const [
+        { count: cAll },
+        { count: cNew },
+        { count: cReplied },
+        { count: cHide },
+        trends
+      ] = await Promise.all([
+        supabase.from('contacts').select('*', { count: 'exact', head: true }),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('status', 'new'),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('status', 'replied'),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).or('status.eq.hide,status.eq.hidden'),
+        fetchSparklinesForStatuses('contacts', [null, 'new', 'replied', 'hide'], 'created_at', 7)
+      ]);
 
-      const { data: statusCounts, error: countError } = await supabase.rpc('get_status_counts', {
-        tbl_name: 'contacts',
-      });
-
-      if (!countError && statusCounts) {
-        allCount = statusCounts.total || 0;
-        newCount = statusCounts.new || 0;
-        repliedCount = statusCounts.replied || 0;
-        hideCount = statusCounts.hide || 0;
-      } else {
-        const [
-          { count: cAll },
-          { count: cNew },
-          { count: cReplied },
-          { count: cHide },
-        ] = await Promise.all([
-          supabase.from('contacts').select('*', { count: 'exact', head: true }),
-          supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('status', 'new'),
-          supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('status', 'replied'),
-          supabase.from('contacts').select('*', { count: 'exact', head: true }).or('status.eq.hide,status.eq.hidden'),
-        ]);
-
-        allCount = cAll || 0;
-        newCount = cNew || 0;
-        repliedCount = cReplied || 0;
-        hideCount = cHide || 0;
-      }
+      const allCount = cAll || 0;
+      const newCount = cNew || 0;
+      const repliedCount = cReplied || 0;
+      const hideCount = cHide || 0;
 
       setStats({
         all: allCount,
@@ -154,22 +141,13 @@ export default function ContactsPage() {
         hide: hideCount,
       });
 
-      try {
-        const trends = await fetchSparklinesForStatuses(
-          'contacts',
-          [null, 'new', 'replied', 'hide'],
-          'created_at',
-          7
-        );
-
+      if (trends) {
         setSparklines({
           all: trends['all'] || [],
           new: trends['new'] || [],
           replied: trends['replied'] || [],
           hide: trends['hide'] || [],
         });
-      } catch (trendErr) {
-        console.warn('Sparklines trend fetch warning:', trendErr);
       }
 
       setTotalCount(allCount);
@@ -301,21 +279,30 @@ export default function ContactsPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Support Inquiry',
+      itemName: name,
       message:
         'Are you sure you want to permanently delete this support inquiry? This action cannot be undone.',
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('contacts').delete().eq('contact_id', id);
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteContactAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete inquiry.');
+      }
+
       await fetchStats();
       await fetchContacts();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting inquiry:', err);
+      alert(err.message || 'Failed to delete inquiry.');
     } finally {
       setIsRefreshing(false);
     }

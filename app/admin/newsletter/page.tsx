@@ -13,6 +13,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import SubscriberTable, { Subscriber } from '@/components/newsletter/SubscriberTable';
+import {
+  updateNewsletterSubscriberStatusAction,
+  deleteNewsletterSubscriberAction
+} from './actions';
 
 export default function NewsletterPage() {
   const confirmDelete = useConfirm();
@@ -121,14 +125,22 @@ export default function NewsletterPage() {
     setSearchQuery(searchInputValue);
   };
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleStatusChange = async (id: number | string, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('newsletter_subscribers')
-        .update({ status: newStatus })
-        .eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await updateNewsletterSubscriberStatusAction(id, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update subscriber status.');
+      }
+
       // Optimistically reflect the change so the badge updates immediately.
       setSubscribers((prev) =>
         prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
@@ -137,26 +149,35 @@ export default function NewsletterPage() {
       await fetchSubscribers(true);
     } catch (err: any) {
       console.error('Error updating subscriber status:', err);
+      alert(err.message || 'Failed to update subscriber status.');
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number, email?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Subscriber',
+      itemName: email,
       message:
         'Are you sure you want to permanently remove this subscriber? This action cannot be undone.',
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('newsletter_subscribers').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteNewsletterSubscriberAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete subscriber.');
+      }
+
       await fetchStats();
       await fetchSubscribers();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting subscriber:', err);
+      alert(err.message || 'Failed to delete subscriber.');
     } finally {
       setIsRefreshing(false);
     }

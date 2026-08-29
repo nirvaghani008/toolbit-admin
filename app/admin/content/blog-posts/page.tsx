@@ -12,9 +12,16 @@ import { Database, CheckCircle2, FileText, Archive, XCircle, Clock, RefreshCw, P
 import Sparkline from '@/components/common/Sparkline';
 import dynamic from 'next/dynamic';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  createBlogPostAction,
+  updateBlogPostAction,
+  updateBlogPostStatusAction,
+  deleteBlogPostAction
+} from './actions';
 
 const BlogForm = dynamic(() => import('@/components/blogs/BlogForm'), {
   ssr: false,
@@ -234,19 +241,26 @@ export default function BlogPostsPage() {
     setSearchQuery(searchInputValue);
   };
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleAddBlog = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const { error } = await supabase.from('blog_posts').insert([formData]);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await createBlogPostAction(formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create blog post.');
+      }
 
       await fetchBlogs(true);
       closeForm();
     } catch (err: any) {
       console.error('Error adding blog:', err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This slug is already in use by another blog post.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
@@ -256,41 +270,48 @@ export default function BlogPostsPage() {
   const handleUpdateBlog = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('blog_posts')
-        .update({ ...formData, updated_at: new Date().toISOString() })
-        .eq('id', editingBlog.id);
+      const targetId = editingBlog?.id;
+      if (!targetId) throw new Error('Missing blog post ID for update.');
 
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please log in.');
+
+      const res = await updateBlogPostAction(targetId, formData, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update blog post.');
+      }
 
       await fetchBlogs(true);
-
       closeForm();
     } catch (err: any) {
       console.error('Error updating blog:', err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This slug is already in use by another blog post.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
     }
   };
 
-  const handleDeleteBlog = async (id: number) => {
+  const handleDeleteBlog = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Blog Post',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this blog post? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('blog_posts').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteBlogPostAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete blog post.');
+      }
 
       await fetchBlogs(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting blog:', err);
+      alert(err.message || 'Failed to delete blog post.');
     } finally {
       setIsRefreshing(false);
     }
@@ -299,15 +320,13 @@ export default function BlogPostsPage() {
   const handleBlogStatusChange = async (blogId: number, newStatus: string) => {
     setIsRefreshing(true);
     try {
-      const { error } = await supabase
-        .from('blog_posts')
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', blogId);
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      if (error) throw error;
+      const res = await updateBlogPostStatusAction(blogId, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update blog status.');
+      }
 
       // Optimistically update blogs in local state
       setBlogs(prev => prev.map(b => b.id === blogId ? { ...b, status: newStatus, updated_at: new Date().toISOString() } : b));
@@ -319,6 +338,9 @@ export default function BlogPostsPage() {
       setIsRefreshing(false);
     }
   };
+
+  const { hasPermission } = useAdmin();
+  const canInsert = hasPermission('blog_posts', 'insert');
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -340,13 +362,15 @@ export default function BlogPostsPage() {
               {isRefreshing ? <Spinner size={16} className="text-zinc-500" /> : <RefreshCw size={16} />}
               Refresh
             </Button>
-            <Button
-              onClick={() => openForm()}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
-              suppressHydrationWarning
-            >
-              + New Post
-            </Button>
+            {canInsert && (
+              <Button
+                onClick={() => openForm()}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold shadow-xs active:scale-95"
+                suppressHydrationWarning
+              >
+                + New Post
+              </Button>
+            )}
           </div>
         )}
       </div>

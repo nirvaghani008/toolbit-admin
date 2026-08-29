@@ -17,6 +17,11 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import ReviewTable, { Review, ToolLogo } from '@/components/reviews/ReviewTable';
+import {
+  updateReviewAction,
+  updateReviewStatusAction,
+  deleteReviewAction
+} from './actions';
 
 export default function ReviewsPage() {
   const confirmDelete = useConfirm();
@@ -80,50 +85,37 @@ export default function ReviewsPage() {
 
   const fetchStats = async () => {
     try {
-      let all = 0, approved = 0, rejected = 0, pending = 0;
-
-      const { data: statusCounts, error: countError } = await supabase.rpc('get_status_counts', {
-        tbl_name: 'reviews'
-      });
-
-      if (!countError && statusCounts) {
-        all = statusCounts.total || 0;
-        approved = (statusCounts.show || 0) + (statusCounts.approved || 0);
-        rejected = (statusCounts.hide || 0) + (statusCounts.rejected || 0);
-        pending = statusCounts.pending || 0;
-      } else {
-        const [
-          { count: cAll },
-          { count: cApproved },
-          { count: cShow },
-          { count: cRejected },
-          { count: cHide },
-          { count: cPending }
-        ] = await Promise.all([
-          supabase.from('reviews').select('*', { count: 'exact', head: true }),
-          supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
-          supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'show'),
-          supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
-          supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'hide'),
-          supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'pending')
-        ]);
-
-        all = cAll || 0;
-        approved = (cApproved || 0) + (cShow || 0);
-        rejected = (cRejected || 0) + (cHide || 0);
-        pending = cPending || 0;
-      }
-
-      setStats({ all, approved, rejected, pending });
-
-      try {
-        const trends = await fetchSparklinesForStatuses(
+      const [
+        { count: cAll },
+        { count: cApproved },
+        { count: cShow },
+        { count: cRejected },
+        { count: cHide },
+        { count: cPending },
+        trends
+      ] = await Promise.all([
+        supabase.from('reviews').select('*', { count: 'exact', head: true }),
+        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'show'),
+        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
+        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'hide'),
+        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        fetchSparklinesForStatuses(
           'reviews',
           [null, 'show', 'approved', 'hide', 'rejected', 'pending'],
           'review_date',
           7
-        );
+        )
+      ]);
 
+      const all = cAll || 0;
+      const approved = (cApproved || 0) + (cShow || 0);
+      const rejected = (cRejected || 0) + (cHide || 0);
+      const pending = cPending || 0;
+
+      setStats({ all, approved, rejected, pending });
+
+      if (trends) {
         const allTrend = trends['all'] || [];
         const approvedTrend = (trends['show'] || []).map((v, i) => v + (trends['approved']?.[i] || 0));
         const rejectedTrend = (trends['hide'] || []).map((v, i) => v + (trends['rejected']?.[i] || 0));
@@ -135,8 +127,6 @@ export default function ReviewsPage() {
           rejected: rejectedTrend,
           pending: pendingTrend
         });
-      } catch (trendErr) {
-        console.warn('Sparklines trend fetch warning:', trendErr);
       }
     } catch (err: any) {
       console.warn('Error fetching review stats:', err?.message || err);
@@ -217,6 +207,11 @@ export default function ReviewsPage() {
     setSearchQuery(searchInputValue);
   };
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleStatusToggle = async (review: Review, forceStatus?: string) => {
     if (selectedReview) {
       setIsActionLoading(true);
@@ -233,11 +228,13 @@ export default function ReviewsPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from('reviews')
-        .update({ status: newStatus })
-        .eq('review_id', review.review_id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await updateReviewStatusAction(review.review_id, newStatus, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update review status.');
+      }
 
       await fetchStats();
       await fetchReviews(true);
@@ -257,30 +254,40 @@ export default function ReviewsPage() {
   // Direct status change from a table row (via the shared StatusChangeControl
   // confirmation popup). Throws on error so the control can surface failures.
   const handleStatusChange = async (id: number | string, newStatus: string) => {
-    const { error } = await supabase
-      .from('reviews')
-      .update({ status: newStatus })
-      .eq('review_id', id);
-    if (error) throw error;
+    const token = await getAuthToken();
+    if (!token) throw new Error('Authentication required.');
+
+    const res = await updateReviewStatusAction(id, newStatus, token);
+    if (!res.success) {
+      throw new Error(res.error || 'Failed to update review status.');
+    }
 
     await fetchStats();
     await fetchReviews(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Review',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this review? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('reviews').delete().eq('review_id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteReviewAction(id, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete review.');
+      }
+
       await fetchStats();
       await fetchReviews(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting review:', err);
+      alert(err.message || 'Failed to delete review.');
     } finally {
       setIsRefreshing(false);
     }

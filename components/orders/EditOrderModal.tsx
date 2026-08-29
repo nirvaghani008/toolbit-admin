@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Order, formatPlanLabel } from '@/components/orders/OrderDetailsModal';
 import { supabase } from '@/lib/supabase';
+import { updateOrderAction } from '@/app/admin/submissions/orders/actions';
 
 interface EditOrderModalProps {
   order: Order | null;
@@ -203,18 +204,20 @@ export default function EditOrderModal({
         updated_at: nowIso,
       };
 
-      const { data, error } = await supabase
-        .from('orders')
-        .update(payload)
-        .eq('id', order.id)
-        .select()
-        .single();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      if (!token) {
+        throw new Error('Authentication required. Please refresh and try again.');
+      }
 
-      if (error) throw error;
+      const res = await updateOrderAction(order.id, payload, token);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update order.');
+      }
 
       const mergedOrder: Order = {
         ...order,
-        ...(data || payload),
+        ...(res.data || payload),
         submitter: order.submitter,
       };
 
@@ -236,39 +239,41 @@ export default function EditOrderModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isSaving && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar p-6">
-        <form onSubmit={handleSubmit}>
-          {/* Header */}
-          <DialogHeader className="border-b border-[var(--border-color)]/60 pb-4 text-left">
-            <div className="flex flex-wrap items-center justify-between gap-2 pr-6">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-bold text-[var(--text-primary)]">
-                  #{order.order_number}
+      <DialogContent className="max-w-2xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
+        <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh] overflow-hidden">
+          {/* Fixed Header */}
+          <div className="p-6 pb-4 border-b border-[var(--border-color)]/60 pr-14 shrink-0 bg-[var(--bg-surface)]">
+            <DialogHeader className="text-left">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-bold text-[var(--text-primary)]">
+                    #{order.order_number}
+                  </span>
+                  <Badge variant="slate" className="font-semibold text-[10px]">
+                    {formatPlanLabel(order.plan_id)}
+                  </Badge>
+                </div>
+                <span className="text-xs text-[var(--text-muted)] font-medium truncate max-w-[220px]">
+                  Target: <strong className="text-[var(--text-primary)]">{toolName}</strong>
                 </span>
-                <Badge variant="slate" className="font-semibold text-[10px]">
-                  {formatPlanLabel(order.plan_id)}
-                </Badge>
               </div>
-              <span className="text-xs text-[var(--text-muted)] font-medium truncate max-w-[220px]">
-                Target: <strong className="text-[var(--text-primary)]">{toolName}</strong>
-              </span>
-            </div>
-            <DialogTitle className="text-base font-bold text-[var(--text-primary)] mt-2">
-              Edit Order & Status
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Manage order status transitions and maintain internal operational audit notes.
-            </DialogDescription>
-          </DialogHeader>
+              <DialogTitle className="text-base font-bold text-[var(--text-primary)] mt-2">
+                Edit Order & Status
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Manage order status transitions and maintain internal operational audit notes.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          {errorMessage && (
-            <div className="mt-4 p-3 rounded-xl border border-rose-500/20 bg-rose-500/10 flex items-start gap-2.5 text-xs text-rose-600 dark:text-rose-400">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{errorMessage}</span>
-            </div>
-          )}
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 py-4 space-y-5">
+            {errorMessage && (
+              <div className="p-3 rounded-xl border border-rose-500/20 bg-rose-500/10 flex items-start gap-2.5 text-xs text-rose-600 dark:text-rose-400">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
 
-          <div className="space-y-5 py-4">
             {/* Status Transition State Machine Card */}
             <div className="rounded-xl border border-[var(--border-color)]/80 bg-[var(--bg-surface)] p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -319,7 +324,7 @@ export default function EditOrderModal({
                         Refund Finalized
                       </div>
                       <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
-                        This order was refunded and entitlements were revoked. Per accounting standards, refunded transactions cannot be reopened.
+                        This order was refunded. Per accounting standards, refunded transactions cannot be reopened.
                       </p>
                     </div>
                   )}
@@ -602,34 +607,36 @@ export default function EditOrderModal({
             </div>
           </div>
 
-          {/* Footer */}
-          <DialogFooter className="flex items-center justify-end gap-3 border-t border-[var(--border-color)]/60 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isSaving}
-              onClick={onClose}
-              className="border-zinc-200 dark:border-zinc-700 cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isSaving}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs min-w-[120px] cursor-pointer"
-            >
-              {isSaving ? (
-                <>
-                  <Spinner size={14} className="mr-1.5" />
-                  Saving...
-                </>
-              ) : (
-                'Save Changes'
-              )}
-            </Button>
-          </DialogFooter>
+          {/* Fixed Footer */}
+          <div className="p-6 pt-4 border-t border-[var(--border-color)]/60 shrink-0 bg-[var(--bg-surface)]">
+            <DialogFooter className="flex items-center justify-end gap-3 p-0 m-0 border-none">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSaving}
+                onClick={onClose}
+                className="border-zinc-200 dark:border-zinc-700 cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSaving}
+                className="bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-bold shadow-xs min-w-[120px] cursor-pointer"
+              >
+                {isSaving ? (
+                  <>
+                    <Spinner size={14} className="mr-1.5" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

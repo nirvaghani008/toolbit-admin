@@ -6,6 +6,7 @@ import DeleteConfirmModal from '@/components/common/DeleteConfirmModal';
 interface ConfirmOptions {
   title?: string;
   message?: string;
+  itemName?: string;
   confirmText?: string;
   cancelText?: string;
 }
@@ -27,12 +28,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     isOpen: boolean;
     title: string;
     message: string;
+    itemName?: string;
     confirmText: string;
     cancelText: string;
   }>({
     isOpen: false,
     title: 'Confirm Delete',
     message: 'Are you sure you want to delete this item? This action cannot be undone.',
+    itemName: undefined,
     confirmText: 'Delete',
     cancelText: 'Cancel'
   });
@@ -45,6 +48,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         isOpen: true,
         title: options.title || 'Confirm Delete',
         message: options.message || 'Are you sure you want to delete this item? This action cannot be undone.',
+        itemName: options.itemName,
         confirmText: options.confirmText || 'Delete',
         cancelText: options.cancelText || 'Cancel'
       });
@@ -56,14 +60,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     if (resolverRef.current) {
       resolverRef.current(true);
     }
-    setModalState((prev) => ({ ...prev, isOpen: false }));
+    setModalState((prev) => ({ ...prev, isOpen: false, itemName: undefined }));
   };
 
   const handleCancel = () => {
     if (resolverRef.current) {
       resolverRef.current(false);
     }
-    setModalState((prev) => ({ ...prev, isOpen: false }));
+    setModalState((prev) => ({ ...prev, isOpen: false, itemName: undefined }));
   };
 
   return (
@@ -73,6 +77,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         isOpen={modalState.isOpen}
         title={modalState.title}
         message={modalState.message}
+        itemName={modalState.itemName}
         confirmText={modalState.confirmText}
         cancelText={modalState.cancelText}
         onConfirm={handleConfirm}

@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import StatusChangeControl from '@/components/common/StatusChangeControl';
+import { useAdmin } from '@/contexts/AdminContext';
 
 // Canonical review visibility statuses. The `reviews.status` column stores
 // `pending`, `approved`/`show` and `hide`/`rejected`. We normalize to the
@@ -85,7 +86,7 @@ interface ReviewTableProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   onEdit: (review: Review) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: number, name?: string) => void;
   onStatusToggle?: (review: Review) => void;
   onStatusChange?: (id: number | string, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
@@ -150,6 +151,9 @@ export default function ReviewTable({
   isLoading = false,
 }: ReviewTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
+  const { hasPermission } = useAdmin();
+  const canUpdate = hasPermission('reviews', 'update');
+  const canDelete = hasPermission('reviews', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">
@@ -262,7 +266,7 @@ export default function ReviewTable({
                   </TableCell>
 
                   <TableCell className="px-2 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
-                    {onStatusChange ? (
+                    {canUpdate && onStatusChange ? (
                       <StatusChangeControl
                         itemId={review.review_id}
                         currentStatus={normalizeReviewStatus(review.status)}
@@ -276,34 +280,41 @@ export default function ReviewTable({
                     ) : (
                       <ReviewStatusBadge
                         status={review.status}
-                        isClickable={!!onStatusToggle}
-                        onClick={onStatusToggle ? () => onStatusToggle(review) : undefined}
+                        isClickable={canUpdate && !!onStatusToggle}
+                        onClick={canUpdate && onStatusToggle ? () => onStatusToggle(review) : undefined}
                       />
                     )}
                   </TableCell>
 
                   <TableCell className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(review)}
-                        className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
-                        title="Edit Record"
-                        aria-label={`Edit review for ${toolName}`}
-                      >
-                        <Edit2 size={13} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(review.review_id)}
-                        className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
-                        title="Delete Record"
-                        aria-label={`Delete review for ${toolName}`}
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canUpdate && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEdit(review)}
+                          className="h-7 w-7 rounded-lg text-[var(--text-secondary)] hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shadow-2xs cursor-pointer"
+                          title="Edit Record"
+                          aria-label={`Edit review for ${toolName}`}
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDelete(review.review_id, review.reviewer_name ? `${review.reviewer_name}'s review for ${toolName}` : `Review for ${toolName}`)}
+                          className="h-7 w-7 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/20 shadow-2xs cursor-pointer"
+                          title="Delete Record"
+                          aria-label={`Delete review for ${toolName}`}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
+                      {!canUpdate && !canDelete && (
+                        <span className="text-[11px] text-[var(--text-muted)]">—</span>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

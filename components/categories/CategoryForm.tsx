@@ -244,7 +244,15 @@ export default function CategoryForm({
         updated_at: new Date().toISOString(),
       });
     } catch (err: any) {
-      setErrors({ apiError: err.message || 'An error occurred while saving.' });
+      const errMsg = err.message || 'An error occurred while saving.';
+      const newErrors: Record<string, string> = { apiError: errMsg };
+      const lowerMsg = errMsg.toLowerCase();
+      if (lowerMsg.includes('name already exists') || lowerMsg.includes('category name')) {
+        newErrors.category_name = errMsg;
+      } else if (lowerMsg.includes('slug already exists') || lowerMsg.includes('url slug')) {
+        newErrors.category_url = errMsg;
+      }
+      setErrors(newErrors);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsSubmitting(false);

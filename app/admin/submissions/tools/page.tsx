@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
-import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
 import ToolForm from '@/components/tools/ToolForm';
 import ToolPreviewModal from '@/components/tools/ToolPreviewModal';
 import ToolSubmissionTable from '@/components/submissions/ToolSubmissionTable';
@@ -23,6 +22,12 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  deleteToolSubmissionAction,
+  updateToolSubmissionAction,
+  getToolSubmissionsAction,
+  getToolSubmissionStatsAction,
+} from './actions';
 
 export default function ToolSubmissionsPage() {
   const confirmDelete = useConfirm();
@@ -98,30 +103,35 @@ export default function ToolSubmissionsPage() {
     }
   };
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const fetchStats = async () => {
     try {
-      const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
-        'ai_tool_submissions',
-        ['pending', 'approved', 'draft', 'rejected'],
-        'updated_at',
-        7
-      );
+      const token = await getAuthToken();
+      if (!token) return;
 
-      setStats({
-        all: counts.total || 0,
-        pending: counts.pending || 0,
-        approved: counts.approved || 0,
-        draft: counts.draft || 0,
-        rejected: counts.rejected || 0,
-      });
+      const res = await getToolSubmissionStatsAction(token);
+      if (res.success && res.stats && res.sparklines) {
+        setStats({
+          all: res.stats.all || 0,
+          pending: res.stats.pending || 0,
+          approved: res.stats.approved || 0,
+          draft: res.stats.draft || 0,
+          rejected: res.stats.rejected || 0,
+        });
 
-      setSparklines({
-        all: trends['all'] || [],
-        pending: trends['pending'] || [],
-        approved: trends['approved'] || [],
-        draft: trends['draft'] || [],
-        rejected: trends['rejected'] || [],
-      });
+        setSparklines({
+          all: res.sparklines.all || [0, 0, 0, 0, 0, 0, 0],
+          pending: res.sparklines.pending || [0, 0, 0, 0, 0, 0, 0],
+          approved: res.sparklines.approved || [0, 0, 0, 0, 0, 0, 0],
+          draft: res.sparklines.draft || [0, 0, 0, 0, 0, 0, 0],
+          rejected: res.sparklines.rejected || [0, 0, 0, 0, 0, 0, 0],
+        });
+        setRefreshKey(prev => prev + 1);
+      }
     } catch (err: any) {
       console.warn('Error fetching tool submission stats:', err?.message || err);
     }
@@ -132,32 +142,29 @@ export default function ToolSubmissionsPage() {
     setLoading(true);
 
     try {
-      if (manual) await fetchStats();
+      if (manual) fetchStats();
 
-      let query = supabase
-        .from('ai_tool_submissions')
-        .select('*', { count: 'exact' });
+      const token = await getAuthToken();
+      if (!token) return;
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+      const res = await getToolSubmissionsAction(
+        {
+          page: currentPage,
+          pageSize,
+          search: appliedSearchQuery,
+          status: statusFilter,
+          sortBy,
+          sortOrder,
+        },
+        token
+      );
+
+      if (res.success && res.data) {
+        setTools(res.data || []);
+        setTotalCount(res.count || 0);
+      } else {
+        throw new Error(res.error || 'Failed to fetch tool submissions.');
       }
-
-      if (appliedSearchQuery) {
-        query = query.or(`full_name.ilike.%${appliedSearchQuery}%,business_email.ilike.%${appliedSearchQuery}%,tool_site_url.ilike.%${appliedSearchQuery}%`);
-      }
-
-      query = query.order(sortBy, { ascending: sortOrder === 'asc' }).order('id', { ascending: sortOrder === 'asc' });
-
-      const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize - 1;
-      query = query.range(from, to);
-
-      const { data, count, error } = await query;
-
-      if (error) throw error;
-      setTools(data || []);
-      setTotalCount(count || 0);
-      if (manual) setRefreshKey(prev => prev + 1);
     } catch (err: any) {
       console.warn('Error fetching tool submissions:', err?.message || err);
     } finally {
@@ -183,42 +190,42 @@ export default function ToolSubmissionsPage() {
   const handleUpdateTool = async (formData: any) => {
     setIsActionLoading(true);
     try {
-      const { error } = await supabase
-        .from('ai_tool_submissions')
-        .update({ ...formData, updated_at: new Date().toISOString() })
-        .eq('id', editingTool.id);
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required. Please refresh and try again.');
 
-      if (error) throw error;
+      const res = await updateToolSubmissionAction(editingTool.id, formData, token);
+      if (!res.success) throw new Error(res.error || 'An error occurred while saving.');
 
       await fetchStats();
-      await fetchTools(true);
+      await fetchTools(false);
       closeForm();
     } catch (err: any) {
       console.error('Error updating tool submission:', err.message || err);
-      if (err?.code === '23505') {
-        throw new Error('Duplicate URL slug. This tool URL slug is already in use.');
-      }
       throw new Error(err.message || 'An error occurred while saving.');
     } finally {
       setIsActionLoading(false);
     }
   };
 
-  const handleDeleteTool = async (id: number) => {
+  const handleDeleteTool = async (id: number, name?: string) => {
     const confirmed = await confirmDelete({
       title: 'Delete Tool Submission',
+      itemName: name,
       message: 'Are you sure you want to permanently delete this tool submission? This action cannot be undone.',
     });
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.from('ai_tool_submissions').delete().eq('id', id);
-      if (error) throw error;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
+
+      const res = await deleteToolSubmissionAction(id, token);
+      if (!res.success) throw new Error(res.error || 'Failed to delete tool submission');
 
       await fetchStats();
-      await fetchTools(true);
-    } catch (err) {
-      console.error('Error deleting tool submission:', err);
+      await fetchTools(false);
+    } catch (err: any) {
+      console.error('Error deleting tool submission:', err?.message || err);
     } finally {
       setIsRefreshing(false);
     }

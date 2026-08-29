@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
     if (rpcError) {
       console.warn('[refund-api] RPC revoke_order_entitlements not found or failed, executing fallback update:', rpcError.message);
 
-      // A. Update order row
+      // A. Update order row only (entitlements remain untouched)
       const existingMeta = (order.metadata && typeof order.metadata === 'object') ? order.metadata : {};
       await supabaseAdmin
         .from('orders')
@@ -144,70 +144,11 @@ export async function POST(req: NextRequest) {
           updated_at: nowIso,
         })
         .eq('id', order.id);
-
-      // B. Revoke Ads
-      if (String(order.plan_id).includes('advertise')) {
-        await supabaseAdmin
-          .from('advertisement_tools')
-          .update({ status: 'inactive', updated_at: nowIso })
-          .eq('order_id', order.id);
-      }
-
-      // C. Revoke Guest Posts
-      if (String(order.plan_id).includes('guest_post')) {
-        await supabaseAdmin
-          .from('blog_posts')
-          .update({
-            status: 'draft',
-            is_paid: false,
-            is_featured: false,
-            submission_tier: 'free_guest_post',
-            updated_at: nowIso,
-          })
-          .eq('order_id', order.id);
-      }
-
-      // D. Revoke Tool Submissions & Listings
-      if (String(order.plan_id).includes('launch_tool') || String(order.plan_id).includes('update_tool')) {
-        const isUpdate = String(order.plan_id).includes('update');
-        const freeTier = isUpdate ? 'free_update_tool' : 'free_launch_tool';
-
-        await supabaseAdmin
-          .from('ai_tool_submissions')
-          .update({
-            is_paid: false,
-            submission_tier: freeTier,
-            updated_at: nowIso,
-          })
-          .or(`order_id.eq.${order.id},order_number.eq.${order.order_number}`);
-
-        const targetToolId = order.metadata?.tool_id ? Number(order.metadata.tool_id) : null;
-        if (targetToolId && Number.isSafeInteger(targetToolId)) {
-          await supabaseAdmin
-            .from('ai_tools')
-            .update({
-              is_paid: false,
-              submission_tier: freeTier,
-              updated_at: nowIso,
-            })
-            .eq('tool_id', targetToolId);
-
-          // Deactivate complimentary 1-day bonus sidebar ad only if launch plan
-          if (String(order.plan_id).includes('launch_tool')) {
-            await supabaseAdmin
-              .from('advertisement_tools')
-              .update({ status: 'inactive', updated_at: nowIso })
-              .eq('tool_id', targetToolId)
-              .is('order_id', null)
-              .contains('featured_type', ['sidebar']);
-          }
-        }
-      }
     }
 
     return NextResponse.json({
       success: true,
-      message: `Successfully refunded $${finalRefundAmount.toFixed(2)} via Dodo Payments and revoked entitlements.`,
+      message: `Successfully refunded $${finalRefundAmount.toFixed(2)} via Dodo Payments.`,
       refundId,
       status: 'refunded',
       refundAmount: finalRefundAmount,
