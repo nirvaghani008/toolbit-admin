@@ -23,6 +23,7 @@ export interface ActivitySummary {
   total_spend_usd: number;
   reviews_count: number;
   tool_reports_count: number;
+  contacts_count?: number;
 }
 
 export interface SavedToolItem {
@@ -159,6 +160,18 @@ export interface ToolReportItem {
   created_at: string;
 }
 
+export interface ContactMessageItem {
+  contact_id: number;
+  name: string | null;
+  email: string | null;
+  subject: string | null;
+  message: string;
+  status: string;
+  reply_message: string | null;
+  replied_at: string | null;
+  created_at: string;
+}
+
 export interface UserFullDetails {
   profile: UserProfileMeta;
   summary: ActivitySummary;
@@ -171,6 +184,7 @@ export interface UserFullDetails {
   orders: OrderItem[];
   reviews: ReviewItem[];
   tool_reports: ToolReportItem[];
+  contacts?: ContactMessageItem[];
 }
 
 /**

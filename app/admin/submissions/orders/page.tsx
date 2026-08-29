@@ -424,6 +424,7 @@ export default function OrdersPage() {
           await fetchStats();
           await fetchOrders();
         }}
+        onRefund={(order) => setRefundingOrder(order)}
       />
 
       {/* Refund Order Modal */}

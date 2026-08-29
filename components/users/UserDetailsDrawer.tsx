@@ -28,6 +28,7 @@ import {
   Globe,
   DollarSign,
   ShieldCheck,
+  Mail,
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -89,7 +90,8 @@ type TabType =
   | 'orders'
   | 'billing'
   | 'reviews'
-  | 'reports';
+  | 'reports'
+  | 'contacts';
 
 // Format database plan_id into human-friendly label
 function formatPlanName(planId?: string | null): string {
@@ -354,9 +356,7 @@ export default function UserDetailsDrawer({
           </span>
         );
     }
-  };
-
-  const summary = details?.summary || {
+  };  const summary = details?.summary || {
     saved_count: user.saved_count || 0,
     upvoted_count: user.upvoted_count || 0,
     submissions_count: 0,
@@ -367,10 +367,14 @@ export default function UserDetailsDrawer({
     total_spend_usd: 0,
     reviews_count: 0,
     tool_reports_count: 0,
+    contacts_count: 0,
   };
 
-  // Full Tabs list with separated Launches, Updates, Orders, Billing, Reviews, Reports
-  const tabs: { id: TabType; label: string; count?: number; icon: React.ReactNode }[] = [
+  const contactsCount = details?.contacts?.length ?? summary.contacts_count ?? 0;
+  const completedOrdersCount = details?.orders?.filter((o) => o.status === 'completed').length || 0;
+
+  // Full Tabs list with separated Launches, Updates, Orders, Billing, Reviews, Reports, Inquiries
+  const allTabs: { id: TabType; label: string; count?: number; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <Layers size={13} /> },
     {
       id: 'saved',
@@ -417,7 +421,14 @@ export default function UserDetailsDrawer({
     {
       id: 'billing',
       label: 'Billing',
+      count: completedOrdersCount,
       icon: <Receipt size={13} />,
+    },
+    {
+      id: 'contacts',
+      label: 'Contact Inquiries',
+      count: contactsCount,
+      icon: <Mail size={13} />,
     },
     {
       id: 'reviews',
@@ -432,6 +443,42 @@ export default function UserDetailsDrawer({
       icon: <AlertTriangle size={13} />,
     },
   ];
+
+  // Dynamic Tab Visibility: Only show Overview + tabs that have > 0 records
+  const tabs = React.useMemo(() => {
+    return allTabs.filter((tab) => {
+      if (tab.id === 'overview') return true;
+      if (tab.id === 'billing') {
+        return summary.total_spend_usd > 0 || completedOrdersCount > 0;
+      }
+      return typeof tab.count === 'number' ? tab.count > 0 : false;
+    });
+  }, [allTabs, summary.total_spend_usd, completedOrdersCount]);
+
+  // Fallback to overview if active tab has 0 records or is not in visible tabs
+  useEffect(() => {
+    if (activeTab !== 'overview' && !tabs.some((t) => t.id === activeTab)) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, tabs]);
+
+  // Dynamic KPI Metric Ribbon: Only show cards that have > 0 counts
+  const kpiMetrics = React.useMemo(() => {
+    const list = [
+      { id: 'saved' as TabType, label: 'Saved', count: summary.saved_count },
+      { id: 'upvotes' as TabType, label: 'Upvotes', count: summary.upvoted_count },
+      { id: 'launches' as TabType, label: 'Launches', count: summary.submissions_count },
+      { id: 'updates' as TabType, label: 'Updates', count: summary.updates_count },
+      { id: 'ads' as TabType, label: 'Ads', count: summary.advertisements_count },
+      { id: 'blog' as TabType, label: 'Posts', count: summary.blog_posts_count },
+      { id: 'orders' as TabType, label: 'Orders', count: summary.orders_count, highlight: 'text-emerald-600 dark:text-emerald-400' },
+      { id: 'billing' as TabType, label: 'Spent', count: summary.total_spend_usd, isCurrency: true, highlight: 'text-emerald-600 dark:text-emerald-400' },
+      { id: 'contacts' as TabType, label: 'Inquiries', count: contactsCount, highlight: 'text-teal-600 dark:text-teal-400' },
+      { id: 'reviews' as TabType, label: 'Reviews', count: summary.reviews_count },
+      { id: 'reports' as TabType, label: 'Reports', count: summary.tool_reports_count, highlight: 'text-rose-600 dark:text-rose-400' },
+    ];
+    return list.filter((item) => Number(item.count) > 0);
+  }, [summary, contactsCount]);
 
   const drawerContent = (
     <div className="fixed inset-0 z-[100] overflow-hidden">
@@ -526,81 +573,25 @@ export default function UserDetailsDrawer({
               </div>
             </div>
 
-            {/* ── KPI METRICS RIBBON ────────────── */}
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mt-4 pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60">
-              <button
-                onClick={() => setActiveTab('saved')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 dark:text-zinc-500">Saved</div>
-                <div className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                  {summary.saved_count}
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('upvotes')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 dark:text-zinc-500">Upvotes</div>
-                <div className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                  {summary.upvoted_count}
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('launches')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 dark:text-zinc-500">Launches</div>
-                <div className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                  {summary.submissions_count}
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('updates')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 dark:text-zinc-500">Updates</div>
-                <div className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                  {summary.updates_count}
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('ads')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 dark:text-zinc-500">Ads</div>
-                <div className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                  {summary.advertisements_count}
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('blog')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 dark:text-zinc-500">Posts</div>
-                <div className="text-sm sm:text-base font-extrabold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                  {summary.blog_posts_count}
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('orders')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-emerald-600 dark:text-emerald-400">Orders</div>
-                <div className="text-sm sm:text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  {summary.orders_count}
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('billing')}
-                className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer"
-              >
-                <div className="text-[9px] uppercase font-bold tracking-wider text-emerald-600 dark:text-emerald-400">Spent</div>
-                <div className="text-sm sm:text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  ${Number(summary.total_spend_usd || 0).toLocaleString()}
-                </div>
-              </button>
-            </div>
+            {/* ── KPI METRICS RIBBON (Dynamic) ────────────── */}
+            {kpiMetrics.length > 0 && (
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60 overflow-x-auto scrollbar-none py-0.5">
+                {kpiMetrics.map((stat) => (
+                  <button
+                    key={`kpi-${stat.id}`}
+                    onClick={() => setActiveTab(stat.id)}
+                    className="bg-white dark:bg-zinc-800/40 hover:bg-zinc-50 dark:hover:bg-zinc-800/80 rounded-xl p-2 sm:p-2.5 min-w-[70px] sm:min-w-[84px] border border-zinc-200/60 dark:border-zinc-800 text-center shadow-2xs transition-colors cursor-pointer shrink-0"
+                  >
+                    <div className="text-[9px] uppercase font-bold tracking-wider text-zinc-400 dark:text-zinc-500 truncate">
+                      {stat.label}
+                    </div>
+                    <div className={`text-sm sm:text-base font-extrabold mt-0.5 ${stat.highlight || 'text-zinc-900 dark:text-zinc-100'}`}>
+                      {stat.isCurrency ? `$${Number(stat.count || 0).toLocaleString()}` : stat.count}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* ── SCROLLABLE TAB BAR WITH NAVIGATION BUTTONS ────────────── */}
             <div className="relative mt-2.5 pt-2.5 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center">
@@ -786,240 +777,291 @@ export default function UserDetailsDrawer({
                       </div>
                     </div>
 
-                    {/* 4 Feature Highlights Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Saved Tools Summary */}
-                      <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                              <Bookmark size={13} />
-                            </span>
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-                              Saved Tools ({details.saved_tools?.length || 0})
-                            </h4>
-                          </div>
-                          <button
-                            onClick={() => setActiveTab('saved')}
-                            className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
-                          >
-                            View All <ArrowUpRight size={11} />
-                          </button>
-                        </div>
+                    {/* Feature Highlights Grid - Dynamic (Only render non-empty sections) */}
+                    {(() => {
+                      const hasSaved = (details.saved_tools?.length || 0) > 0;
+                      const hasLaunches = (details.submissions?.length || 0) > 0;
+                      const hasAds = (details.advertisements?.length || 0) > 0;
+                      const hasOrders = (details.orders?.length || 0) > 0;
+                      const hasContacts = (details.contacts?.length || 0) > 0;
+                      const hasAnyActivity = hasSaved || hasLaunches || hasAds || hasOrders || hasContacts;
 
-                        {details.saved_tools?.length ? (
-                          <div className="space-y-2">
-                            {details.saved_tools.slice(0, 3).map((tool) => {
-                              const liveUrl = getToolLiveUrl(tool.tool_url);
-                              return (
-                                <div
-                                  key={`ov-saved-${tool.tool_id}`}
-                                  className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
-                                >
-                                  <div className="flex items-center gap-2.5 min-w-0">
-                                    <ToolFavicon src={tool.favicon_url} alt={tool.tool_name} />
-                                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                                      {tool.tool_name}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    {liveUrl && (
-                                      <a
-                                        href={liveUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5"
-                                        title="Live Listing"
-                                      >
-                                        Live <ExternalLink size={9} />
-                                      </a>
-                                    )}
-                                    {getStatusBadge(tool.status)}
-                                  </div>
-                                </div>
-                              );
-                            })}
+                      if (!hasAnyActivity) {
+                        return (
+                          <div className="p-6 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/30 text-center space-y-1">
+                            <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                              No additional activity recorded
+                            </p>
+                            <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                              This user has not bookmarked tools, submitted launches, or made purchases yet.
+                            </p>
                           </div>
-                        ) : (
-                          <p className="text-xs text-zinc-400 dark:text-zinc-500 italic py-2">
-                            No tools bookmarked yet.
-                          </p>
-                        )}
-                      </div>
+                        );
+                      }
 
-                      {/* Launches Summary */}
-                      <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
-                              <Send size={13} />
-                            </span>
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-                              Launches ({details.submissions?.length || 0})
-                            </h4>
-                          </div>
-                          <button
-                            onClick={() => setActiveTab('launches')}
-                            className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
-                          >
-                            View All <ArrowUpRight size={11} />
-                          </button>
-                        </div>
-
-                        {details.submissions?.length ? (
-                          <div className="space-y-2">
-                            {details.submissions.slice(0, 3).map((sub) => {
-                              const isApproved = sub.status?.toLowerCase() === 'approved';
-                              const liveUrl = isApproved ? getToolLiveUrl(sub.tool_url) : null;
-                              return (
-                                <div
-                                  key={`ov-sub-${sub.id}`}
-                                  className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
-                                >
-                                  <div className="min-w-0 pr-2">
-                                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate block">
-                                      {sub.tool_name}
-                                    </span>
-                                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 uppercase font-medium">
-                                      {sub.submission_tier || (sub.is_paid ? 'Paid Tier' : 'Free Tier')}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    {liveUrl && (
-                                      <a
-                                        href={liveUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5"
-                                        title="Live Listing"
-                                      >
-                                        Live <ExternalLink size={9} />
-                                      </a>
-                                    )}
-                                    {getStatusBadge(sub.status)}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-zinc-400 dark:text-zinc-500 italic py-2">
-                            No tool launches recorded.
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Advertisements Summary */}
-                      <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                              <Megaphone size={13} />
-                            </span>
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-                              Advertisements ({details.advertisements?.length || 0})
-                            </h4>
-                          </div>
-                          <button
-                            onClick={() => setActiveTab('ads')}
-                            className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
-                          >
-                            View All <ArrowUpRight size={11} />
-                          </button>
-                        </div>
-
-                        {details.advertisements?.length ? (
-                          <div className="space-y-2">
-                            {details.advertisements.slice(0, 3).map((ad) => {
-                              const liveUrl = getToolLiveUrl(ad.tool_url);
-                              return (
-                                <div
-                                  key={`ov-ad-${ad.id}`}
-                                  className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
-                                >
-                                  <div>
-                                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate block max-w-[170px]">
-                                      {ad.tool_name}
-                                    </span>
-                                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                                      {ad.impression_count} impressions
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    {liveUrl && (
-                                      <a
-                                        href={liveUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5"
-                                        title="Live Listing"
-                                      >
-                                        Live <ExternalLink size={9} />
-                                      </a>
-                                    )}
-                                    {getStatusBadge(ad.status)}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-zinc-400 dark:text-zinc-500 italic py-2">
-                            No advertisements active.
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Orders Summary */}
-                      <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                              <CreditCard size={13} />
-                            </span>
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-                              Orders ({details.orders?.length || 0})
-                            </h4>
-                          </div>
-                          <button
-                            onClick={() => setActiveTab('orders')}
-                            className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
-                          >
-                            View All <ArrowUpRight size={11} />
-                          </button>
-                        </div>
-
-                        {details.orders?.length ? (
-                          <div className="space-y-2">
-                            {details.orders.slice(0, 3).map((order) => (
-                              <div
-                                key={`ov-order-${order.id}`}
-                                className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
-                              >
-                                <div>
-                                  <span className="font-semibold text-zinc-900 dark:text-zinc-100 block">
-                                    {formatPlanName(order.plan_id)}
-                                  </span>
-                                  <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
-                                    #{order.order_number}
-                                  </span>
-                                </div>
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Saved Tools Summary */}
+                          {hasSaved && (
+                            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
+                              <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                                    ${order.amount_usd}
+                                  <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                    <Bookmark size={13} />
                                   </span>
-                                  {getStatusBadge(order.status)}
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                                    Saved Tools ({details.saved_tools?.length || 0})
+                                  </h4>
                                 </div>
+                                <button
+                                  onClick={() => setActiveTab('saved')}
+                                  className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  View All <ArrowUpRight size={11} />
+                                </button>
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-zinc-400 dark:text-zinc-500 italic py-2">
-                            No orders found.
-                          </p>
-                        )}
-                      </div>
-                    </div>
+
+                              <div className="space-y-2">
+                                {details.saved_tools.slice(0, 3).map((tool) => {
+                                  const liveUrl = getToolLiveUrl(tool.tool_url);
+                                  return (
+                                    <div
+                                      key={`ov-saved-${tool.tool_id}`}
+                                      className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
+                                    >
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <ToolFavicon src={tool.favicon_url} alt={tool.tool_name} />
+                                        <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                                          {tool.tool_name}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {liveUrl && (
+                                          <a
+                                            href={liveUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5"
+                                            title="Live Listing"
+                                          >
+                                            Live <ExternalLink size={9} />
+                                          </a>
+                                        )}
+                                        {getStatusBadge(tool.status)}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Launches Summary */}
+                          {hasLaunches && (
+                            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                                    <Send size={13} />
+                                  </span>
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                                    Launches ({details.submissions?.length || 0})
+                                  </h4>
+                                </div>
+                                <button
+                                  onClick={() => setActiveTab('launches')}
+                                  className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  View All <ArrowUpRight size={11} />
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {details.submissions.slice(0, 3).map((sub) => {
+                                  const isApproved = sub.status?.toLowerCase() === 'approved';
+                                  const liveUrl = isApproved ? getToolLiveUrl(sub.tool_url) : null;
+                                  return (
+                                    <div
+                                      key={`ov-sub-${sub.id}`}
+                                      className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
+                                    >
+                                      <div className="min-w-0 pr-2">
+                                        <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate block">
+                                          {sub.tool_name}
+                                        </span>
+                                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 uppercase font-medium">
+                                          {sub.submission_tier || (sub.is_paid ? 'Paid Tier' : 'Free Tier')}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {liveUrl && (
+                                          <a
+                                            href={liveUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5"
+                                            title="Live Listing"
+                                          >
+                                            Live <ExternalLink size={9} />
+                                          </a>
+                                        )}
+                                        {getStatusBadge(sub.status)}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Advertisements Summary */}
+                          {hasAds && (
+                            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                                    <Megaphone size={13} />
+                                  </span>
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                                    Advertisements ({details.advertisements?.length || 0})
+                                  </h4>
+                                </div>
+                                <button
+                                  onClick={() => setActiveTab('ads')}
+                                  className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  View All <ArrowUpRight size={11} />
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {details.advertisements.slice(0, 3).map((ad) => {
+                                  const liveUrl = getToolLiveUrl(ad.tool_url);
+                                  return (
+                                    <div
+                                      key={`ov-ad-${ad.id}`}
+                                      className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
+                                    >
+                                      <div>
+                                        <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate block max-w-[170px]">
+                                          {ad.tool_name}
+                                        </span>
+                                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                                          {ad.impression_count} impressions
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {liveUrl && (
+                                          <a
+                                            href={liveUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-0.5"
+                                            title="Live Listing"
+                                          >
+                                            Live <ExternalLink size={9} />
+                                          </a>
+                                        )}
+                                        {getStatusBadge(ad.status)}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Orders Summary */}
+                          {hasOrders && (
+                            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                    <CreditCard size={13} />
+                                  </span>
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                                    Orders ({details.orders?.length || 0})
+                                  </h4>
+                                </div>
+                                <button
+                                  onClick={() => setActiveTab('orders')}
+                                  className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  View All <ArrowUpRight size={11} />
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {details.orders.slice(0, 3).map((order) => (
+                                  <div
+                                    key={`ov-order-${order.id}`}
+                                    className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
+                                  >
+                                    <div>
+                                      <span className="font-semibold text-zinc-900 dark:text-zinc-100 block">
+                                        {formatPlanName(order.plan_id)}
+                                      </span>
+                                      <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
+                                        #{order.order_number}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                        ${order.amount_usd}
+                                      </span>
+                                      {getStatusBadge(order.status)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Contact Inquiries Summary */}
+                          {hasContacts && (
+                            <div className="bg-white dark:bg-zinc-900/40 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-4 space-y-3 shadow-2xs">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="p-1.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400">
+                                    <Mail size={13} />
+                                  </span>
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                                    Inquiries ({details.contacts?.length || 0})
+                                  </h4>
+                                </div>
+                                <button
+                                  onClick={() => setActiveTab('contacts')}
+                                  className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  View All <ArrowUpRight size={11} />
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {(details.contacts || []).slice(0, 3).map((contact) => (
+                                  <div
+                                    key={`ov-contact-${contact.contact_id}`}
+                                    className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800/60 text-xs"
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <span className="font-semibold text-zinc-900 dark:text-zinc-100 block truncate">
+                                        {contact.subject || 'No Subject'}
+                                      </span>
+                                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate block">
+                                        {contact.message}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 capitalize shrink-0">
+                                      {contact.status || 'New'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -1985,6 +2027,105 @@ export default function UserDetailsDrawer({
                       <div className="text-center py-10 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
                         <p className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
                           No bug or issue reports submitted.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── 12. CONTACT INQUIRIES TAB ─────────────────────────────── */}
+                {activeTab === 'contacts' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                          <Mail size={15} className="text-teal-500" />
+                          Contact Inquiries ({details.contacts?.length || 0})
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          Support messages and contact form inquiries sent by this user.
+                        </p>
+                      </div>
+                      <a
+                        href="/admin/contacts"
+                        className="text-xs font-semibold text-teal-600 dark:text-teal-400 hover:underline inline-flex items-center gap-1"
+                      >
+                        Contacts Desk <ArrowUpRight size={11} />
+                      </a>
+                    </div>
+
+                    {details.contacts?.length ? (
+                      <div className="space-y-3">
+                        {details.contacts.map((contact) => {
+                          const s = (contact.status || 'new').toLowerCase().trim();
+                          const isReplied = s === 'replied';
+                          const isHidden = s === 'hide' || s === 'hidden';
+                          const badgeClass = isReplied
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : isHidden
+                            ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+
+                          return (
+                            <div
+                              key={`contact-${contact.contact_id}`}
+                              className="p-4 rounded-2xl bg-white dark:bg-zinc-900/50 border border-zinc-200/80 dark:border-zinc-800 space-y-3 shadow-2xs"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0 border border-teal-500/20">
+                                    <Mail size={14} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                                      {contact.subject || 'No Subject'}
+                                    </h4>
+                                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">
+                                      Inquiry #{contact.contact_id}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badgeClass} capitalize`}>
+                                    {contact.status || 'New'}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                                    {formatDateTime(contact.created_at)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {contact.message && (
+                                <div className="bg-zinc-50/80 dark:bg-zinc-800/40 p-3 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                                  {contact.message}
+                                </div>
+                              )}
+
+                              {contact.reply_message && (
+                                <div className="bg-emerald-50/50 dark:bg-emerald-500/5 p-3 rounded-xl border border-emerald-200/60 dark:border-emerald-500/20 text-xs space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                      <CheckCircle2 size={11} /> Admin Response
+                                    </span>
+                                    {contact.replied_at && (
+                                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                                        {formatDateTime(contact.replied_at)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-zinc-700 dark:text-zinc-300 italic whitespace-pre-wrap leading-relaxed">
+                                    {contact.reply_message}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
+                        <p className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
+                          No contact inquiries submitted by this user.
                         </p>
                       </div>
                     )}

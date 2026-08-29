@@ -621,7 +621,9 @@ export default function OrderDetailsModal({
                 className="gap-1.5 text-xs font-semibold border-zinc-200 dark:border-zinc-700 cursor-pointer"
               >
                 <Pencil className="h-3.5 w-3.5" />
-                Edit Order
+                {order.status === 'refunded' || order.status === 'cancelled' || order.status === 'failed'
+                  ? 'Edit Notes'
+                  : 'Edit Order'}
               </Button>
             )}
             <Button
