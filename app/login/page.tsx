@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
 import { scrollToError } from '@/lib/form-utils';
+import { isBypassActive } from '@/lib/bypass';
+import { TurnstileWidget } from '@/components/ui/turnstile-widget';
 import { useRouter } from 'next/navigation';
 import {
   Lock,
@@ -40,6 +42,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -94,17 +98,32 @@ export default function LoginPage() {
       return;
     }
 
+    // Captcha validation check (skipped when NEXT_PUBLIC_SUBMIT_BYPASS=true)
+    if (!turnstileToken && !isBypassActive()) {
+      setError('Please complete the anti-bot verification to proceed.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // 1. Authenticate with Supabase
+      const isRealToken = Boolean(
+        turnstileToken &&
+        turnstileToken !== 'dev-bypass-token' &&
+        turnstileToken !== 'bypass-token'
+      );
+
+      const cleanEmail = email.trim().toLowerCase();
+
+      // 1. Authenticate with Supabase (passes captchaToken when a real Turnstile token is available)
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: cleanEmail,
         password,
+        options: isRealToken && turnstileToken ? { captchaToken: turnstileToken } : undefined,
       });
 
       if (authError) throw new Error(authError.message);
-      if (!authData.user) throw new Error('No user found after authentication.');
+      if (!authData?.user) throw new Error('No user found after authentication.');
 
       // 2. Check Admin / Subadmin Role
       const { data: roleData, error: roleError } = await supabase
@@ -125,6 +144,11 @@ export default function LoginPage() {
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred during login.');
       console.error('Login error:', err);
+      // Reset Turnstile token on failure so user gets a fresh challenge
+      if (!isBypassActive()) {
+        setTurnstileToken(null);
+        setTurnstileResetKey((k) => k + 1);
+      }
     } finally {
       setLoading(false);
     }
@@ -299,6 +323,25 @@ export default function LoginPage() {
                     <AlertCircle size={13} className="shrink-0" /> {fieldErrors.password}
                   </p>
                 )}
+              </div>
+
+              {/* Cloudflare Turnstile Verification Widget */}
+              <div className="pt-1">
+                <TurnstileWidget
+                  resetKey={turnstileResetKey}
+                  onSuccess={(token) => {
+                    setTurnstileToken(token);
+                    if (error && error.includes('anti-bot')) {
+                      setError(null);
+                    }
+                  }}
+                  onError={() => {
+                    setTurnstileToken(null);
+                  }}
+                  onExpire={() => {
+                    setTurnstileToken(null);
+                  }}
+                />
               </div>
 
               {/* Action Submit Button using Shadcn Component */}

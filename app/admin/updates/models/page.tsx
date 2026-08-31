@@ -244,6 +244,9 @@ export default function ModelsPage() {
       // Optimistically update the local list
       setModels(prev => prev.map(m => m.id === id ? { ...m, status: newStatus } : m));
       await fetchStats();
+      if (statusFilter !== 'all') {
+        await fetchModels(true);
+      }
     } catch (err: any) {
       console.error('Error updating model status:', err);
       alert('Failed to update model status: ' + (err?.message || 'Unknown error'));

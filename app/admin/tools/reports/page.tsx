@@ -1,19 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Database, RefreshCw, AlertTriangle, HelpCircle, XCircle, Clock, Layers, Search } from 'lucide-react';
+import { Database, RefreshCw, AlertTriangle, HelpCircle, XCircle, Clock, Layers, ShieldAlert } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import Sparkline from '@/components/common/Sparkline';
 import CountUp from '@/components/common/CountUp';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import ReportTable, { ToolReport, Submitter, formatReportType } from '@/components/reports/ReportTable';
 import dynamic from 'next/dynamic';
-import { deleteToolReportAction } from './actions';
+import {
+  getToolReportsAction,
+  getToolReportStatsAction,
+  getToolByIdAction,
+  deleteToolReportAction
+} from './actions';
 import { updateToolAction } from '@/app/admin/tools/actions';
 
 const ToolForm = dynamic(() => import('@/components/tools/ToolForm'), {
@@ -35,6 +41,13 @@ const REPORT_TYPES = [
 
 export default function ToolReportsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'reports' module
+  const canView = isSuperAdmin || hasPermission('reports', 'view');
+  const canUpdateTool = isSuperAdmin || hasPermission('tools', 'update');
+  const canDelete = isSuperAdmin || hasPermission('reports', 'delete');
+
   const [reports, setReports] = useState<ToolReport[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -44,23 +57,39 @@ export default function ToolReportsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingTool, setEditingTool] = useState<any>(null);
 
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   const handleEditTool = async (report: ToolReport) => {
+    if (!canUpdateTool) {
+      alert('Access denied: You do not have permission to edit AI tools.');
+      return;
+    }
+
     setIsActionLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('ai_tools')
-        .select('*')
-        .eq('tool_id', report.tool_id)
-        .single();
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      if (error) throw error;
-      setEditingTool(data);
-      setShowForm(true);
+      const res = await getToolByIdAction(report.tool_id, token);
+      if (res.success && res.tool) {
+        setEditingTool(res.tool);
+        setShowForm(true);
+      } else if (report.ai_tools) {
+        setEditingTool({ ...report.ai_tools, tool_id: report.tool_id });
+        setShowForm(true);
+      } else {
+        throw new Error(res.error || 'Failed to load tool data.');
+      }
     } catch (err: any) {
       console.error('Error fetching tool for editing:', err);
       if (report.ai_tools) {
         setEditingTool({ ...report.ai_tools, tool_id: report.tool_id });
         setShowForm(true);
+      } else {
+        alert(err?.message || 'Failed to load tool details for editing.');
       }
     } finally {
       setIsActionLoading(false);
@@ -73,10 +102,13 @@ export default function ToolReportsPage() {
   };
 
   const handleUpdateTool = async (formData: any) => {
+    if (!canUpdateTool) {
+      throw new Error('Access denied: You do not have permission to edit AI tools.');
+    }
+
     setIsActionLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const token = await getAuthToken();
       if (!token) throw new Error('Authentication required. Please log in.');
 
       const targetId = editingTool?.tool_id;
@@ -122,230 +154,81 @@ export default function ToolReportsPage() {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const pageSize = 20;
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    if (!canView) return;
     try {
-      const [
-        { count: cAll },
-        { count: cNW },
-        { count: cFI },
-        { count: cNR },
-        { count: cDM },
-      ] = await Promise.all([
-        supabase.from('tool_reports').select('*', { count: 'exact', head: true }),
-        supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', ['not working', 'not_working']),
-        supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', ['false info', 'false_info']),
-        supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', [
-          'needs review', 'need review', 'needs_review', 'need_review',
-          'need to review', 'need_to_review', 'nees review', 'nees_review'
-        ]),
-        supabase.from('tool_reports').select('*', { count: 'exact', head: true }).in('report_type', ['detail mismatch', 'detail_mismatch']),
-      ]);
+      const token = await getAuthToken();
+      if (!token) return;
 
-      const knownCount = (cNW || 0) + (cFI || 0) + (cNR || 0) + (cDM || 0);
-      const cOther = Math.max(0, (cAll || 0) - knownCount);
-
-      setStats({
-        all: cAll || 0,
-        notWorking: cNW || 0,
-        falseInfo: cFI || 0,
-        needsReview: cNR || 0,
-        detailMismatch: cDM || 0,
-        otherIssue: cOther,
-      });
-      setRefreshKey((prev) => prev + 1);
-
-      // Fetch 100% REAL 7-day sparkline date trends in a single fast indexed query (zero custom DB functions)
-      try {
-        const now = new Date();
-        const dateKeys: string[] = [];
-        for (let i = 6; i >= 0; i--) {
-          const d = new Date(now);
-          d.setDate(d.getDate() - i);
-          dateKeys.push(d.toISOString().slice(0, 10));
+      const res = await getToolReportStatsAction(token);
+      if (res.success && res.stats) {
+        setStats(res.stats);
+        if (res.sparklines) {
+          setSparklines(res.sparklines);
         }
-        const startDateISO = dateKeys[0] + 'T00:00:00.000Z';
-
-        const { data: recentRecords } = await supabase
-          .from('tool_reports')
-          .select('created_at, report_type')
-          .gte('created_at', startDateISO)
-          .limit(5000);
-
-        if (recentRecords) {
-          const trendMaps: Record<string, Record<string, number>> = {
-            all: {},
-            notWorking: {},
-            falseInfo: {},
-            needsReview: {},
-            detailMismatch: {},
-            otherIssue: {},
-          };
-
-          Object.keys(trendMaps).forEach((k) => {
-            dateKeys.forEach((dk) => {
-              trendMaps[k][dk] = 0;
-            });
-          });
-
-          recentRecords.forEach((r: any) => {
-            if (!r.created_at) return;
-            const rDate = new Date(r.created_at).toISOString().slice(0, 10);
-            if (trendMaps.all[rDate] !== undefined) {
-              trendMaps.all[rDate]++;
-            }
-
-            const norm = (r.report_type || '').toLowerCase().trim();
-            if (norm === 'not working' || norm === 'not_working') {
-              if (trendMaps.notWorking[rDate] !== undefined) trendMaps.notWorking[rDate]++;
-            } else if (norm === 'false info' || norm === 'false_info') {
-              if (trendMaps.falseInfo[rDate] !== undefined) trendMaps.falseInfo[rDate]++;
-            } else if (
-              norm === 'needs review' || norm === 'need review' ||
-              norm === 'needs_review' || norm === 'need_review' ||
-              norm === 'need to review' || norm === 'need_to_review' ||
-              norm === 'nees review' || norm === 'nees_review'
-            ) {
-              if (trendMaps.needsReview[rDate] !== undefined) trendMaps.needsReview[rDate]++;
-            } else if (norm === 'detail mismatch' || norm === 'detail_mismatch') {
-              if (trendMaps.detailMismatch[rDate] !== undefined) trendMaps.detailMismatch[rDate]++;
-            } else {
-              if (trendMaps.otherIssue[rDate] !== undefined) trendMaps.otherIssue[rDate]++;
-            }
-          });
-
-          setSparklines({
-            all: dateKeys.map((dk) => trendMaps.all[dk] || 0),
-            notWorking: dateKeys.map((dk) => trendMaps.notWorking[dk] || 0),
-            falseInfo: dateKeys.map((dk) => trendMaps.falseInfo[dk] || 0),
-            needsReview: dateKeys.map((dk) => trendMaps.needsReview[dk] || 0),
-            detailMismatch: dateKeys.map((dk) => trendMaps.detailMismatch[dk] || 0),
-            otherIssue: dateKeys.map((dk) => trendMaps.otherIssue[dk] || 0),
-          });
-        }
-      } catch (trendErr) {
-        console.warn('Error calculating sparkline trends:', trendErr);
+        setRefreshKey((prev) => prev + 1);
+      } else if (res.error) {
+        console.warn('Error fetching report stats:', res.error);
       }
     } catch (err: any) {
       console.warn('Error fetching report stats:', err?.message || err);
     }
-  };
+  }, [canView]);
 
-  const fetchReports = async (manual = false) => {
+  const fetchReports = useCallback(async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
     try {
       if (manual) fetchStats();
 
-      let query = supabase
-        .from('tool_reports')
-        .select('*, ai_tools(tool_id, favicon_url, tool_site_url, tool_url, tool_info)', { count: 'exact' });
-
-      if (searchQuery) {
-        query = query.or(`report_type.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
-      }
-      if (typeFilter !== 'all') {
-        const normFilter = typeFilter.toLowerCase();
-        if (normFilter === 'not working') {
-          query = query.in('report_type', ['not working', 'not_working']);
-        } else if (normFilter === 'false info') {
-          query = query.in('report_type', ['false info', 'false_info']);
-        } else if (normFilter === 'needs review' || normFilter === 'need review') {
-          query = query.in('report_type', [
-            'needs review',
-            'need review',
-            'needs_review',
-            'need_review',
-            'need to review',
-            'need_to_review',
-            'nees review',
-            'nees_review',
-          ]);
-        } else if (normFilter === 'detail mismatch') {
-          query = query.in('report_type', ['detail mismatch', 'detail_mismatch']);
-        } else if (normFilter === 'other issue' || normFilter === 'other') {
-          query = query.not(
-            'report_type',
-            'in',
-            '("not working","not_working","false info","false_info","needs review","need review","needs_review","need_review","need to review","need_to_review","nees review","nees_review","detail mismatch","detail_mismatch")'
-          );
-        } else {
-          const spaceFormat = typeFilter.replace(/_/g, ' ');
-          const underscoreFormat = typeFilter.replace(/ /g, '_');
-          query = query.in('report_type', [spaceFormat, underscoreFormat]);
-        }
+      const token = await getAuthToken();
+      if (!token) {
+        setLoading(false);
+        setIsRefreshing(false);
+        return;
       }
 
-      query = query
-        .order('created_at', { ascending: sortOrder === 'asc' })
-        .order('id', { ascending: sortOrder === 'asc' });
+      const res = await getToolReportsAction(
+        {
+          page: currentPage,
+          pageSize,
+          typeFilter,
+          searchQuery,
+          sortOrder,
+        },
+        token
+      );
 
-      const from = (currentPage - 1) * pageSize;
-      query = query.range(from, from + pageSize - 1);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      // Fetch submitters using get_users_by_ids RPC with get_admin_users fallback
-      const userMap: Record<string, Submitter> = {};
-      const userIds = [...new Set((data || []).map((r: any) => r.user_id).filter(Boolean))];
-      if (userIds.length > 0) {
-        try {
-          const { data: usersData, error: rpcErr } = await supabase.rpc('get_users_by_ids', { p_ids: userIds });
-          let list = usersData;
-          if (rpcErr || !list || list.length === 0) {
-            const { data: fallbackData } = await supabase.rpc('get_admin_users', { p_limit: 5000 });
-            list = fallbackData;
-          }
-
-          (list || []).forEach((u: any) => {
-            if (u?.id) {
-              userMap[String(u.id).toLowerCase()] = {
-                id: u.id,
-                email: u.email || null,
-                full_name: u.full_name || u.name || null,
-                avatar_url: u.avatar_url || u.picture || null,
-              };
-            }
-          });
-        } catch (e) {
-          console.warn('Error fetching submitters:', e);
-        }
+      if (res.success && res.reports) {
+        setReports(res.reports);
+        setTotalCount(res.totalCount || 0);
+      } else if (res.error) {
+        console.warn('Error fetching reports:', res.error);
       }
-
-      const enriched: ToolReport[] = (data || []).map((r: any) => {
-        const sKey = r.user_id ? String(r.user_id).toLowerCase() : '';
-        return {
-          ...r,
-          submitter: sKey ? userMap[sKey] || null : null,
-        };
-      });
-
-      setReports(enriched);
-      setTotalCount(count || 0);
     } catch (err: any) {
       console.warn('Error fetching reports:', err?.message || err);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [canView, currentPage, pageSize, typeFilter, searchQuery, sortOrder, fetchStats]);
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView, fetchStats]);
 
   useEffect(() => {
-    fetchReports();
-  }, [currentPage, typeFilter, sortOrder, searchQuery]);
+    if (canView) {
+      fetchReports();
+    }
+  }, [canView, fetchReports]);
 
   useEffect(() => {
     if (searchInputValue === '') setSearchQuery('');
   }, [searchInputValue]);
-
-  const getAuthToken = async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || '';
-  };
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -354,6 +237,11 @@ export default function ToolReportsPage() {
   };
 
   const handleDelete = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete tool reports.');
+      return;
+    }
+
     const confirmed = await confirmDelete({
       title: 'Delete Report',
       itemName: name,
@@ -372,6 +260,7 @@ export default function ToolReportsPage() {
       await fetchReports();
     } catch (err: any) {
       console.error('Error deleting report:', err?.message || err);
+      alert(err.message || 'Failed to delete report.');
     } finally {
       setIsRefreshing(false);
     }
@@ -445,6 +334,31 @@ export default function ToolReportsPage() {
       badge: 'Other',
     },
   ];
+
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking reports permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage tool issue reports.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   if (showForm) {
     return (
@@ -618,5 +532,6 @@ export default function ToolReportsPage() {
     </div>
   );
 }
+
 
 

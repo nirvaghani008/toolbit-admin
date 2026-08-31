@@ -7,7 +7,8 @@ import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
-import { Database, CheckCircle2, AlertTriangle, AlertCircle, EyeOff, PauseCircle, RefreshCw } from 'lucide-react';
+import { buildSearchOrClause } from '@/lib/postgrest-search';
+import { Database, CheckCircle2, AlertTriangle, AlertCircle, EyeOff, PauseCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import dynamic from 'next/dynamic';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -29,6 +30,14 @@ const ToolForm = dynamic(() => import('@/components/tools/ToolForm'), {
 
 export default function ToolsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'tools' module
+  const canView = isSuperAdmin || hasPermission('tools', 'view');
+  const canInsert = isSuperAdmin || hasPermission('tools', 'insert');
+  const canUpdate = isSuperAdmin || hasPermission('tools', 'update');
+  const canDelete = isSuperAdmin || hasPermission('tools', 'delete');
+
   const [tools, setTools] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [stats, setStats] = useState({
@@ -83,6 +92,14 @@ export default function ToolsPage() {
 
   // Sync state to history when form opens manually
   const openForm = (tool: any = null) => {
+    if (tool && !canUpdate) {
+      alert('Access denied: You do not have permission to edit AI tools.');
+      return;
+    }
+    if (!tool && !canInsert) {
+      alert('Access denied: You do not have permission to create AI tools.');
+      return;
+    }
     setEditingTool(tool);
     setShowForm(true);
     // Push new state to history
@@ -102,6 +119,7 @@ export default function ToolsPage() {
 
 
   const fetchStats = async () => {
+    if (!canView) return;
     try {
       const statusList = ['show', 'show:invalid', 'show:error', 'hide', 'error', 'archived', 'show:inactive'];
       const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
@@ -138,6 +156,7 @@ export default function ToolsPage() {
   };
 
   const fetchTools = async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
 
@@ -150,8 +169,9 @@ export default function ToolsPage() {
         .select('*', { count: 'exact' });
 
       // Apply Search (Search across name, URL, or status name)
-      if (searchQuery) {
-        query = query.or(`tool_url.ilike.%${searchQuery}%,status.ilike.%${searchQuery}%,tool_info->>toolName.ilike.%${searchQuery}%`);
+      const searchOrClause = buildSearchOrClause(['tool_url', 'status', 'tool_info->>toolName'], searchQuery);
+      if (searchOrClause) {
+        query = query.or(searchOrClause);
       }
 
       // Apply Status Filter
@@ -184,12 +204,16 @@ export default function ToolsPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView]);
 
   useEffect(() => {
-    fetchTools();
-  }, [currentPage, statusFilter, sortBy, sortOrder, searchQuery]);
+    if (canView) {
+      fetchTools();
+    }
+  }, [canView, currentPage, statusFilter, sortBy, sortOrder, searchQuery]);
 
   useEffect(() => {
     if (searchInputValue === '') {
@@ -212,6 +236,9 @@ export default function ToolsPage() {
   };
 
   const handleAddTool = async (formData: any) => {
+    if (!canInsert) {
+      throw new Error('Access denied: You do not have permission to create AI tools.');
+    }
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -235,6 +262,9 @@ export default function ToolsPage() {
   };
 
   const handleUpdateTool = async (formData: any) => {
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to edit AI tools.');
+    }
     setIsActionLoading(true);
     try {
       const targetId = editingTool?.tool_id;
@@ -261,6 +291,10 @@ export default function ToolsPage() {
   };
 
   const handleStatusChange = async (toolId: number | string, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update tool status.');
+      return;
+    }
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -285,6 +319,10 @@ export default function ToolsPage() {
   };
 
   const handleDeleteTool = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete AI tools.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete AI Tool',
       itemName: name,
@@ -311,8 +349,30 @@ export default function ToolsPage() {
     }
   };
 
-  const { hasPermission } = useAdmin();
-  const canInsert = hasPermission('tools', 'insert');
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking tools permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage the AI Tools Directory.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">

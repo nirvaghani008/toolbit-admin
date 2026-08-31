@@ -8,7 +8,8 @@ import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
-import { Database, CheckCircle2, FileText, Archive, XCircle, Clock, RefreshCw, Plus, Search } from 'lucide-react';
+import { buildSearchOrClause } from '@/lib/postgrest-search';
+import { Database, CheckCircle2, FileText, Archive, XCircle, Clock, RefreshCw, Plus, Search, ShieldAlert } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import dynamic from 'next/dynamic';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -30,6 +31,14 @@ const BlogForm = dynamic(() => import('@/components/blogs/BlogForm'), {
 
 export default function BlogPostsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'blog_posts' module
+  const canView = isSuperAdmin || hasPermission('blog_posts', 'view');
+  const canInsert = isSuperAdmin || hasPermission('blog_posts', 'insert');
+  const canUpdate = isSuperAdmin || hasPermission('blog_posts', 'update');
+  const canDelete = isSuperAdmin || hasPermission('blog_posts', 'delete');
+
   const [blogs, setBlogs] = useState<any[]>([]);
   const [previewBlog, setPreviewBlog] = useState<any | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -82,6 +91,14 @@ export default function BlogPostsPage() {
   }, []);
 
   const openForm = (blog: any = null) => {
+    if (blog && !canUpdate) {
+      alert('Access denied: You do not have permission to edit blog posts.');
+      return;
+    }
+    if (!blog && !canInsert) {
+      alert('Access denied: You do not have permission to create blog posts.');
+      return;
+    }
     setEditingBlog(blog);
     setShowForm(true);
     window.history.pushState({ formOpen: true, editingData: blog }, '');
@@ -98,6 +115,7 @@ export default function BlogPostsPage() {
   };
 
   const fetchStats = async () => {
+    if (!canView) return;
     try {
       const [
         { count: cAll },
@@ -149,6 +167,7 @@ export default function BlogPostsPage() {
   };
 
   const fetchBlogs = async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
 
@@ -183,8 +202,9 @@ export default function BlogPostsPage() {
         `, { count: 'exact' });
 
       // Apply Search
-      if (searchQuery) {
-        query = query.or(`title.ilike.%${searchQuery}%,slug.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+      const searchOrClause = buildSearchOrClause(['title', 'slug', 'description'], searchQuery);
+      if (searchOrClause) {
+        query = query.or(searchOrClause);
       }
 
       // Apply Status Filter
@@ -196,7 +216,7 @@ export default function BlogPostsPage() {
       if (authorFilter === 'A') {
         query = query.ilike('author_name', '%Toolbit AI%');
       } else if (authorFilter === 'U') {
-        query = query.or('author_name.is.null,author_name.not.ilike.%Toolbit AI%');
+        query = query.not('author_name', 'ilike', '%Toolbit AI%');
       }
 
       // Apply Sorting
@@ -222,12 +242,16 @@ export default function BlogPostsPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView]);
 
   useEffect(() => {
-    fetchBlogs();
-  }, [searchQuery, statusFilter, authorFilter, sortBy, sortOrder, currentPage]);
+    if (canView) {
+      fetchBlogs();
+    }
+  }, [canView, searchQuery, statusFilter, authorFilter, sortBy, sortOrder, currentPage]);
 
   useEffect(() => {
     if (searchInputValue === '') {
@@ -247,6 +271,9 @@ export default function BlogPostsPage() {
   };
 
   const handleAddBlog = async (formData: any) => {
+    if (!canInsert) {
+      throw new Error('Access denied: You do not have permission to create blog posts.');
+    }
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -268,6 +295,9 @@ export default function BlogPostsPage() {
   };
 
   const handleUpdateBlog = async (formData: any) => {
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to edit blog posts.');
+    }
     setIsActionLoading(true);
     try {
       const targetId = editingBlog?.id;
@@ -292,6 +322,10 @@ export default function BlogPostsPage() {
   };
 
   const handleDeleteBlog = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete blog posts.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete Blog Post',
       itemName: name,
@@ -318,6 +352,10 @@ export default function BlogPostsPage() {
   };
 
   const handleBlogStatusChange = async (blogId: number, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update blog status.');
+      return;
+    }
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -339,8 +377,30 @@ export default function BlogPostsPage() {
     }
   };
 
-  const { hasPermission } = useAdmin();
-  const canInsert = hasPermission('blog_posts', 'insert');
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking blog_posts permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage Blog Posts.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabaseAdmin, verifyAdminPermission } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email/transporter';
 import { generateContactReplyEmail } from '@/lib/email/templates/contact-reply';
+import { getReplyHistoryList, ContactReplyItem } from '@/lib/contacts';
 
 const replyRequestSchema = z.object({
   contact_id: z.number().int().positive(),
@@ -100,22 +101,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Update database record in Supabase
-    const isNewOrChangedReply =
-      !!replyText.trim() && replyText.trim() !== (contact.reply_message ?? '').trim();
+    // 5. Update database record in Supabase with appended JSONB history
+    const existingReplies = getReplyHistoryList(contact.reply_message, contact.replied_at);
+    let updatedReplies = existingReplies;
+    const nowISO = new Date().toISOString();
 
-    const repliedAt = replyText.trim()
-      ? isNewOrChangedReply
-        ? new Date().toISOString()
-        : contact.replied_at ?? new Date().toISOString()
-      : null;
+    if (replyText.trim()) {
+      const adminEmail = auth.user?.email || 'admin@toolbit.ai';
+      const adminName = adminEmail.split('@')[0] || 'Admin';
+      const nextId = existingReplies.length + 1;
+
+      const newReplyItem: ContactReplyItem = {
+        id: nextId,
+        message: replyText.trim(),
+        admin_email: adminEmail,
+        admin_name: adminName.charAt(0).toUpperCase() + adminName.slice(1),
+        sent_at: nowISO,
+        status: selectedStatus,
+      };
+
+      updatedReplies = [...existingReplies, newReplyItem];
+    }
 
     const { error: updateError } = await supabaseAdmin
       .from('contacts')
       .update({
-        reply_message: replyText.trim() || null,
+        reply_message: updatedReplies,
         status: selectedStatus,
-        replied_at: repliedAt,
+        replied_at: replyText.trim() ? nowISO : contact.replied_at,
       })
       .eq('contact_id', contact_id);
 

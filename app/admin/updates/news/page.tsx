@@ -2,16 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
 import NewsTable, { NewsItem } from '@/components/news/NewsTable';
 import NewsForm from '@/components/news/NewsForm';
-
 import CountUp from '@/components/common/CountUp';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAdmin } from '@/contexts/AdminContext';
 import { 
-  RefreshCw, Newspaper, CheckCircle2, EyeOff
+  RefreshCw, Newspaper, CheckCircle2, EyeOff, ShieldAlert
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
@@ -19,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
+  getNewsAction,
+  getNewsStatsAction,
   createNewsAction,
   updateNewsAction,
   updateNewsStatusAction,
@@ -26,6 +26,14 @@ import {
 } from './actions';
 
 export default function NewsPage() {
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Permission flags for AI News module
+  const canView = isSuperAdmin || hasPermission('news', 'view');
+  const canInsert = isSuperAdmin || hasPermission('news', 'insert');
+  const canUpdate = isSuperAdmin || hasPermission('news', 'update');
+  const canDelete = isSuperAdmin || hasPermission('news', 'delete');
+
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -46,6 +54,12 @@ export default function NewsPage() {
   const [totalCount, setTotalCount] = useState<number>(0);
   const pageSize = 12;
 
+  // Retrieve current user JWT token for server actions
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   // Synchronize form state with browser history (Back/Forward support)
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
@@ -63,6 +77,14 @@ export default function NewsPage() {
   }, []);
 
   const openForm = (item: NewsItem | null = null) => {
+    if (!item && !canInsert) {
+      alert('Access denied: You do not have permission to create news articles.');
+      return;
+    }
+    if (item && !canUpdate) {
+      alert('Access denied: You do not have permission to edit news articles.');
+      return;
+    }
     setEditingNews(item);
     setShowForm(true);
     window.history.pushState({ formOpen: true, editingData: item }, '');
@@ -99,86 +121,81 @@ export default function NewsPage() {
 
   const confirmDelete = useConfirm();
 
-  // Fetch stats & sparklines
+  // Fetch stats & sparklines using Server Action (service_role key + RBAC)
   const fetchStats = useCallback(async () => {
+    if (!canView) return;
     try {
-      const statusList = ['published', 'hide'];
-      const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
-        'news',
-        statusList,
-        'created_at',
-        7
-      );
+      const token = await getAuthToken();
+      if (!token) return;
 
-      setStats({
-        all: counts.total || 0,
-        published: counts.published || 0,
-        hide: counts.hide || 0
-      });
-
-      if (trends) {
-        setSparklines({
-          all: trends.all || [0, 0, 0, 0, 0, 0, 0],
-          published: trends.published || [0, 0, 0, 0, 0, 0, 0],
-          hide: trends.hide || [0, 0, 0, 0, 0, 0, 0]
-        });
+      const res = await getNewsStatsAction(token);
+      if (res.success && res.stats) {
+        setStats(res.stats);
+        if (res.sparklines) {
+          setSparklines(res.sparklines);
+        }
+      } else if (res.error) {
+        console.warn('Error fetching news stats:', res.error);
       }
     } catch (err) {
       console.warn('Error fetching news stats:', err);
     }
-  }, []);
+  }, [canView]);
 
-  // Fetch news from Supabase
+  // Fetch news using Server Action (service_role key + RBAC)
   const fetchNews = useCallback(async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     else setIsLoading(true);
 
     try {
-      let query = supabase.from('news').select('*', { count: 'exact' });
+      const token = await getAuthToken();
+      if (!token) return;
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+      const res = await getNewsAction({
+        page: currentPage,
+        pageSize,
+        search: searchQuery,
+        status: statusFilter,
+        sortBy,
+        sortOrder,
+      }, token);
+
+      if (res.success && res.data) {
+        setNewsList(res.data);
+        if (res.count !== undefined) {
+          setTotalCount(res.count);
+        }
+        setRefreshKey(prev => prev + 1);
+      } else if (res.error) {
+        console.error('Error fetching news:', res.error);
       }
-
-      if (searchQuery.trim()) {
-        query = query.or(`title.ilike.%${searchQuery}%,summary.ilike.%${searchQuery}%,source_name.ilike.%${searchQuery}%`);
-      }
-
-      const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize - 1;
-      const sortCol = (sortBy === 'created_at' || sortBy === 'news_id') ? 'news_id' : sortBy;
-      query = query.order(sortCol, { ascending: sortOrder === 'asc' }).range(from, to);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      setNewsList(data || []);
-      if (count !== null && count !== undefined) {
-        setTotalCount(count);
-      }
-      setRefreshKey(prev => prev + 1);
     } catch (err) {
       console.error('Error fetching news:', err);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [currentPage, pageSize, searchQuery, statusFilter, sortBy, sortOrder]);
+  }, [canView, currentPage, pageSize, searchQuery, statusFilter, sortBy, sortOrder]);
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    if (isAuthorized && canView) {
+      fetchStats();
+    }
+  }, [isAuthorized, canView, fetchStats]);
 
   useEffect(() => {
-    fetchNews();
-  }, [fetchNews]);
-
-  const getAuthToken = async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || '';
-  };
+    if (isAuthorized && canView) {
+      fetchNews();
+    }
+  }, [isAuthorized, canView, fetchNews]);
 
   const handleDeleteNews = async (id: number, title?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete news articles.');
+      return;
+    }
+
     const confirmed = await confirmDelete({
       title: 'Delete News Article',
       itemName: title,
@@ -196,8 +213,7 @@ export default function NewsPage() {
         throw new Error(res.error || 'Failed to delete news item.');
       }
 
-      await fetchStats();
-      await fetchNews(true);
+      await Promise.all([fetchStats(), fetchNews(true)]);
     } catch (err: any) {
       alert(err?.message || 'Error deleting news item');
     } finally {
@@ -210,6 +226,11 @@ export default function NewsPage() {
   };
 
   const handleStatusChange = async (newsId: number, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update news articles.');
+      return;
+    }
+
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -233,6 +254,10 @@ export default function NewsPage() {
 
   const handleSaveNews = async (data: Partial<NewsItem>) => {
     if (!editingNews) return;
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to edit news articles.');
+    }
+
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -243,18 +268,21 @@ export default function NewsPage() {
         throw new Error(res.error || 'Failed to save news article.');
       }
 
-      await fetchStats();
-      await fetchNews(true);
+      await Promise.all([fetchStats(), fetchNews(true)]);
       closeForm();
     } catch (err: any) {
       console.error('Error saving news article:', err.message || err);
-      throw new Error(err.message || 'An error occurred while saving news article.');
+      throw err;
     } finally {
       setIsActionLoading(false);
     }
   };
 
   const handleCreateNews = async (data: Partial<NewsItem>) => {
+    if (!canInsert) {
+      throw new Error('Access denied: You do not have permission to create news articles.');
+    }
+
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -265,19 +293,40 @@ export default function NewsPage() {
         throw new Error(res.error || 'Failed to create news article.');
       }
 
-      await fetchStats();
-      await fetchNews(true);
+      await Promise.all([fetchStats(), fetchNews(true)]);
       closeForm();
     } catch (err: any) {
       console.error('Error creating news article:', err.message || err);
-      throw new Error(err.message || 'An error occurred while creating news article.');
+      throw err;
     } finally {
       setIsActionLoading(false);
     }
   };
 
-  const { hasPermission } = useAdmin();
-  const canInsert = hasPermission('news', 'insert');
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // If authenticated but lacks view permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Denied</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view the AI News database.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -434,11 +483,13 @@ export default function NewsPage() {
                   setSortOrder(newOrder);
                   setCurrentPage(1);
                 }}
-                className="h-11 min-w-[180px]"
+                className="h-11 min-w-[200px]"
                 suppressHydrationWarning
               >
-                <option value="news_id-desc">Newest First</option>
-                <option value="news_id-asc">Oldest First</option>
+                <option value="news_id-desc">Newest First (ID)</option>
+                <option value="news_id-asc">Oldest First (ID)</option>
+                <option value="published_date-desc">Published Date (Newest)</option>
+                <option value="published_date-asc">Published Date (Oldest)</option>
                 <option value="title-asc">Title (A-Z)</option>
                 <option value="title-desc">Title (Z-A)</option>
               </Select>
@@ -464,6 +515,8 @@ export default function NewsPage() {
               onDelete={handleDeleteNews}
               onStatusChange={handleStatusChange}
               isLoading={isLoading}
+              canEdit={canUpdate}
+              canDelete={canDelete}
             />
           </div>
         </>
@@ -485,5 +538,3 @@ export default function NewsPage() {
     </div>
   );
 }
-
-

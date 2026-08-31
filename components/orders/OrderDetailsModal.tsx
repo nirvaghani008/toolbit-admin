@@ -27,6 +27,7 @@ import {
   Check,
   Pencil,
 } from 'lucide-react';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export interface Submitter {
   id: string;
@@ -138,6 +139,8 @@ export default function OrderDetailsModal({
 }: OrderDetailsModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const { hasPermission, isSuperAdmin } = useAdmin();
+  const canUpdate = isSuperAdmin || hasPermission('orders', 'update') || hasPermission('submissions', 'update');
 
   const handleCopy = async (text: string, field: string) => {
     try {
@@ -567,7 +570,7 @@ export default function OrderDetailsModal({
             </div>
 
             <div className="flex items-center gap-2">
-              {onRefund && order.status === 'completed' && Boolean(order.dodo_payment_id) && isPaidOrder && (
+              {canUpdate && onRefund && order.status === 'completed' && Boolean(order.dodo_payment_id) && isPaidOrder && (
                 <Button
                   type="button"
                   variant="outline"
@@ -582,7 +585,7 @@ export default function OrderDetailsModal({
                   Issue Refund
                 </Button>
               )}
-              {onEdit && (
+              {canUpdate && onEdit && (
                 <Button
                   type="button"
                   variant="outline"

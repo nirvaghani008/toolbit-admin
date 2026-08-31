@@ -4,10 +4,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
-import { Users, RefreshCw, Bookmark, ThumbsUp, Search } from 'lucide-react';
-import Sparkline from '@/components/common/Sparkline';
+import { Users, RefreshCw, ShieldAlert, X, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import UsersTable, { UserRow } from '@/components/users/UsersTable';
@@ -16,20 +14,17 @@ import {
   UserFullDetails,
   fetchAdminUserDetails,
 } from '@/lib/services/user-details-service';
+import { useAdmin } from '@/contexts/AdminContext';
 
 export default function UsersPage() {
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+  const canView = isSuperAdmin || hasPermission('users', 'view');
+
   const [users, setUsers] = useState<UserRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  const [stats, setStats] = useState({ all: 0, active: 0, withSaved: 0 });
-  const [sparklines] = useState<Record<string, number[]>>({
-    all: [0, 0, 0, 0, 0, 0, 0],
-    active: [0, 0, 0, 0, 0, 0, 0],
-    withSaved: [0, 0, 0, 0, 0, 0, 0],
-  });
 
   const [searchInputValue, setSearchInputValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,7 +40,6 @@ export default function UsersPage() {
 
   const loadUserDetails = async (userId: string, force = false) => {
     if (!force && detailsCache[userId]) {
-      // Return cached telemetry data immediately without querying
       return;
     }
 
@@ -81,7 +75,7 @@ export default function UsersPage() {
     try {
       const from = (currentPage - 1) * pageSize;
 
-      // Fetch users with consolidated total_count from get_admin_users
+      // Fetch users with consolidated total_count from get_admin_users RPC
       const { data: rows, error: rowsError } = await supabase.rpc('get_admin_users', {
         p_search: searchQuery || null,
         p_sort: sortOrder,
@@ -113,18 +107,13 @@ export default function UsersPage() {
         if (rows[0].total_count !== undefined) {
           total = Number(rows[0].total_count) || 0;
         } else {
-          // Graceful fallback if migration has not been applied to live DB yet
-          const { data: fallbackCount } = await supabase.rpc('get_admin_users_count', {
-            p_search: searchQuery || null,
-          });
-          total = Number(fallbackCount) || rows.length;
+          total = rows.length;
         }
       }
 
       setUsers(merged);
       setTotalCount(total);
-      setStats(prev => ({ ...prev, all: total }));
-      if (manual) setRefreshKey(prev => prev + 1);
+      if (manual) setRefreshKey((prev) => prev + 1);
     } catch (err: any) {
       console.warn('Error fetching users:', err?.message || err);
     } finally {
@@ -133,58 +122,60 @@ export default function UsersPage() {
     }
   };
 
-  useEffect(() => { fetchUsers(); }, [currentPage, sortOrder, searchQuery]);
-  useEffect(() => { if (searchInputValue === '') setSearchQuery(''); }, [searchInputValue]);
+  // Fetch users whenever pagination, sorting, search query, or permissions change
+  useEffect(() => {
+    if (canView) {
+      fetchUsers();
+    }
+  }, [currentPage, sortOrder, searchQuery, canView]);
+
+  // Issue 4 Fix: Automatically synchronize search state & reset page to 1 when search input is cleared
+  useEffect(() => {
+    if (searchInputValue === '' && searchQuery !== '') {
+      setCurrentPage(1);
+      setSearchQuery('');
+    }
+  }, [searchInputValue, searchQuery]);
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (currentPage !== 1) setCurrentPage(1);
-    setSearchQuery(searchInputValue);
+    setSearchQuery(searchInputValue.trim());
   };
 
-  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const handleClearSearch = () => {
+    setSearchInputValue('');
+    if (searchQuery !== '') {
+      setCurrentPage(1);
+      setSearchQuery('');
+    }
+  };
 
-  const statCards = [
-    {
-      id: 'all',
-      label: 'Total Users',
-      value: stats.all,
-      iconStyle: 'text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700',
-      badgeStyle: 'bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700',
-      sparklineColor: 'text-[#364954] dark:text-zinc-400',
-      icon: <Users size={17} />,
-      points: sparklines.all,
-      badge: 'All Users',
-    },
-    {
-      id: 'withSaved',
-      label: 'With Saved Tools',
-      value: stats.active,
-      iconStyle: 'text-[#3c5748] bg-[#f0f4f1] border-[#d2ded6] dark:text-emerald-400 dark:bg-emerald-500/10 dark:border-emerald-500/20',
-      badgeStyle: 'bg-[#f0f4f1] text-[#3c5748] border-[#d2ded6] dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
-      sparklineColor: 'text-[#3c5748] dark:text-emerald-400',
-      icon: <Bookmark size={17} />,
-      points: sparklines.active,
-      badge: 'Active Bookmarks',
-    },
-    {
-      id: 'withUpvoted',
-      label: 'With Upvotes',
-      value: stats.withSaved,
-      iconStyle: 'text-[#8a652a] bg-[#fbf6ec] border-[#ecdfc7] dark:text-amber-400 dark:bg-amber-500/10 dark:border-amber-500/20',
-      badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-      sparklineColor: 'text-[#8a652a] dark:text-amber-400',
-      icon: <ThumbsUp size={17} />,
-      points: sparklines.withSaved,
-      badge: 'Contributors',
-    },
-  ];
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
 
-  const filteredUsers = users.filter(user => {
-    if (activeFilter === 'withSaved') return user.saved_count > 0;
-    if (activeFilter === 'withUpvoted') return user.upvoted_count > 0;
-    return true;
-  });
+  // Issue 5 Fix: Strict frontend RBAC access restriction state for unauthorized subadmins
+  if (isAuthorized && !canView) {
+    return (
+      <div className="animate-fade-in max-w-7xl mx-auto p-6 md:p-8">
+        <div className="flex flex-col items-center justify-center min-h-[420px] text-center p-8 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 shadow-sm">
+            <ShieldAlert size={28} />
+          </div>
+          <h2 className="text-lg font-bold text-[var(--text-primary)] mb-1">Access Restricted</h2>
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] max-w-md">
+            You do not have permission to view or manage registered user accounts. Please contact your Super Administrator for access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -212,68 +203,52 @@ export default function UsersPage() {
 
       {/* Stats Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        {statCards.map((stat) => {
-          const isSelected = activeFilter === stat.id;
-          return (
-            <button
-              key={stat.id}
-              onClick={() => setActiveFilter(prev => prev === stat.id ? 'all' : stat.id)}
-              className={`group relative overflow-hidden transition-all duration-200 hover:shadow-xs flex flex-col text-left rounded-2xl border shadow-2xs cursor-pointer ${
-                isSelected
-                  ? 'bg-[#ebe8e2] dark:bg-zinc-800/90 border-zinc-700 dark:border-zinc-500 shadow-xs'
-                  : 'bg-white hover:bg-[#faf9f7] dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] hover:border-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/30'
-              }`}
-              suppressHydrationWarning
-            >
-              <Sparkline
-                color={stat.sparklineColor}
-                points={stat.points}
-                id={stat.id}
-                isSelected={isSelected}
-              />
-
-              <div className="p-4 sm:p-5 pb-2 sm:pb-3 flex-1 relative z-10 w-full flex justify-between items-start pointer-events-none">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs transition-transform group-hover:scale-105 ${stat.iconStyle}`}>
-                  {stat.icon}
-                </div>
-                {isSelected ? (
-                  <span className="px-2 py-0.5 text-[9px] font-bold rounded-full border bg-zinc-800 text-zinc-100 border-zinc-700 dark:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-600 shadow-2xs">
-                    Selected
-                  </span>
-                ) : (
-                  <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border shadow-2xs transition-colors ${stat.badgeStyle}`}>
-                    {stat.badge}
-                  </span>
-                )}
-              </div>
-
-              <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1 relative z-10 w-full space-y-1 pointer-events-none">
-                <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)] truncate">
-                  {stat.label}
-                </div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
-                  <CountUp key={refreshKey} end={stat.value} />
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        <div className="group relative overflow-hidden flex flex-col text-left rounded-2xl border shadow-2xs bg-white dark:bg-[var(--bg-surface)] border-[#e5e3df] dark:border-[var(--border-color)] p-5">
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center border shadow-2xs text-[#364954] bg-[#f1f4f6] border-[#d4dde3] dark:text-zinc-400 dark:bg-zinc-800/80 dark:border-zinc-700">
+              <Users size={18} />
+            </div>
+            <span className="px-2.5 py-0.5 text-[9px] font-bold rounded-full border bg-[#f1f4f6] text-[#364954] border-[#d4dde3] dark:bg-zinc-800/80 dark:text-zinc-400 dark:border-zinc-700">
+              Platform Accounts
+            </span>
+          </div>
+          <div className="space-y-1">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-[var(--text-muted)]">
+              Total Registered Users
+            </div>
+            <div className="text-3xl font-extrabold text-zinc-900 dark:text-[var(--text-primary)] tracking-tight leading-none">
+              <CountUp key={refreshKey} end={totalCount} />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Search & Sort */}
       <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="flex-1 flex gap-2">
-          <Input
-            type="text"
-            placeholder="Search by email or name..."
-            value={searchInputValue}
-            onChange={(e) => setSearchInputValue(e.target.value)}
-            className="flex-1 h-11 px-4 text-sm"
-            suppressHydrationWarning
-          />
+        <div className="flex-1 flex gap-2 relative">
+          <div className="relative flex-1">
+            <Input
+              type="text"
+              placeholder="Search by email or name..."
+              value={searchInputValue}
+              onChange={(e) => setSearchInputValue(e.target.value)}
+              className="w-full h-11 px-4 pr-10 text-sm"
+              suppressHydrationWarning
+            />
+            {searchInputValue && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-0.5 cursor-pointer"
+                title="Clear search"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
           <Button
             type="submit"
-            className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95"
+            className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95 shrink-0"
             suppressHydrationWarning
           >
             Search
@@ -282,7 +257,10 @@ export default function UsersPage() {
         <div className="flex gap-2 min-w-[190px]">
           <Select
             value={`created_at-${sortOrder}`}
-            onChange={(val) => setSortOrder(val.split('-')[1] as any)}
+            onChange={(val) => {
+              setSortOrder(val.split('-')[1] as any);
+              setCurrentPage(1);
+            }}
             className="h-11 min-w-[190px]"
             suppressHydrationWarning
           >
@@ -293,15 +271,24 @@ export default function UsersPage() {
       </form>
 
       {/* Table */}
-      <UsersTable
-        users={filteredUsers}
-        totalCount={totalCount}
-        pageSize={pageSize}
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-        onSelectUser={handleSelectUser}
-        isLoading={loading}
-      />
+      <div className="relative">
+        {isRefreshing && (
+          <div className="absolute inset-0 z-10 bg-[var(--bg-surface)]/50 backdrop-blur-2xs flex items-center justify-center rounded-2xl animate-fade-in pointer-events-none">
+            <div className="p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm">
+              <Spinner size={20} />
+            </div>
+          </div>
+        )}
+        <UsersTable
+          users={users}
+          totalCount={totalCount}
+          pageSize={pageSize}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          onSelectUser={handleSelectUser}
+          isLoading={loading}
+        />
+      </div>
 
       {/* User Details Slide-over Drawer */}
       <UserDetailsDrawer
@@ -316,6 +303,3 @@ export default function UsersPage() {
     </div>
   );
 }
-
-
-

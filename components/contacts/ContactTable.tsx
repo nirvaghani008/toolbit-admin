@@ -15,19 +15,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAdmin } from '@/contexts/AdminContext';
+import {
+  Contact,
+  ContactReplyItem,
+  getReplyHistoryList,
+  getLatestReplyMessage,
+} from '@/lib/contacts';
 
-export interface Contact {
-  contact_id: number;
-  name: string;
-  email: string;
-  subject: string;
-  message: string;
-  status: string;
-  visibility: string;
-  reply_message?: string;
-  created_at: string;
-  replied_at?: string;
-}
+export type { Contact, ContactReplyItem };
+export { getReplyHistoryList, getLatestReplyMessage };
 
 interface ContactTableProps {
   contacts: Contact[];
@@ -89,9 +85,9 @@ export default function ContactTable({
   isLoading = false,
 }: ContactTableProps) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
-  const { hasPermission } = useAdmin();
-  const canUpdate = hasPermission('contacts', 'update');
-  const canDelete = hasPermission('contacts', 'delete');
+  const { hasPermission, isSuperAdmin } = useAdmin();
+  const canUpdate = isSuperAdmin || hasPermission('contacts', 'update');
+  const canDelete = isSuperAdmin || hasPermission('contacts', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">

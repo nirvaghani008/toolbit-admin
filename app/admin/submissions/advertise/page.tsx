@@ -8,7 +8,7 @@ import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
-import { Database, Clock, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { Database, Clock, CheckCircle2, XCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAdmin } from '@/contexts/AdminContext';
@@ -24,6 +24,14 @@ import {
 
 export default function AdvertiseSubmissionsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'advertise' module
+  const canView = isSuperAdmin || hasPermission('advertise', 'view');
+  const canInsert = isSuperAdmin || hasPermission('advertise', 'insert');
+  const canUpdate = isSuperAdmin || hasPermission('advertise', 'update');
+  const canDelete = isSuperAdmin || hasPermission('advertise', 'delete');
+
   const [data, setData] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [stats, setStats] = useState({
@@ -71,6 +79,14 @@ export default function AdvertiseSubmissionsPage() {
   }, []);
 
   const openForm = (item: any = null) => {
+    if (item && !canUpdate) {
+      alert('Access denied: You do not have permission to edit advertised placements.');
+      return;
+    }
+    if (!item && !canInsert) {
+      alert('Access denied: You do not have permission to create advertised placements.');
+      return;
+    }
     setEditingItem(item);
     setShowForm(true);
     window.history.pushState({ formOpen: true, editingData: item }, '');
@@ -87,6 +103,7 @@ export default function AdvertiseSubmissionsPage() {
   };
 
   const fetchStats = async () => {
+    if (!canView) return;
     try {
       const [
         { count: cAll },
@@ -128,6 +145,7 @@ export default function AdvertiseSubmissionsPage() {
   };
 
   const fetchAdvertiseTools = async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
 
@@ -178,86 +196,51 @@ export default function AdvertiseSubmissionsPage() {
         const { data: toolData } = await toolQuery;
 
         // Query targeted ai_tool_submissions rows
-        let subQuery = supabase
+        let submissionQuery = supabase
           .from('ai_tool_submissions')
-          .select('id, user_id, full_name, business_email, tool_site_url, tool_info, is_paid');
+          .select('tool_name, tool_site_url, tool_url, pricing_type, favicon_url, user_id, id');
 
         if (toolUrls.length > 0) {
-          subQuery = subQuery.in('tool_site_url', toolUrls);
-        } else if (userIds.length > 0) {
-          subQuery = subQuery.in('user_id', userIds);
+          submissionQuery = submissionQuery.in('tool_site_url', toolUrls);
         }
 
-        const { data: subData } = await subQuery;
+        const { data: submissionData } = await submissionQuery;
 
-        const subMapByUrl = new Map();
-        subData?.forEach(s => {
-          if (s.tool_site_url) {
-            const clean = s.tool_site_url.toLowerCase().trim();
-            subMapByUrl.set(clean, s);
-            try {
-              const host = new URL(clean.startsWith('http') ? clean : `https://${clean}`).hostname.replace('www.', '');
-              subMapByUrl.set(host, s);
-            } catch {}
-          }
-        });
-
-        const toolMapById = new Map();
-        const toolMapByUrl = new Map();
-        toolData?.forEach(t => {
-          if (t.tool_id) toolMapById.set(Number(t.tool_id), t);
-          if (t.tool_site_url) {
-            const clean = t.tool_site_url.toLowerCase().trim();
-            toolMapByUrl.set(clean, t);
-            try {
-              const host = new URL(clean.startsWith('http') ? clean : `https://${clean}`).hostname.replace('www.', '');
-              toolMapByUrl.set(host, t);
-            } catch {}
-          }
-        });
-
-        const getToolNameFromObj = (obj: any) => {
-          if (!obj) return null;
-          const info = typeof obj.tool_info === 'string'
-            ? (() => { try { return JSON.parse(obj.tool_info); } catch { return {}; } })()
-            : (obj.tool_info || {});
-          return obj.tool_name || obj.name || info.toolName || info.name || info.tool_name || info.title || null;
-        };
-
-        const enriched = resultData.map(item => {
-          const cleanUrl = item.tool_site_url ? item.tool_site_url.toLowerCase().trim() : '';
-          let itemHost = '';
+        // Query user data via user_profiles
+        let userProfilesData: any[] = [];
+        if (userIds.length > 0) {
           try {
-            if (cleanUrl) itemHost = new URL(cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`).hostname.replace('www.', '');
-          } catch {}
+            const { data: profiles } = await supabase
+              .from('user_profiles')
+              .select('id, full_name, email, avatar_url')
+              .in('id', userIds);
+            userProfilesData = profiles || [];
+          } catch (profileErr) {
+            console.warn('Error fetching user profiles for advertise tools:', profileErr);
+          }
+        }
 
-          const tool = (item.tool_id && toolMapById.get(Number(item.tool_id))) ||
-                       (cleanUrl && toolMapByUrl.get(cleanUrl)) ||
-                       (itemHost && toolMapByUrl.get(itemHost));
+        const merged = resultData.map(item => {
+          const aiTool = toolData?.find(t =>
+            (item.tool_id && t.tool_id === item.tool_id) ||
+            (item.tool_site_url && t.tool_site_url === item.tool_site_url)
+          );
 
-          const sub = (cleanUrl && subMapByUrl.get(cleanUrl)) ||
-                      (itemHost && subMapByUrl.get(itemHost)) ||
-                      (item.user_id && subData?.find(s => s.user_id === item.user_id));
+          const submission = submissionData?.find(s =>
+            item.tool_site_url && s.tool_site_url === item.tool_site_url
+          );
 
-          const name = getToolNameFromObj(tool) || getToolNameFromObj(item) || getToolNameFromObj(sub) || null;
-          const submitterName = item.full_name || item.name || sub?.full_name || 'Admin';
-          const submitterEmail = item.business_email || item.email || sub?.business_email || '';
-          const isPaid = tool?.is_paid === true || sub?.is_paid === true || item.is_paid === true;
+          const userProfile = userProfilesData.find(u => u.id === item.user_id);
 
           return {
             ...item,
-            full_name: submitterName,
-            user_name: submitterName,
-            business_email: submitterEmail,
-            user_email: submitterEmail,
-            tool_name: name,
-            is_paid: isPaid,
-            tool_info: tool?.tool_info || item.tool_info || sub?.tool_info || null,
-            favicon_url: tool?.favicon_url || item.favicon_url || sub?.favicon_url || null
+            ai_tool: aiTool || null,
+            submission: submission || null,
+            user_profile: userProfile || null,
           };
         });
 
-        setData(enriched);
+        setData(merged);
       } else {
         setData([]);
       }
@@ -274,17 +257,20 @@ export default function AdvertiseSubmissionsPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView]);
 
   useEffect(() => {
-    fetchAdvertiseTools();
-  }, [currentPage, statusFilter, searchQuery, sortBy, sortOrder]);
+    if (canView) {
+      fetchAdvertiseTools();
+    }
+  }, [canView, currentPage, statusFilter, searchQuery, sortBy, sortOrder]);
 
   useEffect(() => {
     if (searchInputValue === '') {
       setSearchQuery('');
-      setCurrentPage(1);
     }
   }, [searchInputValue]);
 
@@ -294,60 +280,77 @@ export default function AdvertiseSubmissionsPage() {
     setSearchQuery(searchInputValue);
   };
 
-  const sanitizePayload = (data: any) => {
-    const payload = { ...data };
-    delete payload.id;
-    delete payload.full_name;
-    delete payload.user_name;
-    delete payload.business_email;
-    delete payload.user_email;
-    delete payload.tool_name;
-    delete payload.is_paid;
-    delete payload.tool_info;
-    delete payload.favicon_url;
-    delete payload.views_count;
-    delete payload.clicks_count;
-
-    const order = data.order;
-    delete payload.order;
-
-    return {
-      ...payload,
-      display_order: data.display_order ?? (order !== undefined && order !== null && order !== '' ? parseInt(order.toString()) : 0),
-    };
-  };
-
-  // Enforce a single "live" placement per tool: a tool may only have one
-  // advertisement that is active or inactive at a time (expired placements are
-  // historical and do not conflict). Returns the conflicting row, or null.
-  const findLivePlacementForTool = async (
-    toolId: number | null | undefined,
-    excludeId?: number | null
-  ) => {
-    if (toolId === null || toolId === undefined) return null;
-
-    let query = supabase
-      .from('advertisement_tools')
-      .select('id, status')
-      .eq('tool_id', toolId)
-      .in('status', ['active', 'inactive'])
-      .limit(1);
-
-    if (excludeId !== null && excludeId !== undefined) {
-      query = query.neq('id', excludeId);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data && data.length > 0 ? data[0] : null;
-  };
-
   const getAuthToken = async (): Promise<string> => {
     const { data: { session } } = await supabase.auth.getSession();
     return session?.access_token || '';
   };
 
+  const sanitizePayload = (raw: any) => {
+    const payload = { ...raw };
+    const dateFields = ['start_date', 'end_date'];
+    dateFields.forEach(field => {
+      if (payload[field] === '' || payload[field] === undefined) {
+        payload[field] = null;
+      }
+    });
+
+    const numericFields = ['impressions', 'clicks'];
+    numericFields.forEach(field => {
+      if (payload[field] !== null && payload[field] !== undefined && payload[field] !== '') {
+        const parsed = Number(payload[field]);
+        payload[field] = isNaN(parsed) ? 0 : parsed;
+      } else {
+        payload[field] = 0;
+      }
+    });
+
+    const nullableNumberFields = ['slot_id', 'tool_id'];
+    nullableNumberFields.forEach(field => {
+      if (payload[field] !== null && payload[field] !== undefined && payload[field] !== '') {
+        const parsed = Number(payload[field]);
+        payload[field] = isNaN(parsed) ? null : parsed;
+      } else {
+        payload[field] = null;
+      }
+    });
+
+    return payload;
+  };
+
+  const findLivePlacementForTool = async (
+    toolId: number | null | undefined,
+    excludeId?: number | string
+  ): Promise<{ status: string; id: number } | null> => {
+    if (!toolId) return null;
+    try {
+      let query = supabase
+        .from('advertisement_tools')
+        .select('id, status')
+        .eq('tool_id', toolId)
+        .in('status', ['active', 'inactive']);
+
+      if (excludeId !== undefined && excludeId !== null) {
+        query = query.neq('id', excludeId);
+      }
+
+      const { data, error } = await query.limit(1);
+      if (error) {
+        console.warn('findLivePlacementForTool check warning:', error.message);
+        return null;
+      }
+      if (data && data.length > 0) {
+        return { status: data[0].status, id: data[0].id };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleAddItem = async (formData: any) => {
+    if (!canInsert) {
+      throw new Error('Access denied: You do not have permission to create advertised placements.');
+    }
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -387,6 +390,9 @@ export default function AdvertiseSubmissionsPage() {
   };
 
   const handleUpdateItem = async (formData: any) => {
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to edit advertised placements.');
+    }
     setIsActionLoading(true);
     try {
       const targetId = editingItem?.id;
@@ -425,6 +431,10 @@ export default function AdvertiseSubmissionsPage() {
   };
 
   const handleStatusChange = async (id: number | string, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update advertisement status.');
+      return;
+    }
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -448,10 +458,14 @@ export default function AdvertiseSubmissionsPage() {
   };
 
   const handleDeleteItem = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete advertised placements.');
+      return;
+    }
     const confirmed = await confirmDelete({
-      title: 'Remove Advertise Tool',
+      title: 'Delete Advertise Placement',
       itemName: name,
-      message: 'Are you sure you want to remove this advertise tool placement? This action cannot be undone.'
+      message: 'Are you sure you want to permanently delete this advertisement placement? This action cannot be undone.'
     });
     if (!confirmed) return;
     setIsRefreshing(true);
@@ -478,8 +492,30 @@ export default function AdvertiseSubmissionsPage() {
     openForm(item);
   };
 
-  const { hasPermission } = useAdmin();
-  const canInsert = hasPermission('advertise', 'insert');
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking advertise permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage Advertised Placements.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">

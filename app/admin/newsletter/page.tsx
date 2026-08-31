@@ -2,29 +2,36 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
 import CountUp from '@/components/common/CountUp';
-import { Database, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { Database, CheckCircle2, XCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import SubscriberTable, { Subscriber } from '@/components/newsletter/SubscriberTable';
 import {
+  getNewsletterSubscribersAction,
+  getNewsletterStatsAction,
   updateNewsletterSubscriberStatusAction,
-  deleteNewsletterSubscriberAction
+  deleteNewsletterSubscriberAction,
 } from './actions';
 
 export default function NewsletterPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'newsletter' module
+  const canView = isSuperAdmin || hasPermission('newsletter', 'view');
+  const canUpdate = isSuperAdmin || hasPermission('newsletter', 'update');
+  const canDelete = isSuperAdmin || hasPermission('newsletter', 'delete');
+
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isActionLoading, setIsActionLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [stats, setStats] = useState({ all: 0, active: 0, unsubscribed: 0 });
@@ -41,62 +48,65 @@ export default function NewsletterPage() {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const pageSize = 20;
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const [{ count: cAll }, { count: cActive }, { count: cInactive }] = await Promise.all([
-        supabase.from('newsletter_subscribers').select('*', { count: 'exact', head: true }),
-        supabase
-          .from('newsletter_subscribers')
-          .select('*', { count: 'exact', head: true })
-          .in('status', ['active', 'subscribed']),
-        supabase
-          .from('newsletter_subscribers')
-          .select('*', { count: 'exact', head: true })
-          .in('status', ['inactive', 'unsubscribed']),
-      ]);
-      setStats({ all: cAll || 0, active: cActive || 0, unsubscribed: cInactive || 0 });
+  const getAuthToken = useCallback(async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  }, []);
 
-      const trends = await fetchSparklinesForStatuses(
-        'newsletter_subscribers',
-        [null, 'active', 'inactive'],
-        'created_at',
-        7
-      );
-      setSparklines({
-        all: trends['all'] || [0, 0, 0, 0, 0, 0, 0],
-        active: trends['active'] || [0, 0, 0, 0, 0, 0, 0],
-        unsubscribed: trends['inactive'] || [0, 0, 0, 0, 0, 0, 0],
-      });
-      setRefreshKey((prev) => prev + 1);
+  const fetchStats = useCallback(async () => {
+    if (!canView) return;
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+
+      const res = await getNewsletterStatsAction(token);
+      if (res.success && res.stats && res.sparklines) {
+        setStats(res.stats);
+        setSparklines(res.sparklines);
+        setRefreshKey((prev) => prev + 1);
+      } else if (res.error) {
+        console.warn('Warning fetching newsletter stats:', res.error);
+      }
     } catch (err: any) {
       console.warn('Error fetching newsletter stats:', err?.message || err);
     }
-  }, []);
+  }, [canView, getAuthToken]);
 
   const fetchSubscribers = useCallback(
     async (manual = false) => {
+      if (!canView) return;
       if (manual) setIsRefreshing(true);
       setLoading(true);
+
       try {
-        if (manual) fetchStats();
+        if (manual) await fetchStats();
 
-        let query = supabase.from('newsletter_subscribers').select('*', { count: 'exact' });
+        const token = await getAuthToken();
+        if (!token) {
+          setLoading(false);
+          setIsRefreshing(false);
+          return;
+        }
 
-        if (searchQuery) query = query.ilike('email', `%${searchQuery}%`);
-        if (statusFilter === 'active') query = query.in('status', ['active', 'subscribed']);
-        if (statusFilter === 'unsubscribed') query = query.in('status', ['inactive', 'unsubscribed']);
+        const [listRes] = await Promise.all([
+          getNewsletterSubscribersAction(
+            {
+              page: currentPage,
+              pageSize,
+              search: searchQuery,
+              statusFilter,
+              sortOrder,
+            },
+            token
+          ),
+        ]);
 
-        query = query
-          .order('created_at', { ascending: sortOrder === 'asc' })
-          .order('id', { ascending: sortOrder === 'asc' });
-
-        const from = (currentPage - 1) * pageSize;
-        query = query.range(from, from + pageSize - 1);
-
-        const { data, count, error } = await query;
-        if (error) throw error;
-        setSubscribers(data || []);
-        setTotalCount(count || 0);
+        if (listRes.success && listRes.data) {
+          setSubscribers(listRes.data);
+          setTotalCount(listRes.totalCount ?? 0);
+        } else if (listRes.error) {
+          throw new Error(listRes.error);
+        }
       } catch (err: any) {
         console.warn('Error fetching subscribers:', err?.message || err);
       } finally {
@@ -104,16 +114,14 @@ export default function NewsletterPage() {
         setIsRefreshing(false);
       }
     },
-    [currentPage, statusFilter, sortOrder, searchQuery, fetchStats]
+    [canView, currentPage, pageSize, searchQuery, statusFilter, sortOrder, getAuthToken, fetchStats]
   );
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  useEffect(() => {
-    fetchSubscribers();
-  }, [fetchSubscribers]);
+    if (canView) {
+      fetchSubscribers();
+    }
+  }, [canView, fetchSubscribers]);
 
   useEffect(() => {
     if (searchInputValue === '') setSearchQuery('');
@@ -125,12 +133,11 @@ export default function NewsletterPage() {
     setSearchQuery(searchInputValue);
   };
 
-  const getAuthToken = async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || '';
-  };
-
   const handleStatusChange = async (id: number | string, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update subscriber status.');
+      return;
+    }
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -143,9 +150,10 @@ export default function NewsletterPage() {
 
       // Optimistically reflect the change so the badge updates immediately.
       setSubscribers((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
+        prev.map((s) => (s.id === Number(id) || s.id === id ? { ...s, status: newStatus } : s))
       );
-      await fetchStats();
+      
+      // Refresh list and stats in parallel without duplicate triggers
       await fetchSubscribers(true);
     } catch (err: any) {
       console.error('Error updating subscriber status:', err);
@@ -156,6 +164,10 @@ export default function NewsletterPage() {
   };
 
   const handleDelete = async (id: number, email?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete subscribers.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete Subscriber',
       itemName: email,
@@ -163,6 +175,7 @@ export default function NewsletterPage() {
         'Are you sure you want to permanently remove this subscriber? This action cannot be undone.',
     });
     if (!confirmed) return;
+
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -173,8 +186,8 @@ export default function NewsletterPage() {
         throw new Error(res.error || 'Failed to delete subscriber.');
       }
 
-      await fetchStats();
-      await fetchSubscribers();
+      // Refresh list and stats in parallel without duplicate triggers
+      await fetchSubscribers(true);
     } catch (err: any) {
       console.error('Error deleting subscriber:', err);
       alert(err.message || 'Failed to delete subscriber.');
@@ -182,6 +195,31 @@ export default function NewsletterPage() {
       setIsRefreshing(false);
     }
   };
+
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking newsletter permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage Newsletter Subscribers.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   const statCards = [
     {
@@ -351,5 +389,3 @@ export default function NewsletterPage() {
     </div>
   );
 }
-
-

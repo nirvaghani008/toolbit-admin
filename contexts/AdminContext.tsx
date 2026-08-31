@@ -203,7 +203,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      if (['tool_submissions', 'advertise'].includes(module)) {
+      if (['tool_submissions', 'advertise', 'orders'].includes(module)) {
         const parentPerm = permissions['submissions'];
         if (parentPerm) {
           if (action === 'view') return !!parentPerm.can_view;

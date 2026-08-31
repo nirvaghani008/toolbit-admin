@@ -1,23 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
 import {
   RefreshCw, Folder, Clock, CheckCircle2, XCircle,
-  Search, Star
+  Star, ShieldAlert
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
-import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import ReviewTable, { Review, ToolLogo } from '@/components/reviews/ReviewTable';
 import {
+  getReviewsAction,
+  getReviewStatsAction,
   updateReviewAction,
   updateReviewStatusAction,
   deleteReviewAction
@@ -25,6 +27,13 @@ import {
 
 export default function ReviewsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'reviews' module
+  const canView = isSuperAdmin || hasPermission('reviews', 'view');
+  const canUpdate = isSuperAdmin || hasPermission('reviews', 'update');
+  const canDelete = isSuperAdmin || hasPermission('reviews', 'delete');
+
   const [reviews, setReviews] = useState<Review[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -83,117 +92,84 @@ export default function ReviewsPage() {
     pending: [0, 0, 0, 0, 0, 0, 0]
   });
 
-  const fetchStats = async () => {
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
+  const fetchStats = useCallback(async () => {
+    if (!canView) return;
     try {
-      const [
-        { count: cAll },
-        { count: cApproved },
-        { count: cShow },
-        { count: cRejected },
-        { count: cHide },
-        { count: cPending },
-        trends
-      ] = await Promise.all([
-        supabase.from('reviews').select('*', { count: 'exact', head: true }),
-        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
-        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'show'),
-        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'rejected'),
-        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'hide'),
-        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        fetchSparklinesForStatuses(
-          'reviews',
-          [null, 'show', 'approved', 'hide', 'rejected', 'pending'],
-          'review_date',
-          7
-        )
-      ]);
+      const token = await getAuthToken();
+      if (!token) return;
 
-      const all = cAll || 0;
-      const approved = (cApproved || 0) + (cShow || 0);
-      const rejected = (cRejected || 0) + (cHide || 0);
-      const pending = cPending || 0;
-
-      setStats({ all, approved, rejected, pending });
-
-      if (trends) {
-        const allTrend = trends['all'] || [];
-        const approvedTrend = (trends['show'] || []).map((v, i) => v + (trends['approved']?.[i] || 0));
-        const rejectedTrend = (trends['hide'] || []).map((v, i) => v + (trends['rejected']?.[i] || 0));
-        const pendingTrend = trends['pending'] || [];
-
-        setSparklines({
-          all: allTrend,
-          approved: approvedTrend,
-          rejected: rejectedTrend,
-          pending: pendingTrend
-        });
+      const res = await getReviewStatsAction(token);
+      if (res.success && res.stats) {
+        setStats(res.stats);
+        if (res.sparklines) {
+          setSparklines(res.sparklines);
+        }
+        setRefreshKey((prev) => prev + 1);
+      } else if (res.error) {
+        console.warn('Error fetching review stats:', res.error);
       }
     } catch (err: any) {
       console.warn('Error fetching review stats:', err?.message || err);
     }
-  };
+  }, [canView]);
 
-  const fetchReviews = async (manual = false) => {
+  const fetchReviews = useCallback(async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
 
     try {
-      if (manual) await fetchStats();
-
-      // Use a simple query first to ensure we get the data
-      let query = supabase
-        .from('reviews')
-        .select(`
-          *,
-          ai_tools:tool_id (
-            tool_id,
-            tool_site_url,
-            favicon_url,
-            tool_info
-          )
-        `, { count: 'exact' });
-
-      if (searchQuery) {
-        query = query.or(`reviewer_name.ilike.%${searchQuery}%,review_text.ilike.%${searchQuery}%`);
+      if (manual) fetchStats();
+      const token = await getAuthToken();
+      if (!token) {
+        setLoading(false);
+        setIsRefreshing(false);
+        return;
       }
 
-      if (statusFilter === 'approved') {
-        query = query.or('status.eq.show,status.eq.approved');
-      } else if (statusFilter === 'rejected') {
-        query = query.or('status.eq.hide,status.eq.rejected');
-      } else if (statusFilter === 'pending') {
-        query = query.eq('status', 'pending');
+      const res = await getReviewsAction(
+        {
+          page: currentPage,
+          pageSize,
+          statusFilter,
+          searchQuery,
+          sortBy,
+          sortOrder,
+        },
+        token
+      );
+
+      if (res.success && res.reviews) {
+        setReviews(res.reviews);
+        setTotalCount(res.totalCount || 0);
+        if (manual) setRefreshKey((prev) => prev + 1);
+      } else if (res.error) {
+        console.warn('Error fetching reviews:', res.error);
       }
-      // If statusFilter is 'all', we don't add any status filter at all
-
-      const sortCol = sortBy === 'review_date' ? 'review_date' : 'reviewer_name';
-      query = query.order(sortCol, { ascending: sortOrder === 'asc' }).order('review_id', { ascending: sortOrder === 'asc' });
-
-      const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize - 1;
-      query = query.range(from, to);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      setReviews(data || []);
-      setTotalCount(count || 0);
-      if (manual) setRefreshKey(prev => prev + 1);
     } catch (err: any) {
       console.warn('Error fetching reviews:', err?.message || err);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [canView, currentPage, pageSize, statusFilter, searchQuery, sortBy, sortOrder, fetchStats]);
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView, fetchStats]);
 
   useEffect(() => {
-    fetchReviews();
-  }, [currentPage, statusFilter, searchQuery, sortBy, sortOrder]);
+    if (canView) {
+      fetchReviews();
+    }
+  }, [canView, fetchReviews]);
 
   useEffect(() => {
     if (searchInputValue === '') {
@@ -207,12 +183,12 @@ export default function ReviewsPage() {
     setSearchQuery(searchInputValue);
   };
 
-  const getAuthToken = async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || '';
-  };
-
   const handleStatusToggle = async (review: Review, forceStatus?: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update review status.');
+      return;
+    }
+
     if (selectedReview) {
       setIsActionLoading(true);
     } else {
@@ -243,17 +219,21 @@ export default function ReviewsPage() {
       if (selectedReview) {
         closeReview();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating status:', err);
+      alert(err.message || 'Failed to update review status.');
     } finally {
       setIsActionLoading(false);
       setIsRefreshing(false);
     }
   };
 
-  // Direct status change from a table row (via the shared StatusChangeControl
-  // confirmation popup). Throws on error so the control can surface failures.
+  // Direct status change from a table row (via the shared StatusChangeControl confirmation popup)
   const handleStatusChange = async (id: number | string, newStatus: string) => {
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to update review status.');
+    }
+
     const token = await getAuthToken();
     if (!token) throw new Error('Authentication required.');
 
@@ -267,6 +247,11 @@ export default function ReviewsPage() {
   };
 
   const handleDelete = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete reviews.');
+      return;
+    }
+
     const confirmed = await confirmDelete({
       title: 'Delete Review',
       itemName: name,
@@ -292,6 +277,31 @@ export default function ReviewsPage() {
       setIsRefreshing(false);
     }
   };
+
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking reviews permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or moderate user reviews.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -434,7 +444,7 @@ export default function ReviewsPage() {
               />
               <Button
                 type="submit"
-                className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95"
+                className="h-11 px-6 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-sm font-bold rounded-xl shadow-xs active:scale-95 cursor-pointer"
                 suppressHydrationWarning
               >
                 Search
@@ -576,7 +586,7 @@ export default function ReviewsPage() {
                           : 'show'
                       }
                       onChange={(val) => setSelectedReview({ ...selectedReview, status: val })}
-                      disabled={isActionLoading}
+                      disabled={isActionLoading || !canUpdate}
                       className="h-11"
                     >
                       <option value="show">Approved</option>
@@ -590,7 +600,7 @@ export default function ReviewsPage() {
               <CardFooter className="pt-4 border-t border-[var(--border-color)] flex flex-col gap-3">
                 <Button
                   onClick={() => handleStatusToggle(selectedReview, selectedReview.status)}
-                  disabled={isActionLoading}
+                  disabled={isActionLoading || !canUpdate}
                   className="w-full h-11 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs active:scale-95 cursor-pointer"
                   suppressHydrationWarning
                 >
@@ -604,5 +614,6 @@ export default function ReviewsPage() {
     </div>
   );
 }
+
 
 

@@ -71,9 +71,9 @@ export default function ToolSubmissionTable({
   isLoading = false,
 }: ToolSubmissionTableProps) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
-  const { hasPermission } = useAdmin();
-  const canUpdate = hasPermission('tool_submissions', 'update');
-  const canDelete = hasPermission('tool_submissions', 'delete');
+  const { hasPermission, isSuperAdmin } = useAdmin();
+  const canUpdate = isSuperAdmin || hasPermission('submissions', 'update') || hasPermission('tool_submissions', 'update');
+  const canDelete = isSuperAdmin || hasPermission('submissions', 'delete') || hasPermission('tool_submissions', 'delete');
 
   const extractCategories = (t: any): string[] => {
     const info = t?.tool_info || {};

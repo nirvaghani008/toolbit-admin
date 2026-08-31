@@ -76,17 +76,93 @@ CREATE INDEX IF NOT EXISTS idx_tags_parent_tag_trgm ON public.tags USING gin (pa
 CREATE INDEX IF NOT EXISTS idx_tags_name_id 
 ON public.tags (name ASC, id ASC);
 
--- News: Fast status count and created_at sparkline lookups
-CREATE INDEX IF NOT EXISTS idx_news_created_at_status 
-ON public.news (created_at DESC, status);
+-- News: Fast status count, sorting, sparkline lookups, and text search
+CREATE INDEX IF NOT EXISTS idx_news_status_news_id 
+ON public.news (status, news_id DESC);
 
--- Socials: Fast status count and created_at sparkline lookups
+CREATE INDEX IF NOT EXISTS idx_news_status_published_date 
+ON public.news (status, published_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_news_created_at 
+ON public.news (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_news_title_trgm ON public.news USING gin (title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_news_source_name_trgm ON public.news USING gin (source_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_news_summary_trgm ON public.news USING gin (summary gin_trgm_ops);
+
+-- Blog Posts: Fast status count, updated_at sparkline lookups, and text search
+CREATE INDEX IF NOT EXISTS idx_blog_posts_status_updated_at 
+ON public.blog_posts (status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_blog_posts_updated_at 
+ON public.blog_posts (updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_blog_posts_created_at 
+ON public.blog_posts (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_blog_posts_title_trgm ON public.blog_posts USING gin (title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_blog_posts_slug_trgm ON public.blog_posts USING gin (slug gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_blog_posts_description_trgm ON public.blog_posts USING gin (description gin_trgm_ops);
+
+-- AI Models: Fast status count, id sorting, release date sparklines, and text search
+CREATE INDEX IF NOT EXISTS idx_models_status_id 
+ON public.models (status, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_models_id_desc 
+ON public.models (id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_models_name_id 
+ON public.models (name ASC, id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_models_provider_id 
+ON public.models (provider, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_models_release_date 
+ON public.models (release_date DESC) 
+WHERE release_date IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_models_name_trgm 
+ON public.models USING gin (name gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_models_provider_trgm 
+ON public.models USING gin (provider gin_trgm_ops);
+
+-- Socials: Fast status count, id sorting/pagination, platform filtering, featured lookups, sparklines, and text search
 CREATE INDEX IF NOT EXISTS idx_socials_created_at_status 
 ON public.socials (created_at DESC, status);
 
--- Contacts: Fast status count and created_at sparkline lookups
+CREATE INDEX IF NOT EXISTS idx_socials_status_id 
+ON public.socials (status, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_socials_platform_id 
+ON public.socials (platform, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_socials_featured_id 
+ON public.socials (id DESC) 
+WHERE is_featured = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_socials_source_url 
+ON public.socials (source_url);
+
+CREATE INDEX IF NOT EXISTS idx_socials_title_trgm ON public.socials USING gin (title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_socials_description_trgm ON public.socials USING gin (description gin_trgm_ops);
+
+-- Contacts: Fast status count, status filtering + chronological pagination, alphabetical sorting, sparklines, and text search
 CREATE INDEX IF NOT EXISTS idx_contacts_created_at_status 
 ON public.contacts (created_at DESC, status);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_status_created_at_id 
+ON public.contacts (status, created_at DESC, contact_id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_created_at_id 
+ON public.contacts (created_at DESC, contact_id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_name_id 
+ON public.contacts (name ASC, contact_id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_name_trgm ON public.contacts USING gin (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_contacts_email_trgm ON public.contacts USING gin (email gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_contacts_subject_trgm ON public.contacts USING gin (subject gin_trgm_ops);
 
 -- Advertisement Tools: Fast status count and updated_at sparkline lookups
 CREATE INDEX IF NOT EXISTS idx_advertisement_tools_updated_at_status 
@@ -95,6 +171,16 @@ ON public.advertisement_tools (updated_at DESC, status);
 -- Reviews: Fast status count and review_date sparkline lookups
 CREATE INDEX IF NOT EXISTS idx_reviews_review_date_status 
 ON public.reviews (review_date DESC, status);
+
+-- Newsletter Subscribers: Fast status count, status filtering + chronological pagination, sparklines, and email text search
+CREATE INDEX IF NOT EXISTS idx_newsletter_subscribers_created_at_id 
+ON public.newsletter_subscribers (created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_newsletter_subscribers_status_created_at_id 
+ON public.newsletter_subscribers (status, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_newsletter_subscribers_email_trgm 
+ON public.newsletter_subscribers USING gin (email gin_trgm_ops);
 
 -- ============================================================================
 -- 4. SCHEDULED LAUNCH PERFORMANCE INDEXES

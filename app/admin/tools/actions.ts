@@ -7,12 +7,32 @@ import {
   findToolBySiteUrl,
   findSubmissionBySiteUrl,
 } from '@/lib/url-normalize';
+import { getWorkerFetchHeaders } from '@/lib/worker-headers';
 
 export interface ActionResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
 }
+
+export interface ExtractToolFieldsParams {
+  url: string;
+  targetFields: ('favicon' | 'screenshot' | 'tool_info' | 'pricing')[];
+  existingFaviconUrl?: string | null;
+  existingScreenshotUrl?: string | null;
+  forceReextract?: boolean;
+}
+
+export interface ExtractToolFieldsResult {
+  tool_site_url: string;
+  favicon_url?: string | null;
+  tool_screenshot_url?: string | null;
+  tool_info?: Record<string, any>;
+  pricing?: Record<string, any>;
+  pricingModel?: string;
+  truncation_stats?: Record<string, any>;
+}
+
 
 export interface CheckSiteUrlResult {
   exists: boolean;
@@ -239,6 +259,16 @@ export async function createToolAction(
       throw error;
     }
 
+    // Trigger non-blocking background media enrichment if media assets are missing
+    if (data?.tool_id && payload.tool_site_url) {
+      const missingMedia: ('favicon' | 'screenshot')[] = [];
+      if (!payload.favicon_url) missingMedia.push('favicon');
+      if (!payload.tool_screenshot_url) missingMedia.push('screenshot');
+      if (missingMedia.length > 0) {
+        enrichToolMediaInBackground(data.tool_id, payload.tool_site_url, missingMedia);
+      }
+    }
+
     return { success: true, data };
   } catch (err: any) {
     console.error('createToolAction error:', err);
@@ -310,6 +340,16 @@ export async function updateToolAction(
       throw error;
     }
 
+    // Trigger non-blocking background media enrichment if media assets are missing
+    if (id && payload.tool_site_url) {
+      const missingMedia: ('favicon' | 'screenshot')[] = [];
+      if (!payload.favicon_url) missingMedia.push('favicon');
+      if (!payload.tool_screenshot_url) missingMedia.push('screenshot');
+      if (missingMedia.length > 0) {
+        enrichToolMediaInBackground(id, payload.tool_site_url, missingMedia);
+      }
+    }
+
     return { success: true, data };
   } catch (err: any) {
     console.error('updateToolAction error:', err);
@@ -376,3 +416,210 @@ export async function deleteToolAction(
     return { success: false, error: err?.message || 'Failed to delete tool.' };
   }
 }
+
+/**
+ * Asynchronously enriches missing favicon or screenshot in the background.
+ * Calls the `ai-tool-info` worker in pure extraction mode and updates
+ * the `ai_tools` row directly using supabaseAdmin.
+ */
+export async function enrichToolMediaInBackground(
+  toolId: number | string,
+  toolSiteUrl: string,
+  missingFields: ('favicon' | 'screenshot')[]
+): Promise<void> {
+  const targetFields = missingFields.filter((f) => f === 'favicon' || f === 'screenshot');
+  if (targetFields.length === 0) return;
+
+  const workerUrl = process.env.AI_TOOL_INFO_WORKER_URL;
+  const workerSecret = process.env.AI_TOOL_INFO_WORKER_SECRET;
+
+  if (!workerUrl || !workerSecret) {
+    console.warn('[enrichToolMediaInBackground] Missing AI_TOOL_INFO_WORKER configuration; skipping background media enrichment.');
+    return;
+  }
+
+  // Fire and forget in the background
+  (async () => {
+    try {
+      console.log(`[enrichToolMediaInBackground] Fetching missing media for tool #${toolId} (${toolSiteUrl}). Fields: ${targetFields.join(', ')}`);
+
+      const response = await fetch(workerUrl, {
+        method: 'POST',
+        headers: getWorkerFetchHeaders(workerSecret),
+        body: JSON.stringify({
+          url: toolSiteUrl,
+          is_screenshot: targetFields.includes('screenshot'),
+          target_fields: targetFields,
+        }),
+        signal: AbortSignal.timeout(2.5 * 60 * 1000), // 2.5 min max for background crawl
+      });
+
+      if (!response.ok) {
+        console.warn(`[enrichToolMediaInBackground] Worker returned status ${response.status} for tool #${toolId}`);
+        return;
+      }
+
+      const result = (await response.json()) as {
+        success?: boolean;
+        favicon_url?: string | null;
+        screenshot_url?: string | null;
+      };
+
+      if (!result.success) {
+        console.warn(`[enrichToolMediaInBackground] Worker extraction unsuccessful for tool #${toolId}`);
+        return;
+      }
+
+      const updatePayload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      const resolvedFavicon = result.favicon_url || (result as any).data?.favicon_url || (result as any).data?.faviconUrl;
+      const resolvedScreenshot = result.screenshot_url || (result as any).data?.tool_screenshot_url || (result as any).data?.screenshotUrl;
+
+      if (targetFields.includes('favicon') && resolvedFavicon) {
+        updatePayload.favicon_url = resolvedFavicon;
+      }
+
+      if (targetFields.includes('screenshot') && resolvedScreenshot) {
+        updatePayload.tool_screenshot_url = resolvedScreenshot;
+      }
+
+
+      if (Object.keys(updatePayload).length <= 1) {
+        console.log(`[enrichToolMediaInBackground] No new media URLs extracted for tool #${toolId}`);
+        return;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('ai_tools')
+        .update(updatePayload)
+        .eq('tool_id', toolId);
+
+      if (updateError) {
+        console.error(`[enrichToolMediaInBackground] Failed to update tool #${toolId} with media URLs:`, updateError.message);
+      } else {
+        console.log(`[enrichToolMediaInBackground] Successfully updated tool #${toolId} with media:`, {
+          favicon: updatePayload.favicon_url ? 'updated' : 'unchanged',
+          screenshot: updatePayload.tool_screenshot_url ? 'updated' : 'unchanged',
+        });
+      }
+    } catch (err) {
+      console.error(`[enrichToolMediaInBackground] Background media enrichment error for tool #${toolId}:`, err);
+    }
+  })();
+}
+
+/**
+ * Server action to extract selected fields via the ai-tool-info worker in Pure Extraction Mode.
+ * Verifies admin permissions and returns data to the caller without performing DB mutations.
+ */
+export async function extractToolFieldsAction(
+  params: ExtractToolFieldsParams,
+  token: string
+): Promise<ActionResponse<ExtractToolFieldsResult>> {
+  try {
+    let auth = await verifyAdminPermission(token, 'tools', 'view');
+    if (!auth.authorized) {
+      auth = await verifyAdminPermission(token, 'submissions', 'view');
+    }
+    if (!auth.authorized) {
+      return { success: false, error: auth.error };
+    }
+
+    const { url, targetFields, existingFaviconUrl, existingScreenshotUrl, forceReextract } = params;
+
+    if (!url || !url.trim()) {
+      return { success: false, error: 'Target URL is required.' };
+    }
+
+    const valResult = validateToolSiteUrlFormat(url.trim());
+    if (!valResult.isValid) {
+      return { success: false, error: valResult.error || 'Invalid Target URL format.' };
+    }
+    const cleanUrl = valResult.cleaned || formatCanonicalSiteUrl(url.trim());
+
+    if (!targetFields || !Array.isArray(targetFields) || targetFields.length === 0) {
+      return { success: false, error: 'At least one target field must be selected.' };
+    }
+
+    const validOptions = ['favicon', 'screenshot', 'tool_info', 'pricing'];
+    const invalid = targetFields.filter(f => !validOptions.includes(f));
+    if (invalid.length > 0) {
+      return { success: false, error: `Invalid target fields: ${invalid.join(', ')}` };
+    }
+
+    const hasFavicon = Boolean(existingFaviconUrl && existingFaviconUrl.trim());
+    const hasScreenshot = Boolean(existingScreenshotUrl && existingScreenshotUrl.trim());
+
+    // If only requesting media that already exists and re-extract is not forced, return immediately
+    const onlyMediaRequested = targetFields.every(f => f === 'favicon' || f === 'screenshot');
+    if (!forceReextract && onlyMediaRequested && (!targetFields.includes('favicon') || hasFavicon) && (!targetFields.includes('screenshot') || hasScreenshot)) {
+      return {
+        success: true,
+        data: {
+          tool_site_url: cleanUrl,
+          favicon_url: existingFaviconUrl || null,
+          tool_screenshot_url: existingScreenshotUrl || null,
+        },
+      };
+    }
+
+    const workerUrl = process.env.AI_TOOL_INFO_WORKER_URL;
+    const workerSecret = process.env.AI_TOOL_INFO_WORKER_SECRET;
+
+    if (!workerUrl || !workerSecret) {
+      return { success: false, error: 'AI crawl worker is not configured on the server.' };
+    }
+
+    const response = await fetch(workerUrl, {
+      method: 'POST',
+      headers: getWorkerFetchHeaders(workerSecret),
+      body: JSON.stringify({
+        url: cleanUrl,
+        target_fields: targetFields,
+        is_screenshot: targetFields.includes('screenshot'),
+      }),
+      signal: AbortSignal.timeout(3.5 * 60 * 1000), // 3.5 minutes timeout
+    });
+
+    if (!response.ok) {
+      try {
+        const errorJson = (await response.json()) as Record<string, any>;
+        if (errorJson && errorJson.error) {
+          return { success: false, error: errorJson.error };
+        }
+      } catch {}
+      const errorText = await response.text();
+      return { success: false, error: `AI worker failed (HTTP ${response.status}): ${errorText || 'Unknown error'}` };
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      return { success: false, error: result.error || 'AI extraction failed.' };
+    }
+
+    const resolvedFaviconUrl = result.favicon_url || result.data?.favicon_url || result.data?.faviconUrl || (hasFavicon ? existingFaviconUrl : null);
+    const resolvedScreenshotUrl = result.screenshot_url || result.data?.tool_screenshot_url || result.data?.screenshotUrl || (hasScreenshot ? existingScreenshotUrl : null);
+
+    return {
+      success: true,
+      data: {
+        tool_site_url: cleanUrl,
+        favicon_url: resolvedFaviconUrl,
+        tool_screenshot_url: resolvedScreenshotUrl,
+        tool_info: result.data || {},
+        pricing: result.data?.pricing,
+        pricingModel: result.data?.pricingModel,
+        truncation_stats: result.truncation_stats,
+      },
+    };
+  } catch (err: any) {
+    console.error('extractToolFieldsAction error:', err);
+    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      return { success: false, error: 'The AI worker timed out while crawling the website. Please check the URL and try again.' };
+    }
+    return { success: false, error: err?.message || 'Failed to extract tool fields.' };
+  }
+}
+

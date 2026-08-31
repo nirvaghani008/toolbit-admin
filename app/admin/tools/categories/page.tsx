@@ -8,7 +8,8 @@ import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
-import { Folder, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { buildSearchOrClause } from '@/lib/postgrest-search';
+import { Folder, Eye, EyeOff, RefreshCw, ShieldAlert } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAdmin } from '@/contexts/AdminContext';
@@ -24,6 +25,14 @@ import {
 
 export default function CategoriesPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'categories' module
+  const canView = isSuperAdmin || hasPermission('categories', 'view');
+  const canInsert = isSuperAdmin || hasPermission('categories', 'insert');
+  const canUpdate = isSuperAdmin || hasPermission('categories', 'update');
+  const canDelete = isSuperAdmin || hasPermission('categories', 'delete');
+
   const [categories, setCategories] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [stats, setStats] = useState({
@@ -67,6 +76,14 @@ export default function CategoriesPage() {
   }, []);
 
   const openForm = (category: any = null) => {
+    if (category && !canUpdate) {
+      alert('Access denied: You do not have permission to edit categories.');
+      return;
+    }
+    if (!category && !canInsert) {
+      alert('Access denied: You do not have permission to create categories.');
+      return;
+    }
     setEditingCategory(category);
     setShowForm(true);
     window.history.pushState({ formOpen: true, editingData: category }, '');
@@ -83,6 +100,7 @@ export default function CategoriesPage() {
   };
 
   const fetchStats = async (forceRefresh = false) => {
+    if (!canView) return;
     try {
       const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
         'categories',
@@ -109,6 +127,7 @@ export default function CategoriesPage() {
   };
 
   const fetchCategories = async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
 
@@ -119,11 +138,9 @@ export default function CategoriesPage() {
         .select('id, name, slug, parent, tool_count, views, status, updated_at, meta_title, meta_description, meta_keywords, description', { count: 'exact' });
 
       // Apply Search across name, slug, parent
-      if (searchQuery) {
-        const sanitized = searchQuery.replace(/[,()]/g, ' ').trim();
-        if (sanitized) {
-          query = query.or(`name.ilike.%${sanitized}%,slug.ilike.%${sanitized}%,parent.ilike.%${sanitized}%`);
-        }
+      const searchOrClause = buildSearchOrClause(['name', 'slug', 'parent'], searchQuery);
+      if (searchOrClause) {
+        query = query.or(searchOrClause);
       }
 
       // Apply Status Filter
@@ -156,12 +173,16 @@ export default function CategoriesPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView]);
 
   useEffect(() => {
-    fetchCategories();
-  }, [currentPage, statusFilter, sortBy, sortOrder, searchQuery]);
+    if (canView) {
+      fetchCategories();
+    }
+  }, [canView, currentPage, statusFilter, sortBy, sortOrder, searchQuery]);
 
   useEffect(() => {
     if (searchInputValue === '') {
@@ -184,6 +205,9 @@ export default function CategoriesPage() {
   };
 
   const handleAddCategory = async (formData: any) => {
+    if (!canInsert) {
+      throw new Error('Access denied: You do not have permission to create categories.');
+    }
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -205,6 +229,9 @@ export default function CategoriesPage() {
   };
 
   const handleUpdateCategory = async (formData: any) => {
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to edit categories.');
+    }
     setIsActionLoading(true);
     try {
       const targetId = editingCategory?.id ?? editingCategory?.category_id;
@@ -229,6 +256,10 @@ export default function CategoriesPage() {
   };
 
   const handleStatusChange = async (categoryId: number | string, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update category status.');
+      return;
+    }
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -251,6 +282,10 @@ export default function CategoriesPage() {
   };
 
   const handleDeleteCategory = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete categories.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete Category',
       itemName: name,
@@ -280,8 +315,30 @@ export default function CategoriesPage() {
     openForm(category);
   };
 
-  const { hasPermission } = useAdmin();
-  const canInsert = hasPermission('categories', 'insert');
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking categories permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage Tool Categories.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">

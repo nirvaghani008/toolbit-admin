@@ -105,9 +105,9 @@ export default function SubscriberTable({
   isLoading = false,
 }: SubscriberTableProps) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
-  const { hasPermission } = useAdmin();
-  const canUpdate = hasPermission('newsletter', 'update');
-  const canDelete = hasPermission('newsletter', 'delete');
+  const { hasPermission, isSuperAdmin } = useAdmin();
+  const canUpdate = isSuperAdmin || hasPermission('newsletter', 'update');
+  const canDelete = isSuperAdmin || hasPermission('newsletter', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">

@@ -3,10 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
-import { Database, CheckCircle2, Clock, RefreshCw, RotateCcw, Search } from 'lucide-react';
+import { Database, CheckCircle2, Clock, RefreshCw, RotateCcw, Search, ShieldAlert } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -23,6 +24,13 @@ import {
 
 export default function OrdersPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'orders' module
+  const canView = isSuperAdmin || hasPermission('orders', 'view');
+  const canUpdate = isSuperAdmin || hasPermission('orders', 'update');
+  const canDelete = isSuperAdmin || hasPermission('orders', 'delete');
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -63,25 +71,27 @@ export default function OrdersPage() {
   };
 
   const fetchStats = async () => {
+    if (!canView) return;
     try {
       const token = await getAuthToken();
       if (!token) return;
       const res = await getOrderStatsAction(token);
       if (res.success && res.stats) {
         setStats(res.stats);
-        setRefreshKey(prev => prev + 1);
+        setRefreshKey((prev) => prev + 1);
       }
-    } catch (err: any) {
-      console.warn('Error fetching order stats:', err?.message || err);
+    } catch (err) {
+      console.warn('Error fetching order stats:', err);
     }
   };
 
   const fetchOrders = async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
+
     try {
       if (manual) fetchStats();
-
       const token = await getAuthToken();
       if (!token) return;
 
@@ -89,8 +99,8 @@ export default function OrdersPage() {
         {
           page: currentPage,
           pageSize,
-          search: searchQuery,
           status: statusFilter,
+          search: searchQuery,
           sortBy,
           sortOrder,
         },
@@ -99,21 +109,36 @@ export default function OrdersPage() {
 
       if (res.success && res.data) {
         setOrders(res.data);
-        setTotalCount(res.count ?? 0);
-      } else if (res.error) {
-        console.warn('Error fetching orders:', res.error);
+        setTotalCount(res.count || 0);
+        if (manual) setRefreshKey((prev) => prev + 1);
+      } else {
+        throw new Error(res.error || 'Failed to fetch orders');
       }
-    } catch (err: any) {
-      console.warn('Error fetching orders:', err?.message || err);
+    } catch (err) {
+      console.warn('Error fetching orders:', err);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
   };
 
-  useEffect(() => { fetchStats(); }, []);
-  useEffect(() => { fetchOrders(); }, [currentPage, statusFilter, sortBy, sortOrder, searchQuery]);
-  useEffect(() => { if (searchInputValue === '') setSearchQuery(''); }, [searchInputValue]);
+  useEffect(() => {
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView]);
+
+  useEffect(() => {
+    if (canView) {
+      fetchOrders();
+    }
+  }, [canView, currentPage, statusFilter, searchQuery, sortBy, sortOrder]);
+
+  useEffect(() => {
+    if (searchInputValue === '') {
+      setSearchQuery('');
+    }
+  }, [searchInputValue]);
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -122,6 +147,10 @@ export default function OrdersPage() {
   };
 
   const handleDelete = async (id: string, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete orders.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete Order',
       itemName: name,
@@ -142,6 +171,31 @@ export default function OrdersPage() {
       setIsRefreshing(false);
     }
   };
+
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking orders permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage Payment Orders & Invoices.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   const statCards = [
     {

@@ -110,8 +110,8 @@ export async function verifyAdminPermission(
       isPermitted = perms['tools'] && Boolean(perms['tools'][permKey]);
     }
 
-    // submissions -> tool_submissions, advertise
-    if (!isPermitted && ['tool_submissions', 'advertise'].includes(module)) {
+    // submissions -> tool_submissions, advertise, orders
+    if (!isPermitted && ['tool_submissions', 'advertise', 'orders'].includes(module)) {
       isPermitted = perms['submissions'] && Boolean(perms['submissions'][permKey]);
     }
 

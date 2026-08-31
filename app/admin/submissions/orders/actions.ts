@@ -1,6 +1,7 @@
 'use server';
 
 import { supabaseAdmin, verifyAdminPermission } from '@/lib/supabase-admin';
+import { sanitizeSearchTerm } from '@/lib/postgrest-search';
 import { Order, Submitter } from '@/components/orders/OrderDetailsModal';
 
 export interface ActionResponse<T = any> {
@@ -102,7 +103,7 @@ export async function getOrdersAction(
 
     let query = supabaseAdmin.from('orders').select('*', { count: 'exact' });
 
-    const trimmedSearch = search.trim().replace(/,/g, '');
+    const trimmedSearch = sanitizeSearchTerm(search);
     if (trimmedSearch) {
       // Find matching user_ids by searching user names and emails from auth.users via get_admin_users
       let matchedUserIds: string[] = [];
@@ -150,7 +151,9 @@ export async function getOrdersAction(
       if (lower.includes('free')) orClauses.push('plan_id.ilike.%free_%');
       if (lower.includes('paid')) orClauses.push('plan_id.ilike.%paid_%');
 
-      query = query.or(orClauses.join(','));
+      if (orClauses.length > 0) {
+        query = query.or(orClauses.join(','));
+      }
     }
 
     if (status !== 'all') {

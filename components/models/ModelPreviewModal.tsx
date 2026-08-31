@@ -216,16 +216,43 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
     ? new Date(model.release_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : null;
 
+  // Safe JSON parsing helper for stringified columns
+  const safeParseObj = (val: any) => {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch { return {}; }
+    }
+    return {};
+  };
+
+  const safeParseArr = (val: any) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch { return []; }
+    }
+    return [];
+  };
+
+  const parsedModelInfo = safeParseObj(model.model_info);
+  const parsedArchitecture = safeParseObj(model.architecture);
+  const parsedBenchmarks = safeParseArr(model.benchmarks);
+  const parsedTopScores = safeParseObj(model.top_scores);
+
   // --- Overview text: prefer model_info.overview, then Review/review, else null ---
   const overviewText: string | null =
-    (model.model_info as any)?.overview ||
+    parsedModelInfo?.overview ||
     model.Review ||
     model.review ||
     null;
 
   // --- Architecture: input/output modalities from DB ---
-  const inputModalities: string[] = (model.architecture as any)?.input_modalities ?? ['text'];
-  const outputModalities: string[] = (model.architecture as any)?.output_modalities ?? ['text'];
+  const inputModalities: string[] = parsedArchitecture?.input_modalities ?? ['text'];
+  const outputModalities: string[] = parsedArchitecture?.output_modalities ?? ['text'];
 
   const modalityIcon = (m: string) => {
     const lower = m.toLowerCase();
@@ -238,7 +265,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
   };
 
   // --- Pricing from benchmarks[0].pricing ---
-  const pricing = (model.benchmarks as any)?.[0]?.pricing ?? null;
+  const pricing = parsedBenchmarks?.[0]?.pricing ?? null;
   const inputPrice: number | null = pricing?.price_1m_input_tokens ?? null;
   const outputPrice: number | null = pricing?.price_1m_output_tokens ?? null;
   const cachedPrice: number | null = pricing?.price_1m_cache_hit_tokens ?? null;
@@ -250,7 +277,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
   };
 
   // --- Evaluations from benchmarks[0].evaluations ---
-  const evals = (model.benchmarks as any)?.[0]?.evaluations ?? {};
+  const evals = parsedBenchmarks?.[0]?.evaluations ?? {};
 
   const intelligenceIndex: number | null = evals.artificial_analysis_intelligence_index ?? null;
   const codingIndex: number | null = evals.artificial_analysis_coding_index ?? null;
@@ -276,7 +303,7 @@ export default function ModelPreviewModal({ model, onClose }: ModelPreviewModalP
     });
 
   // --- Key capabilities from top_scores ---
-  const topScores: Record<string, number> = (model.top_scores as any) ?? {};
+  const topScores: Record<string, number> = parsedTopScores ?? {};
   const CAPABILITY_LABELS: Record<string, string> = {
     coding: 'Coding',
     frontend_development: 'Frontend Dev',

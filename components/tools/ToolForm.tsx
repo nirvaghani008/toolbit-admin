@@ -7,11 +7,33 @@ import { createCategoryAction } from '@/app/admin/tools/categories/actions';
 import { createTagAction } from '@/app/admin/tools/tags/actions';
 import KeywordTagInput from '../categories/KeywordTagInput';
 import RichTextEditor from '../common/RichTextEditor';
-import { Plus, Upload, AlertCircle, Globe, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
+import {
+  Plus,
+  Upload,
+  AlertCircle,
+  Globe,
+  CheckCircle2,
+  AlertTriangle,
+  ExternalLink,
+  Sparkles,
+  Camera,
+  Image as ImageIcon,
+  DollarSign,
+  Layers,
+  ChevronDown,
+  Check,
+  X,
+  RefreshCw,
+  Wand2,
+} from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { uploadImageFile } from '@/lib/image-upload';
 import { scrollToError, slugify } from '@/lib/form-utils';
-import { checkToolSiteUrlAvailabilityAction } from '@/app/admin/tools/actions';
+import {
+  checkToolSiteUrlAvailabilityAction,
+  extractToolFieldsAction,
+} from '@/app/admin/tools/actions';
+
 import {
   validateToolSiteUrlFormat,
   formatCanonicalSiteUrl,
@@ -216,12 +238,32 @@ export default function ToolForm({
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const [isRichTextUploading, setIsRichTextUploading] = useState(false);
-  const localBusy = isSubmitting || uploadingScreenshot || uploadingFavicon || isRichTextUploading;
+
+  // AI Worker Extraction States
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractingFields, setExtractingFields] = useState<string[]>([]);
+  const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [extractionSuccess, setExtractionSuccess] = useState<string | null>(null);
+  const [isExtractionModalOpen, setIsExtractionModalOpen] = useState(false);
+  const [selectedExtractTargets, setSelectedExtractTargets] = useState<{
+    favicon: boolean;
+    screenshot: boolean;
+    tool_info: boolean;
+    pricing: boolean;
+  }>({
+    favicon: true,
+    screenshot: true,
+    tool_info: true,
+    pricing: true,
+  });
+
+  const localBusy = isSubmitting || uploadingScreenshot || uploadingFavicon || isRichTextUploading || isExtracting;
   const isBusy = localBusy || isLoading;
 
   useEffect(() => {
     onBusyChange?.(isBusy);
   }, [isBusy, onBusyChange]);
+
 
   const handleScreenshotUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -714,6 +756,243 @@ export default function ToolForm({
     verifySiteUrl(val, !initialData);
   };
 
+  /**
+   * Selectively extracts fields from the target website using the AI worker.
+   */
+  const handleExtractFields = async (
+    fieldsToExtract: ('favicon' | 'screenshot' | 'tool_info' | 'pricing')[],
+    force = true
+  ) => {
+    const targetUrl = (formData.tool_site_url || '').trim();
+    if (!targetUrl) {
+      setErrors(prev => ({ ...prev, tool_site_url: 'Please enter a valid website URL first.' }));
+      return;
+    }
+
+    const val = validateToolSiteUrlFormat(targetUrl);
+    if (!val.isValid) {
+      setErrors(prev => ({ ...prev, tool_site_url: val.error || 'Invalid website URL format.' }));
+      return;
+    }
+
+    setIsExtracting(true);
+    setExtractingFields(fieldsToExtract);
+    setExtractionError(null);
+    setExtractionSuccess(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+
+      const res = await extractToolFieldsAction(
+        {
+          url: targetUrl,
+          targetFields: fieldsToExtract,
+          existingFaviconUrl: formData.favicon_url,
+          existingScreenshotUrl: formData.tool_screenshot_url,
+          forceReextract: force,
+        },
+        token
+      );
+
+      if (!res.success || !res.data) {
+        throw new Error(res.error || 'Failed to extract website details from AI worker.');
+      }
+
+      const { data } = res;
+
+      // 1. Favicon
+      if (fieldsToExtract.includes('favicon') && data.favicon_url) {
+        setFormData(prev => ({ ...prev, favicon_url: data.favicon_url }));
+        setErrors(prev => {
+          const copy = { ...prev };
+          delete copy.favicon_url;
+          return copy;
+        });
+      }
+
+      // 2. Screenshot
+      if (fieldsToExtract.includes('screenshot') && data.tool_screenshot_url) {
+        setFormData(prev => ({ ...prev, tool_screenshot_url: data.tool_screenshot_url }));
+        setErrors(prev => {
+          const copy = { ...prev };
+          delete copy.tool_screenshot_url;
+          return copy;
+        });
+      }
+
+      // 3. Tool Details / Info
+      if (fieldsToExtract.includes('tool_info') && data.tool_info) {
+        const infoData = data.tool_info;
+
+        setFormData(prev => {
+          const next = { ...prev };
+          if (infoData.toolName && (!prev.toolName || prev.toolName.trim() === '')) {
+            next.toolName = infoData.toolName;
+            if (!prev.tool_url || prev.tool_url.trim() === '') {
+              next.tool_url = slugify(infoData.toolName);
+            }
+          }
+          if (infoData.tagline) next.tagline = infoData.tagline;
+
+          // Map overview / descriptions
+          if (infoData.overview) {
+            next.overview = infoData.overview;
+          } else if (infoData.fullDescription || infoData.shortDescription) {
+            const parts = [];
+            if (infoData.fullDescription) parts.push(infoData.fullDescription);
+            if (infoData.shortDescription && !infoData.fullDescription) parts.push(infoData.shortDescription);
+            if (Array.isArray(infoData.keyFeatures) && infoData.keyFeatures.length > 0) {
+              parts.push(`### Key Features\n${infoData.keyFeatures.map((f: any) => `- ${typeof f === 'string' ? f : f.name || f.description || ''}`).join('\n')}`);
+            }
+            if (parts.length > 0) next.overview = parts.join('\n\n');
+          }
+
+          if (infoData.shortDescription) next.shortDescription = infoData.shortDescription;
+          if (infoData.fullDescription) next.fullDescription = infoData.fullDescription;
+          if (infoData.isAIWebsite !== undefined) next.isAIWebsite = infoData.isAIWebsite;
+          if (infoData.isAIToolOrRelatedSite !== undefined) next.isAIToolOrRelatedSite = infoData.isAIToolOrRelatedSite;
+
+          // Important links
+          if (infoData.importantLinks) {
+            if (infoData.importantLinks.homepage || infoData.importantLinks.website) next.homepage = infoData.importantLinks.homepage || infoData.importantLinks.website;
+            if (infoData.importantLinks.pricing) next.pricing_url = infoData.importantLinks.pricing;
+            if (infoData.importantLinks.blog) next.blog = infoData.importantLinks.blog;
+            if (infoData.importantLinks.docs) next.docs = infoData.importantLinks.docs;
+            if (infoData.importantLinks.login) next.login = infoData.importantLinks.login;
+            if (infoData.importantLinks.contact) next.contact = infoData.importantLinks.contact;
+            if (infoData.importantLinks.support) next.support = infoData.importantLinks.support;
+            if (infoData.importantLinks.ios) next.ios = infoData.importantLinks.ios;
+            if (infoData.importantLinks.android) next.android = infoData.importantLinks.android;
+          }
+
+          return next;
+        });
+
+        // Categories
+        if (Array.isArray(infoData.categories) && infoData.categories.length > 0) {
+          setSelectedCategories(Array.from(new Set([...infoData.categories.map((c: any) => String(c).trim()).filter(Boolean)])));
+        }
+
+        // Tags
+        const rawTags = infoData.tags || infoData.hashtags;
+        if (Array.isArray(rawTags) && rawTags.length > 0) {
+          setSelectedTags(Array.from(new Set([...rawTags.map((t: any) => String(t).replace(/^#/, '').trim()).filter(Boolean)])));
+        }
+
+        // Pros & Cons
+        if (infoData.prosAndCons) {
+          if (Array.isArray(infoData.prosAndCons.pros)) {
+            setPros(infoData.prosAndCons.pros.map(String).filter(Boolean));
+            if (infoData.prosAndCons.pros.length > 0) setShowPros(true);
+          }
+          if (Array.isArray(infoData.prosAndCons.cons)) {
+            setCons(infoData.prosAndCons.cons.map(String).filter(Boolean));
+            if (infoData.prosAndCons.cons.length > 0) setShowCons(true);
+          }
+        }
+
+        // Key Features
+        if (Array.isArray(infoData.keyFeatures) && infoData.keyFeatures.length > 0) {
+          setFeatures(infoData.keyFeatures.map((f: any, idx: number) => ({
+            id: (Date.now() + idx).toString(),
+            name: typeof f === 'string' ? f : (f.name || ''),
+            description: typeof f === 'string' ? '' : (f.description || '')
+          })));
+          setShowFeatures(true);
+        }
+
+        // FAQs
+        if (Array.isArray(infoData.faq) && infoData.faq.length > 0) {
+          setFaqs(infoData.faq.map((item: any, idx: number) => ({
+            id: (Date.now() + idx).toString(),
+            question: item.question || item.q || '',
+            answer: item.answer || item.a || ''
+          })));
+          setShowFaqs(true);
+        }
+
+        // Target Audience
+        if (Array.isArray(infoData.targetAudience) && infoData.targetAudience.length > 0) {
+          setTargetAudience(infoData.targetAudience.map(String).filter(Boolean));
+        }
+
+        // Integrations
+        if (Array.isArray(infoData.integrations) && infoData.integrations.length > 0) {
+          setIntegrations(infoData.integrations.map(String).filter(Boolean));
+          setShowIntegrations(true);
+        }
+
+        // Social links
+        if (infoData.importantLinks?.socialMedia) {
+          const newSocial = Object.entries(infoData.importantLinks.socialMedia)
+            .filter(([, u]) => Boolean(u))
+            .map(([platform, u]) => ({ id: platform, platform, url: u as string }));
+          if (newSocial.length > 0) {
+            setSocialLinks(newSocial);
+            setShowSocials(true);
+          }
+        }
+
+        // Clear field errors
+        setErrors(prev => {
+          const copy = { ...prev };
+          ['toolName', 'tagline', 'tool_url', 'overview', 'categories', 'tags'].forEach(k => delete copy[k]);
+          return copy;
+        });
+      }
+
+      // 4. Pricing
+      if (fieldsToExtract.includes('pricing')) {
+        const p = data.pricing || data.tool_info?.pricing || {};
+        const model = data.pricingModel || data.tool_info?.pricingModel || p.pricingModel || p.model;
+
+        setFormData(prev => ({
+          ...prev,
+          pricingModel: model || prev.pricingModel || 'Free',
+          currency: p.currency || prev.currency || '$',
+          hasPricing: p.hasPricing !== undefined ? p.hasPricing : (Array.isArray(p.plans) && p.plans.length > 0 ? true : prev.hasPricing),
+          hasFreePlan: p.hasFreePlan ?? prev.hasFreePlan,
+          hasFreeTrial: p.hasFreeTrial ?? prev.hasFreeTrial,
+          sp_currency: p.startingPrice?.currency || prev.sp_currency || '$',
+          sp_planName: p.startingPrice?.planName || prev.sp_planName || '',
+          sp_priceText: p.startingPrice?.priceText || prev.sp_priceText || '',
+          sp_priceAmount: p.startingPrice?.priceAmount ? String(p.startingPrice.priceAmount) : prev.sp_priceAmount || '',
+          sp_billingCycle: p.startingPrice?.billingCycle || prev.sp_billingCycle || 'month',
+        }));
+
+        if (Array.isArray(p.billingCycles) && p.billingCycles.length > 0) {
+          setSelectedBillingCycles(p.billingCycles.map(String).filter(Boolean));
+        }
+
+        if (Array.isArray(p.plans) && p.plans.length > 0) {
+          setPlans(p.plans.map((pl: any, idx: number) => ({
+            id: (Date.now() + idx).toString(),
+            name: pl.name || '',
+            priceText: pl.priceText || pl.price || '',
+            priceAmount: pl.priceAmount ? String(pl.priceAmount) : '',
+            billingCycle: pl.billingCycle || 'month',
+            isPopular: Boolean(pl.isPopular),
+            isEnterprise: Boolean(pl.isEnterprise),
+            isCustomPricing: Boolean(pl.isCustomPricing),
+            limits: Array.isArray(pl.limits) ? pl.limits.map(String).filter(Boolean) : [],
+            features: Array.isArray(pl.features) ? pl.features.map(String).filter(Boolean) : [],
+          })));
+          setShowPlans(true);
+        }
+      }
+
+      setExtractionSuccess(`Successfully extracted ${fieldsToExtract.join(', ')} from ${targetUrl}`);
+      setIsExtractionModalOpen(false);
+    } catch (err: any) {
+      console.error('AI field extraction error:', err);
+      setExtractionError(err?.message || 'Failed to extract selected fields. Please verify the URL.');
+    } finally {
+      setIsExtracting(false);
+      setExtractingFields([]);
+    }
+  };
+
   const validate = () => {
     const isValidUrlFormat = (val: string) => {
       if (!val || typeof val !== 'string' || !val.trim()) return true;
@@ -962,7 +1241,7 @@ export default function ToolForm({
           const { data: existing } = await supabase
             .from('categories')
             .select('id')
-            .or(`name.ilike.${catName},slug.eq.${slug}`)
+            .eq('slug', slug)
             .limit(1);
 
           if (!existing || existing.length === 0) {
@@ -986,7 +1265,7 @@ export default function ToolForm({
           const { data: existingTag } = await supabase
             .from('tags')
             .select('id')
-            .or(`name.ilike.${rawTag},slug.eq.${slug}`)
+            .eq('slug', slug)
             .limit(1);
 
           if (!existingTag || existingTag.length === 0) {
@@ -1107,6 +1386,215 @@ export default function ToolForm({
         }
       >
         <div className="space-y-6">
+          {/* AI Worker Extraction Notification & Feedback */}
+          {isExtracting && (
+            <div className="p-3.5 rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 text-sky-900 dark:text-sky-200 text-xs flex items-center justify-between gap-3 animate-pulse">
+              <div className="flex items-center gap-2.5">
+                <Spinner size={16} className="text-sky-600 dark:text-sky-400 shrink-0" />
+                <div>
+                  <span className="font-semibold">AI Worker Extracting: </span>
+                  <span className="font-mono text-[11px] bg-sky-100 dark:bg-sky-900 px-1.5 py-0.5 rounded">
+                    {extractingFields.join(', ')}
+                  </span>
+                  <span className="ml-2 text-zinc-500 dark:text-zinc-400">Crawling target site and optimizing assets...</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {extractionSuccess && !isExtracting && (
+            <div className="p-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{extractionSuccess}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExtractionSuccess(null)}
+                className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {extractionError && !isExtracting && (
+            <div className="p-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} className="text-rose-600 dark:text-rose-400 shrink-0" />
+                <span>{extractionError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExtractionError(null)}
+                className="text-rose-700 dark:text-rose-400 hover:text-rose-900 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* AI Worker Extraction Toolbar */}
+          <div className="p-3.5 rounded-xl border border-dashed border-sky-300 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                <Sparkles size={16} />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                  AI Worker Extraction
+                  <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal text-sky-600 dark:text-sky-400 border-sky-300 dark:border-sky-800">
+                    Cloudflare Worker
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Selectively extract metadata, screenshots, favicons, and pricing directly from URL
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button
+                type="button"
+                onClick={() => setIsExtractionModalOpen(!isExtractionModalOpen)}
+                disabled={isBusy}
+                size="sm"
+                variant="outline"
+                className="text-xs font-semibold gap-1.5 bg-white dark:bg-zinc-900 shadow-2xs hover:bg-sky-50 dark:hover:bg-sky-900/20 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800 cursor-pointer"
+              >
+                <Sparkles size={14} className={isExtracting ? 'animate-spin' : ''} />
+                <span>{isExtracting ? `Extracting...` : 'Select Fields to Extract'}</span>
+                <ChevronDown size={13} className={`transition-transform duration-200 ${isExtractionModalOpen ? 'rotate-180' : ''}`} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Selective Extraction Config Box */}
+          {isExtractionModalOpen && (
+            <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-md space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-2.5">
+                <div className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                  Choose target fields to extract:
+                </div>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExtractTargets({ favicon: true, screenshot: true, tool_info: true, pricing: true })}
+                    className="text-sky-600 dark:text-sky-400 hover:underline font-medium cursor-pointer"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-zinc-300 dark:text-zinc-700">•</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExtractTargets({ favicon: false, screenshot: false, tool_info: false, pricing: false })}
+                    className="text-zinc-500 hover:underline font-medium cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <label className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 cursor-pointer transition-all ${selectedExtractTargets.favicon ? 'border-sky-500/50 bg-sky-50/40 dark:bg-sky-950/20' : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedExtractTargets.favicon}
+                    onChange={(e) => setSelectedExtractTargets(prev => ({ ...prev, favicon: e.target.checked }))}
+                    className="mt-0.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      <ImageIcon size={13} className="text-sky-500" /> Favicon
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                      Fetches brand favicon, uploads to R2 CDN, and updates Favicon URL.
+                    </p>
+                  </div>
+                </label>
+
+                <label className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 cursor-pointer transition-all ${selectedExtractTargets.screenshot ? 'border-sky-500/50 bg-sky-50/40 dark:bg-sky-950/20' : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedExtractTargets.screenshot}
+                    onChange={(e) => setSelectedExtractTargets(prev => ({ ...prev, screenshot: e.target.checked }))}
+                    className="mt-0.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      <Camera size={13} className="text-sky-500" /> Screenshot
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                      Captures high-res desktop WebP, uploads to R2 CDN, updates Screenshot URL.
+                    </p>
+                  </div>
+                </label>
+
+                <label className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 cursor-pointer transition-all ${selectedExtractTargets.tool_info ? 'border-sky-500/50 bg-sky-50/40 dark:bg-sky-950/20' : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedExtractTargets.tool_info}
+                    onChange={(e) => setSelectedExtractTargets(prev => ({ ...prev, tool_info: e.target.checked }))}
+                    className="mt-0.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      <Layers size={13} className="text-sky-500" /> Tool Details
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                      Name, tagline, overview description, features, pros/cons, tags & categories.
+                    </p>
+                  </div>
+                </label>
+
+                <label className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 cursor-pointer transition-all ${selectedExtractTargets.pricing ? 'border-sky-500/50 bg-sky-50/40 dark:bg-sky-950/20' : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedExtractTargets.pricing}
+                    onChange={(e) => setSelectedExtractTargets(prev => ({ ...prev, pricing: e.target.checked }))}
+                    className="mt-0.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      <DollarSign size={13} className="text-sky-500" /> Pricing & Plans
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                      Pricing model, starting price, free plan, trial status, and tiered plan features.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsExtractionModalOpen(false)}
+                  className="text-xs cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isBusy || (!selectedExtractTargets.favicon && !selectedExtractTargets.screenshot && !selectedExtractTargets.tool_info && !selectedExtractTargets.pricing)}
+                  onClick={() => {
+                    const targets: ('favicon' | 'screenshot' | 'tool_info' | 'pricing')[] = [];
+                    if (selectedExtractTargets.favicon) targets.push('favicon');
+                    if (selectedExtractTargets.screenshot) targets.push('screenshot');
+                    if (selectedExtractTargets.tool_info) targets.push('tool_info');
+                    if (selectedExtractTargets.pricing) targets.push('pricing');
+                    handleExtractFields(targets, true);
+                  }}
+                  className="text-xs font-semibold gap-1.5 bg-sky-600 hover:bg-sky-700 text-white cursor-pointer"
+                >
+                  {isExtracting ? <Spinner size={14} /> : <Sparkles size={14} />}
+                  <span>Extract Selected Fields</span>
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
@@ -1392,22 +1880,37 @@ export default function ToolForm({
                   value={formData.tool_screenshot_url || ''}
                   onChange={handleChange}
                   placeholder="https://..."
-                  style={{ paddingRight: '2.75rem' }}
+                  style={{ paddingRight: '4.8rem' }}
                   className={errors.tool_screenshot_url ? 'saas-input-error' : ''}
                 />
-                <button
-                  type="button"
-                  onClick={() => screenshotFileInputRef.current?.click()}
-                  disabled={uploadingScreenshot}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-[var(--text-muted)] hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all z-10 cursor-pointer"
-                  title="Browse & upload screenshot to CDN"
-                >
-                  {uploadingScreenshot ? (
-                    <Spinner size={16} className="text-zinc-500" />
-                  ) : (
-                    <Upload size={16} />
-                  )}
-                </button>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                  <button
+                    type="button"
+                    onClick={() => handleExtractFields(['screenshot'], true)}
+                    disabled={isBusy}
+                    className="p-1.5 text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-200 hover:bg-sky-50 dark:hover:bg-sky-950/40 rounded-lg transition-all cursor-pointer"
+                    title="Capture screenshot via AI Worker"
+                  >
+                    {isExtracting && extractingFields.includes('screenshot') ? (
+                      <Spinner size={15} className="text-sky-500" />
+                    ) : (
+                      <Camera size={15} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => screenshotFileInputRef.current?.click()}
+                    disabled={uploadingScreenshot || isBusy}
+                    className="p-1.5 text-[var(--text-muted)] hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all cursor-pointer"
+                    title="Browse & upload screenshot to CDN"
+                  >
+                    {uploadingScreenshot ? (
+                      <Spinner size={15} className="text-zinc-500" />
+                    ) : (
+                      <Upload size={15} />
+                    )}
+                  </button>
+                </div>
                 <input
                   type="file"
                   ref={screenshotFileInputRef}
@@ -1426,22 +1929,37 @@ export default function ToolForm({
                   value={formData.favicon_url || ''}
                   onChange={handleChange}
                   placeholder="https://..."
-                  style={{ paddingRight: '2.75rem' }}
+                  style={{ paddingRight: '4.8rem' }}
                   className={errors.favicon_url ? 'saas-input-error' : ''}
                 />
-                <button
-                  type="button"
-                  onClick={() => faviconFileInputRef.current?.click()}
-                  disabled={uploadingFavicon}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-[var(--text-muted)] hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all z-10 cursor-pointer"
-                  title="Browse & upload favicon to CDN"
-                >
-                  {uploadingFavicon ? (
-                    <Spinner size={16} className="text-zinc-500" />
-                  ) : (
-                    <Upload size={16} />
-                  )}
-                </button>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                  <button
+                    type="button"
+                    onClick={() => handleExtractFields(['favicon'], true)}
+                    disabled={isBusy}
+                    className="p-1.5 text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-200 hover:bg-sky-50 dark:hover:bg-sky-950/40 rounded-lg transition-all cursor-pointer"
+                    title="Fetch favicon via AI Worker"
+                  >
+                    {isExtracting && extractingFields.includes('favicon') ? (
+                      <Spinner size={15} className="text-sky-500" />
+                    ) : (
+                      <Sparkles size={15} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => faviconFileInputRef.current?.click()}
+                    disabled={uploadingFavicon || isBusy}
+                    className="p-1.5 text-[var(--text-muted)] hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all cursor-pointer"
+                    title="Browse & upload favicon to CDN"
+                  >
+                    {uploadingFavicon ? (
+                      <Spinner size={15} className="text-zinc-500" />
+                    ) : (
+                      <Upload size={15} />
+                    )}
+                  </button>
+                </div>
                 <input
                   type="file"
                   ref={faviconFileInputRef}
@@ -1508,6 +2026,20 @@ export default function ToolForm({
         hasErrors={false}
         headerActions={
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => handleExtractFields(['pricing'], true)}
+              disabled={isBusy}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40 rounded-lg border border-sky-200 dark:border-sky-800 transition-all shadow-2xs cursor-pointer"
+              title="Scrape and extract pricing plans via AI Worker"
+            >
+              {isExtracting && extractingFields.includes('pricing') ? (
+                <Spinner size={12} className="text-sky-500" />
+              ) : (
+                <Sparkles size={12} className="text-sky-500" />
+              )}
+              <span>Scrape Pricing</span>
+            </button>
             <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Has Pricing</span>
             <button
               type="button"

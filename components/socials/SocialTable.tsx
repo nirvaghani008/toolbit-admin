@@ -182,14 +182,14 @@ export default function SocialTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-            <TableHead className="w-[14%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Platform</TableHead>
-            <TableHead className="w-[30%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Social Post / Update</TableHead>
-            <TableHead className="w-[16%] px-3 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Content Type</TableHead>
+            <TableHead className="w-[12%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Platform</TableHead>
+            <TableHead className="w-[32%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Social Post / Update</TableHead>
+            <TableHead className="w-[14%] px-3 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Content Type</TableHead>
             <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Featured</TableHead>
             <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Trending</TableHead>
-            <TableHead className="w-[12%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
-            <TableHead className="w-[10%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
-            <TableHead className="w-[10%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
+            <TableHead className="w-[10%] px-3 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Published</TableHead>
+            <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
+            <TableHead className="w-[8%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -16,9 +16,11 @@ import {
   RefreshCw,
   FileText,
   Search,
+  ShieldAlert,
 } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -31,6 +33,13 @@ import {
 
 export default function ToolSubmissionsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'submissions' module
+  const canView = isSuperAdmin || hasPermission('submissions', 'view');
+  const canUpdate = isSuperAdmin || hasPermission('submissions', 'update');
+  const canDelete = isSuperAdmin || hasPermission('submissions', 'delete');
+
   const [tools, setTools] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [stats, setStats] = useState({
@@ -61,15 +70,7 @@ export default function ToolSubmissionsPage() {
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingTool, setEditingTool] = useState<any>(null);
-  const [previewTool, setPreviewTool] = useState<any>(null);
-
-  const sortOptions = [
-    { value: 'updated_at-desc', label: 'Last Updated' },
-    { value: 'created_at-desc', label: 'Newest First' },
-    { value: 'created_at-asc', label: 'Oldest First' },
-    { value: 'tool_name-asc', label: 'Name (A-Z)' },
-    { value: 'tool_name-desc', label: 'Name (Z-A)' },
-  ];
+  const [previewTool, setPreviewTool] = useState<any | null>(null);
 
   // Synchronize form state with browser history (Back/Forward support)
   useEffect(() => {
@@ -88,6 +89,10 @@ export default function ToolSubmissionsPage() {
   }, []);
 
   const openForm = (tool: any = null) => {
+    if (tool && !canUpdate) {
+      alert('Access denied: You do not have permission to edit tool submissions.');
+      return;
+    }
     setEditingTool(tool);
     setShowForm(true);
     window.history.pushState({ formOpen: true, editingData: tool }, '');
@@ -109,12 +114,13 @@ export default function ToolSubmissionsPage() {
   };
 
   const fetchStats = async () => {
+    if (!canView) return;
     try {
       const token = await getAuthToken();
       if (!token) return;
 
       const res = await getToolSubmissionStatsAction(token);
-      if (res.success && res.stats && res.sparklines) {
+      if (res.success && res.stats) {
         setStats({
           all: res.stats.all || 0,
           pending: res.stats.pending || 0,
@@ -122,15 +128,10 @@ export default function ToolSubmissionsPage() {
           draft: res.stats.draft || 0,
           rejected: res.stats.rejected || 0,
         });
-
-        setSparklines({
-          all: res.sparklines.all || [0, 0, 0, 0, 0, 0, 0],
-          pending: res.sparklines.pending || [0, 0, 0, 0, 0, 0, 0],
-          approved: res.sparklines.approved || [0, 0, 0, 0, 0, 0, 0],
-          draft: res.sparklines.draft || [0, 0, 0, 0, 0, 0, 0],
-          rejected: res.sparklines.rejected || [0, 0, 0, 0, 0, 0, 0],
-        });
-        setRefreshKey(prev => prev + 1);
+        if (res.sparklines) {
+          setSparklines(res.sparklines);
+        }
+        setRefreshKey((prev) => prev + 1);
       }
     } catch (err: any) {
       console.warn('Error fetching tool submission stats:', err?.message || err);
@@ -138,21 +139,26 @@ export default function ToolSubmissionsPage() {
   };
 
   const fetchTools = async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
 
     try {
-      if (manual) fetchStats();
+      if (manual) await fetchStats();
 
       const token = await getAuthToken();
-      if (!token) return;
+      if (!token) {
+        setLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
 
       const res = await getToolSubmissionsAction(
         {
           page: currentPage,
           pageSize,
-          search: appliedSearchQuery,
           status: statusFilter,
+          search: appliedSearchQuery,
           sortBy,
           sortOrder,
         },
@@ -160,8 +166,9 @@ export default function ToolSubmissionsPage() {
       );
 
       if (res.success && res.data) {
-        setTools(res.data || []);
+        setTools(res.data);
         setTotalCount(res.count || 0);
+        if (manual) setRefreshKey((prev) => prev + 1);
       } else {
         throw new Error(res.error || 'Failed to fetch tool submissions.');
       }
@@ -174,12 +181,16 @@ export default function ToolSubmissionsPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView]);
 
   useEffect(() => {
-    fetchTools();
-  }, [currentPage, appliedSearchQuery, sortBy, sortOrder, statusFilter]);
+    if (canView) {
+      fetchTools();
+    }
+  }, [canView, currentPage, appliedSearchQuery, sortBy, sortOrder, statusFilter]);
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -188,6 +199,9 @@ export default function ToolSubmissionsPage() {
   };
 
   const handleUpdateTool = async (formData: any) => {
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to edit tool submissions.');
+    }
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -208,6 +222,10 @@ export default function ToolSubmissionsPage() {
   };
 
   const handleDeleteTool = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete tool submissions.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete Tool Submission',
       itemName: name,
@@ -226,10 +244,36 @@ export default function ToolSubmissionsPage() {
       await fetchTools(false);
     } catch (err: any) {
       console.error('Error deleting tool submission:', err?.message || err);
+      alert(err.message || 'Failed to delete tool submission.');
     } finally {
       setIsRefreshing(false);
     }
   };
+
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking submissions permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage Tool Submissions.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   const statCards = [
     {

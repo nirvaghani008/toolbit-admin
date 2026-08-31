@@ -8,7 +8,8 @@ import CountUp from '@/components/common/CountUp';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
 import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
-import { Tag, CheckCircle2, EyeOff, FileText, Archive, RefreshCw, Search, X } from 'lucide-react';
+import { buildSearchOrClause } from '@/lib/postgrest-search';
+import { Tag, CheckCircle2, EyeOff, FileText, Archive, RefreshCw, Search, X, ShieldAlert } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAdmin } from '@/contexts/AdminContext';
@@ -73,6 +74,14 @@ function getStatusMeta(st: string) {
 
 export default function TagsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'tags' module
+  const canView = isSuperAdmin || hasPermission('tags', 'view');
+  const canInsert = isSuperAdmin || hasPermission('tags', 'insert');
+  const canUpdate = isSuperAdmin || hasPermission('tags', 'update');
+  const canDelete = isSuperAdmin || hasPermission('tags', 'delete');
+
   const [tags, setTags] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [uniqueStatuses, setUniqueStatuses] = useState<string[]>(['show', 'hide']);
@@ -117,6 +126,14 @@ export default function TagsPage() {
   }, []);
 
   const openForm = (tag: any = null) => {
+    if (tag && !canUpdate) {
+      alert('Access denied: You do not have permission to edit tags.');
+      return;
+    }
+    if (!tag && !canInsert) {
+      alert('Access denied: You do not have permission to create tags.');
+      return;
+    }
     setEditingTag(tag);
     setShowForm(true);
     window.history.pushState({ formOpen: true, editingData: tag }, '');
@@ -133,6 +150,7 @@ export default function TagsPage() {
   };
 
   const fetchStats = async (forceRefresh = false) => {
+    if (!canView) return;
     try {
       // 1. Fetch unique status values directly from tags table in Supabase
       const { data: statusRows } = await supabase
@@ -193,6 +211,7 @@ export default function TagsPage() {
   };
 
   const fetchTags = async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     setLoading(true);
 
@@ -203,15 +222,12 @@ export default function TagsPage() {
           .select('id, name, slug, parent_tag, tool_count, views, status, updated_at, meta_title, meta_description, meta_keywords, description', { count: 'exact' });
 
         // Apply Search across name, slug, and parent_tag with strict sanitization
-        if (searchQuery) {
-          const sanitized = searchQuery
-            .replace(/^#+/, '')
-            .replace(/[,()]/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-          if (sanitized) {
-            query = query.or(`name.ilike.%${sanitized}%,slug.ilike.%${sanitized}%,parent_tag.ilike.%${sanitized}%`);
-          }
+        const searchOrClause = buildSearchOrClause(
+          ['name', 'slug', 'parent_tag'],
+          searchQuery.replace(/^#+/, '')
+        );
+        if (searchOrClause) {
+          query = query.or(searchOrClause);
         }
 
         // Apply Status Filter
@@ -220,7 +236,7 @@ export default function TagsPage() {
         }
 
         // Apply Sorting
-        const sortCol = (sortBy === 'created_at' || sortBy === 'updated_at') ? 'updated_at' : 'name';
+        const sortCol = (sortBy === 'created_at' || sortBy === 'updated_at') ? 'updated_at' : sortBy;
         query = query.order(sortCol, { ascending: sortOrder === 'asc' }).order('id', { ascending: sortOrder === 'asc' });
 
         // Apply Pagination
@@ -228,25 +244,21 @@ export default function TagsPage() {
         const to = from + pageSize - 1;
         query = query.range(from, to);
 
-        const { data, count, error } = await query;
-        if (error) throw error;
-        return { data: data || [], count: count || 0 };
+        return await query;
       })();
 
-      if (manual) {
-        // Execute tags table query and fresh stats fetch in parallel
-        const [tagsResult] = await Promise.all([
-          tagsQueryPromise,
-          fetchStats(true)
-        ]);
-        setTags(tagsResult.data);
-        setTotalCount(tagsResult.count);
-        setRefreshKey(prev => prev + 1);
-      } else {
-        const tagsResult = await tagsQueryPromise;
-        setTags(tagsResult.data);
-        setTotalCount(tagsResult.count);
-      }
+      const [queryResult] = await Promise.all([
+        tagsQueryPromise,
+        manual ? fetchStats(true) : Promise.resolve()
+      ]);
+
+      const { data, count, error } = queryResult;
+
+      if (error) throw error;
+      setTags(data || []);
+      setTotalCount(count || 0);
+
+      if (manual) setRefreshKey(prev => prev + 1);
     } catch (err: any) {
       console.warn('Error fetching tags:', err?.message || err);
     } finally {
@@ -256,17 +268,20 @@ export default function TagsPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView]);
 
   useEffect(() => {
-    fetchTags();
-  }, [currentPage, statusFilter, sortBy, sortOrder, searchQuery]);
+    if (canView) {
+      fetchTags();
+    }
+  }, [canView, currentPage, statusFilter, sortBy, sortOrder, searchQuery]);
 
   useEffect(() => {
     if (searchInputValue === '') {
       setSearchQuery('');
-      setCurrentPage(1);
     }
   }, [searchInputValue]);
 
@@ -282,6 +297,9 @@ export default function TagsPage() {
   };
 
   const handleAddTag = async (formData: any) => {
+    if (!canInsert) {
+      throw new Error('Access denied: You do not have permission to create tags.');
+    }
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -303,6 +321,9 @@ export default function TagsPage() {
   };
 
   const handleUpdateTag = async (formData: any) => {
+    if (!canUpdate) {
+      throw new Error('Access denied: You do not have permission to edit tags.');
+    }
     setIsActionLoading(true);
     try {
       const targetId = editingTag?.id;
@@ -327,6 +348,10 @@ export default function TagsPage() {
   };
 
   const handleStatusChange = async (tagId: number | string, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update tag status.');
+      return;
+    }
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -349,6 +374,10 @@ export default function TagsPage() {
   };
 
   const handleDeleteTag = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete tags.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete Tag',
       itemName: name,
@@ -412,8 +441,30 @@ export default function TagsPage() {
     return 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6';
   }, [statCards.length]);
 
-  const { hasPermission } = useAdmin();
-  const canInsert = hasPermission('tags', 'insert');
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking tags permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[800px] mx-auto p-8 my-16 text-center animate-fade-in">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-muted)] mt-2 max-w-md mx-auto">
+          Your account does not have permission to view or manage Tags.
+          Please contact a Super Administrator if you require access to this section.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">

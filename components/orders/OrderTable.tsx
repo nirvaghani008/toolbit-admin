@@ -124,9 +124,9 @@ export default function OrderTable({
   isLoading = false,
 }: OrderTableProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const { hasPermission } = useAdmin();
-  const canUpdate = hasPermission('submissions', 'update');
-  const canDelete = hasPermission('submissions', 'delete');
+  const { hasPermission, isSuperAdmin } = useAdmin();
+  const canUpdate = isSuperAdmin || hasPermission('orders', 'update') || hasPermission('submissions', 'update');
+  const canDelete = isSuperAdmin || hasPermission('orders', 'delete') || hasPermission('submissions', 'delete');
 
   return (
     <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden animate-fade-in relative">

@@ -2,11 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { z } from 'zod';
-import { scrollToError, slugify } from '@/lib/form-utils';
-import { supabase } from '@/lib/supabase';
-import { createTagAction } from '@/app/admin/tools/tags/actions';
+import { scrollToError } from '@/lib/form-utils';
 import CollapsibleSection from '../common/CollapsibleSection';
-import { Plus, Trash2, AlertTriangle, Check } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import KeywordTagInput from '../categories/KeywordTagInput';
 import { SocialItem } from './SocialTable';
@@ -31,10 +29,9 @@ interface SocialFormProps {
 
 const PLATFORM_OPTIONS = [
   { value: 'YouTube', label: 'YouTube' },
-  { value: 'Twitter', label: 'Twitter / X' },
+  { value: 'X (Twitter)', label: 'Twitter / X' },
   { value: 'Reddit', label: 'Reddit' },
-  { value: 'Instagram', label: 'Instagram' },
-  { value: 'Other', label: 'Other' }
+  { value: 'Instagram', label: 'Instagram' }
 ];
 
 const CONTENT_TYPE_OPTIONS = [
@@ -111,7 +108,7 @@ export default function SocialForm({
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    platform: 'Twitter',
+    platform: 'X (Twitter)',
     content_type: 'Announcement',
     source_url: '',
     published_date: '',
@@ -147,7 +144,7 @@ export default function SocialForm({
       setFormData({
         title: initialData.title || '',
         description: initialData.description || '',
-        platform: initialData.platform || 'Twitter',
+        platform: (initialData.platform === 'Twitter' ? 'X (Twitter)' : initialData.platform) || 'X (Twitter)',
         content_type: Array.isArray(initialData.content_type)
           ? (initialData.content_type[0] || 'Announcement')
           : (initialData.content_type || 'Announcement'),
@@ -344,29 +341,6 @@ export default function SocialForm({
     try {
       setErrors({});
 
-      // Auto-create missing tags in tags DB table
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      for (const tag of selectedTags) {
-        if (!tag || !tag.trim()) continue;
-        const tagName = tag.trim();
-        const slug = slugify(tagName);
-        try {
-          const { data: existingTag } = await supabase
-            .from('tags')
-            .select('id')
-            .or(`name.ilike.${tagName},slug.eq.${slug}`);
-          if (!existingTag || existingTag.length === 0) {
-            if (token) {
-              await createTagAction({ name: tagName, slug, status: 'show' }, token);
-            }
-          }
-        } catch {
-          // ignore tag auto-creation errors if table schema differs
-        }
-      }
-
       // Build json_data object
       const jsonDataObj: Record<string, any> = {};
       if (hasJsonData) {
@@ -402,7 +376,9 @@ export default function SocialForm({
         platform: formData.platform,
         content_type: [formData.content_type],
         source_url: formData.source_url || null,
-        published_date: formData.published_date ? new Date(formData.published_date).toISOString() : null,
+        published_date: (formData.published_date && !isNaN(Date.parse(formData.published_date)))
+          ? new Date(formData.published_date).toISOString()
+          : null,
         tags: selectedTags,
         is_featured: formData.is_featured,
         is_trending: formData.is_trending,

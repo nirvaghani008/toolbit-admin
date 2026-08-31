@@ -42,6 +42,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { UserFullDetails } from '@/lib/services/user-details-service';
+import { getReplyHistoryList } from '@/lib/contacts';
 import { UserRow } from './UsersTable';
 
 const DEFAULT_TOOL_ICON = 'https://cdn.toolbit.ai/favicon-ic/default.png';
@@ -2120,23 +2121,39 @@ export default function UserDetailsDrawer({
                                 </div>
                               )}
 
-                              {contact.reply_message && (
-                                <div className="bg-emerald-50/50 dark:bg-emerald-500/5 p-3 rounded-xl border border-emerald-200/60 dark:border-emerald-500/20 text-xs space-y-1">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                                      <CheckCircle2 size={11} /> Admin Response
-                                    </span>
-                                    {contact.replied_at && (
-                                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                                        {formatDateTime(contact.replied_at)}
-                                      </span>
-                                    )}
+                              {(() => {
+                                const replies = getReplyHistoryList(contact.reply_message, contact.replied_at);
+                                if (!replies || replies.length === 0) return null;
+                                return (
+                                  <div className="space-y-2 pt-1">
+                                    {replies.map((rep, rIdx) => (
+                                      <div
+                                        key={rep.id || `reply-${rIdx}`}
+                                        className="bg-emerald-50/50 dark:bg-emerald-500/5 p-3 rounded-xl border border-emerald-200/60 dark:border-emerald-500/20 text-xs space-y-1"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                            <CheckCircle2 size={11} /> Response #{rIdx + 1}
+                                            {rep.admin_name && (
+                                              <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                                                by {rep.admin_name}
+                                              </span>
+                                            )}
+                                          </span>
+                                          {rep.sent_at && (
+                                            <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                                              {formatDateTime(rep.sent_at)}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                                          {rep.message}
+                                        </p>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <p className="text-zinc-700 dark:text-zinc-300 italic whitespace-pre-wrap leading-relaxed">
-                                    {contact.reply_message}
-                                  </p>
-                                </div>
-                              )}
+                                );
+                              })()}
                             </div>
                           );
                         })}

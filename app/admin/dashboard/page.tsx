@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAdmin } from '@/contexts/AdminContext';
+import { getDashboardDataAction } from './actions';
 import Link from 'next/link';
 import CountUp from '@/components/common/CountUp';
 import {
   Activity, LayoutGrid, Tag, Hash, Star, TrendingUp,
   ArrowUpRight, PackagePlus, FileText, Clock, RefreshCw,
-  Cpu, Newspaper, Share2, Sparkles, ChevronRight, Layers
+  Cpu, Newspaper, Share2, Sparkles, ChevronRight, Layers,
+  ShieldAlert
 } from 'lucide-react';
 import Sparkline from '@/components/common/Sparkline';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -38,7 +41,7 @@ interface StatCardProps {
 }
 
 interface RecentTool {
-  id: number;
+  id: number | string;
   name: string;
   category: string;
   status: string;
@@ -260,6 +263,9 @@ function StatCard({ label, value, change, positive, icon, color, refreshKey, poi
 
 // ─── Main Page ────────────────────────────────────────────
 export default function DashboardPage() {
+  const { hasPermission, isSuperAdmin, isAuthorized } = useAdmin();
+  const canView = isSuperAdmin || hasPermission('dashboard', 'view');
+
   const [hoveredRecentId, setHoveredRecentId] = useState<number | string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -291,140 +297,56 @@ export default function DashboardPage() {
   });
   const [sparklineData, setSparklineData] = useState<Record<string, number[]>>({});
 
-  const fetchData = async (manual = false) => {
+  const fetchData = useCallback(async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     else setLoading(true);
 
     try {
-      const [
-        { count: toolsCount },
-        { count: categoriesCount },
-        { count: tagsCount },
-        { count: blogsCount },
-        { count: modelsCount },
-        { count: newsCount },
-        { count: socialsCount },
-        { count: pendingToolsCount },
-        { count: pendingBlogsCount },
-        { count: pendingReviewsCount }
-      ] = await Promise.all([
-        supabase.from('ai_tools').select('*', { count: 'exact', head: true }),
-        supabase.from('categories').select('*', { count: 'exact', head: true }),
-        supabase.from('tags').select('*', { count: 'exact', head: true }),
-        supabase.from('blog_posts').select('*', { count: 'exact', head: true }),
-        supabase.from('models').select('*', { count: 'exact', head: true }),
-        supabase.from('news').select('*', { count: 'exact', head: true }),
-        supabase.from('socials').select('*', { count: 'exact', head: true }),
-        supabase.from('ai_tool_submissions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('blog_posts').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('reviews').select('*', { count: 'exact', head: true }).eq('status', 'pending')
-      ]);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
 
-      // Fetch recent items lists in parallel
-      const [
-        { data: recentData },
-        { data: latestSubmissionsData },
-        { data: latestBlogSubmissionsData },
-        { data: recentNewsData },
-        { data: recentSocialsData },
-        { data: recentModelsData }
-      ] = await Promise.all([
-        supabase.from('ai_tools').select('tool_id, tool_info, status, updated_at, created_at, view_counter').order('updated_at', { ascending: false }).limit(5),
-        supabase.from('ai_tool_submissions').select('*').order('updated_at', { ascending: false }).limit(5),
-        supabase.from('blog_posts').select('*').order('updated_at', { ascending: false }).limit(5),
-        supabase.from('news').select('*').order('news_id', { ascending: false }).limit(5),
-        supabase.from('socials').select('*').order('id', { ascending: false }).limit(5),
-        supabase.from('models').select('*').order('id', { ascending: false }).limit(5)
-      ]);
+      const res = await getDashboardDataAction(token);
 
-      // Fetch dynamic average rating directly from reviews table
-      let dynamicAvgRating = 0;
-      try {
-        const { data: reviewsRatingData } = await supabase.from('reviews').select('rating');
-        if (reviewsRatingData && reviewsRatingData.length > 0) {
-          const valid = reviewsRatingData
-            .map((r: any) => Number(r.rating))
-            .filter((val: number) => !isNaN(val) && val > 0);
-          if (valid.length > 0) {
-            const sum = valid.reduce((acc: number, curr: number) => acc + curr, 0);
-            dynamicAvgRating = Number((sum / valid.length).toFixed(1));
-          }
-        }
-      } catch (rErr) {
-        console.warn('Error fetching review ratings:', rErr);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to fetch dashboard data.');
       }
 
-      setDbStats({
-        tools: toolsCount || 0,
-        categories: categoriesCount || 0,
-        tags: tagsCount || 0,
-        blogs: blogsCount || 0,
-        models: modelsCount || 0,
-        news: newsCount || 0,
-        socials: socialsCount || 0,
-        pendingReviews: pendingReviewsCount || 0,
-        pendingTools: pendingToolsCount || 0,
-        pendingBlogs: pendingBlogsCount || 0,
-        platformRating: dynamicAvgRating > 0 ? dynamicAvgRating : 4.8,
-      });
+      if (res.stats) {
+        setDbStats(res.stats);
+      }
 
-      setRecentTools(recentData?.map((t: any) => ({
-        id: t.tool_id,
-        name: t.tool_info?.toolName || 'Unnamed Tool',
-        category: t.tool_info?.categories?.[0] || 'AI Tool',
-        status: t.status,
-        views: t.view_counter || 0,
-        date: new Date(t.updated_at || t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      })) || []);
+      if (res.recentTools) {
+        setRecentTools(res.recentTools as RecentTool[]);
+      }
 
-      setLatestSubmissions(latestSubmissionsData?.map((s: any) => ({
-        id: s.id,
-        name: s.tool_info?.toolName || 'Unnamed',
-        category: s.tool_info?.categories?.[0] || 'N/A',
-        status: s.status,
-        date: new Date(s.updated_at || s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      })) || []);
+      if (res.latestSubmissions) {
+        setLatestSubmissions(res.latestSubmissions);
+      }
 
-      setLatestBlogSubmissions(latestBlogSubmissionsData?.map((b: any) => ({
-        id: b.id,
-        name: b.title || 'Unnamed',
-        category: b.categories?.[0] || 'N/A',
-        status: b.status,
-        date: new Date(b.updated_at || b.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      })) || []);
+      if (res.latestBlogSubmissions) {
+        setLatestBlogSubmissions(res.latestBlogSubmissions);
+      }
 
-      setRecentNews(recentNewsData || []);
-      setRecentSocials(recentSocialsData || []);
-      setRecentModels(recentModelsData || []);
+      if (res.recentNews) {
+        setRecentNews(res.recentNews);
+      }
 
-      // Trend Calculation
-      const now = new Date();
-      const last5Days = Array.from({ length: 5 }, (_, i) => {
-        const d = new Date();
-        d.setDate(now.getDate() - (4 - i));
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      });
+      if (res.recentSocials) {
+        setRecentSocials(res.recentSocials);
+      }
 
-      setTrendData({
-        labels: last5Days,
-        tools: [12, 18, 14, 25, 30],
-        blogs: [3, 5, 2, 8, 10]
-      });
+      if (res.recentModels) {
+        setRecentModels(res.recentModels);
+      }
 
-      setSparklineData({
-        rating: [4.2, 4.5, 4.6, 4.7, 4.8, 4.8, 4.9],
-        views: [120, 240, 310, 450, 600, 720, 890],
-        pendingTools: [5, 4, 6, 3, 2, 4, pendingToolsCount || 0],
-        pendingBlogs: [2, 1, 3, 2, 1, 2, pendingBlogsCount || 0],
-        pendingReviews: [8, 6, 5, 4, 3, 2, pendingReviewsCount || 0],
-        activeTools: [40, 45, 52, 60, 68, 75, toolsCount || 0],
-        categories: [10, 12, 14, 15, 16, 18, categoriesCount || 0],
-        tags: [20, 25, 30, 35, 40, 45, tagsCount || 0],
-        models: [5, 8, 12, 15, 18, 22, modelsCount || 0],
-        news: [4, 7, 10, 14, 16, 20, newsCount || 0],
-        socials: [8, 12, 16, 20, 25, 30, socialsCount || 0],
-        blogs: [5, 8, 10, 12, 15, 18, blogsCount || 0],
-      });
+      if (res.trendData) {
+        setTrendData(res.trendData);
+      }
+
+      if (res.sparklineData) {
+        setSparklineData(res.sparklineData);
+      }
 
       if (manual) setRefreshKey(prev => prev + 1);
     } catch (err: any) {
@@ -433,15 +355,43 @@ export default function DashboardPage() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [canView]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (canView) {
+      fetchData();
+    }
+  }, [fetchData, canView]);
+
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // If unauthorized, display Access Denied shield
+  if (isAuthorized && !canView) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 flex items-center justify-center text-rose-600 dark:text-rose-400 shadow-sm">
+          <ShieldAlert size={32} />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Access Restricted</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-md">
+            You do not have permission to view the administrative dashboard. Please contact your Super Administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ─── CARD #1 IS PLATFORM RATING (Distinct Nude / Earthy Neutral Schemes) ───
   const statsCards = [
-    { label: 'Platform Rating', value: dbStats.platformRating, change: 'Avg Score', positive: true, icon: <Star size={20} />, color: 'ochre', points: sparklineData.rating },
+    // { label: 'Platform Rating', value: dbStats.platformRating, change: 'Avg Score', positive: true, icon: <Star size={20} />, color: 'ochre', points: sparklineData.rating },
     { label: 'Active Tools', value: dbStats.tools, change: '+4.5%', positive: true, icon: <Activity size={20} />, color: 'sage', points: sparklineData.activeTools },
     { label: 'AI Models', value: dbStats.models, change: '+12%', positive: true, icon: <Cpu size={20} />, color: 'slate', points: sparklineData.models },
     { label: 'Categories', value: dbStats.categories, change: '+2.1%', positive: true, icon: <LayoutGrid size={20} />, color: 'sand', points: sparklineData.categories },

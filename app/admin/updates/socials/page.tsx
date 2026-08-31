@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { fetchTableStatsAndSparklines } from '@/lib/sparkline-utils';
 import SocialTable, { SocialItem } from '@/components/socials/SocialTable';
 import SocialForm from '@/components/socials/SocialForm';
 
@@ -11,7 +10,7 @@ import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAdmin } from '@/contexts/AdminContext';
 import {
-  RefreshCw, Share2, CheckCircle2, EyeOff, FileText, Star
+  RefreshCw, Share2, CheckCircle2, EyeOff, FileText, Star, ShieldAlert
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import StickyFormBackButton from '@/components/common/StickyFormBackButton';
@@ -19,6 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
+  getSocialsAction,
+  getSocialsStatsAction,
   createSocialAction,
   updateSocialAction,
   updateSocialStatusAction,
@@ -26,6 +27,14 @@ import {
 } from './actions';
 
 export default function SocialsPage() {
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'socials' module
+  const canView = isSuperAdmin || hasPermission('socials', 'view');
+  const canInsert = isSuperAdmin || hasPermission('socials', 'insert');
+  const canUpdate = isSuperAdmin || hasPermission('socials', 'update');
+  const canDelete = isSuperAdmin || hasPermission('socials', 'delete');
+
   const [socialsList, setSocialsList] = useState<SocialItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +56,12 @@ export default function SocialsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 12;
 
+  // Retrieve current user JWT token for server actions
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   // Synchronize form state with browser history (Back/Forward support)
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
@@ -64,6 +79,14 @@ export default function SocialsPage() {
   }, []);
 
   const openForm = (item: SocialItem | null = null) => {
+    if (!item && !canInsert) {
+      alert('Access denied: You do not have permission to create social posts.');
+      return;
+    }
+    if (item && !canUpdate) {
+      alert('Access denied: You do not have permission to edit social posts.');
+      return;
+    }
     setEditingSocial(item);
     setShowForm(true);
     window.history.pushState({ formOpen: true, editingData: item }, '');
@@ -104,102 +127,64 @@ export default function SocialsPage() {
 
   const confirmDelete = useConfirm();
 
-  // Fetch stats & sparklines
+  // Fetch stats & sparklines using Server Action (service_role key + RBAC)
   const fetchStats = useCallback(async () => {
+    if (!canView) return;
     try {
-      const statusList = ['show', 'hide', 'draft'];
-      const { counts, sparklines: trends } = await fetchTableStatsAndSparklines(
-        'socials',
-        statusList,
-        'created_at',
-        7
-      );
+      const token = await getAuthToken();
+      if (!token) return;
 
-      // Fetch exact count of active/show posts (including show, published, active, or null)
-      const { count: liveShowCount } = await supabase
-        .from('socials')
-        .select('*', { count: 'exact', head: true })
-        .or('status.eq.show,status.eq.published,status.eq.active,status.ilike.show%,status.is.null');
-
-      // Fetch count of featured posts
-      const { count: featuredCount } = await supabase
-        .from('socials')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_featured', true);
-
-      setStats({
-        all: counts['total'] || 0,
-        show: (counts['show'] && counts['show'] > 0) ? counts['show'] : (liveShowCount || 0),
-        hide: counts['hide'] || 0,
-        draft: counts['draft'] || 0,
-        featured: featuredCount || 0
-      });
-
-      if (trends) {
-        setSparklines(prev => ({
-          ...prev,
-          ...trends,
-          show: (trends['show'] && trends['show'].some(n => n > 0)) ? trends['show'] : (trends['all'] || [0,0,0,0,0,0,0])
-        }));
+      const res = await getSocialsStatsAction(token);
+      if (res.success && res.stats) {
+        setStats(res.stats);
+        if (res.sparklines) {
+          setSparklines(prev => ({
+            ...prev,
+            ...res.sparklines
+          }));
+        }
+      } else if (res.error) {
+        console.warn('Error fetching socials stats:', res.error);
       }
     } catch (err) {
       console.warn('Error fetching socials stats:', err);
     }
-  }, []);
+  }, [canView]);
 
-  // Fetch socials from Supabase
+  // Fetch socials using Server Action (service_role key + RBAC)
   const fetchSocials = useCallback(async (manual = false) => {
+    if (!canView) return;
     if (manual) setIsRefreshing(true);
     else setIsLoading(true);
 
     try {
-      let query = supabase.from('socials').select('*', { count: 'exact' });
+      const token = await getAuthToken();
+      if (!token) return;
 
-      if (statusFilter === 'show') {
-        query = query.or('status.eq.show,status.eq.published,status.eq.active,status.ilike.show%,status.is.null');
-      } else if (statusFilter === 'featured') {
-        query = query.eq('is_featured', true);
-      } else if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+      const res = await getSocialsAction({
+        page: currentPage,
+        pageSize,
+        search: searchQuery,
+        status: statusFilter,
+        platform: platformFilter,
+        sortBy,
+        sortOrder
+      }, token);
+
+      if (res.success && res.data) {
+        setSocialsList(res.data);
+        setTotalCount(res.count ?? 0);
+        setRefreshKey(prev => prev + 1);
+      } else if (res.error) {
+        console.error('getSocialsAction error:', res.error);
       }
-
-      if (platformFilter !== 'all') {
-        query = query.eq('platform', platformFilter);
-      }
-
-      if (searchQuery.trim()) {
-        const term = searchQuery.trim();
-        const KNOWN_PLATFORMS = ['YouTube', 'X (Twitter)', 'Reddit', 'Instagram'];
-        const matchedPlatforms = KNOWN_PLATFORMS.filter(p => p.toLowerCase().includes(term.toLowerCase()));
-
-        if (matchedPlatforms.length > 0) {
-          const platformConds = matchedPlatforms.map(p => `platform.eq.${p}`).join(',');
-          query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%,${platformConds}`);
-        } else {
-          query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`);
-        }
-      }
-
-      const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize - 1;
-      const sortCol = (sortBy === 'created_at' || sortBy === 'id') ? 'id' : sortBy;
-      query = query.order(sortCol, { ascending: sortOrder === 'asc' }).range(from, to);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-
-      setSocialsList(data || []);
-      if (count !== null && count !== undefined) {
-        setTotalCount(count);
-      }
-      setRefreshKey(prev => prev + 1);
     } catch (err) {
       console.error('Error fetching socials:', err);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [currentPage, pageSize, platformFilter, searchQuery, statusFilter, sortBy, sortOrder]);
+  }, [canView, currentPage, pageSize, platformFilter, searchQuery, statusFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchStats();
@@ -209,12 +194,12 @@ export default function SocialsPage() {
     fetchSocials();
   }, [fetchSocials]);
 
-  const getAuthToken = async (): Promise<string> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || '';
-  };
-
   const handleDeleteSocial = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete social posts.');
+      return;
+    }
+
     const confirmed = await confirmDelete({
       title: 'Delete Social Post',
       itemName: name,
@@ -242,6 +227,11 @@ export default function SocialsPage() {
   };
 
   const handleStatusChange = async (id: number | string, newStatus: string) => {
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to update social posts.');
+      return;
+    }
+
     setIsRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -269,6 +259,11 @@ export default function SocialsPage() {
 
   const handleSaveSocial = async (data: Partial<SocialItem>) => {
     if (!editingSocial) return;
+    if (!canUpdate) {
+      alert('Access denied: You do not have permission to edit social posts.');
+      return;
+    }
+
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -291,6 +286,11 @@ export default function SocialsPage() {
   };
 
   const handleCreateSocial = async (data: Partial<SocialItem>) => {
+    if (!canInsert) {
+      alert('Access denied: You do not have permission to create social posts.');
+      return;
+    }
+
     setIsActionLoading(true);
     try {
       const token = await getAuthToken();
@@ -312,8 +312,22 @@ export default function SocialsPage() {
     }
   };
 
-  const { hasPermission } = useAdmin();
-  const canInsert = hasPermission('socials', 'insert');
+  // Unauthorized state for subadmins lacking socials permission
+  if (!canView && isAuthorized !== null) {
+    return (
+      <div className="max-w-[1500px] mx-auto p-6 md:p-8 animate-fade-in">
+        <div className="p-8 rounded-2xl border border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/5 flex flex-col items-center justify-center text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <ShieldAlert size={24} />
+          </div>
+          <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Access Restricted</h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-md">
+            Your account does not have permission to view or manage the Social Updates Database. Please contact a Super Admin to request access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -383,7 +397,7 @@ export default function SocialsPage() {
                 badgeStyle: 'bg-[#fbf6ec] text-[#8a652a] border-[#ecdfc7] dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
                 sparklineColor: 'text-[#8a652a] dark:text-amber-400',
                 icon: <Star size={17} />,
-                points: sparklines.all,
+                points: sparklines.featured || sparklines.all,
                 badge: 'Featured'
               },
               {

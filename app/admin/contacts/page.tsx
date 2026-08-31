@@ -12,17 +12,22 @@ import {
   Database,
   RefreshCw,
   Search,
+  ShieldAlert,
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
-import { fetchSparklinesForStatuses } from '@/lib/sparkline-utils';
 import Sparkline from '@/components/common/Sparkline';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAdmin } from '@/contexts/AdminContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import ContactTable, { Contact } from '@/components/contacts/ContactTable';
 import ContactReplyView from '@/components/contacts/ContactReplyView';
-import { deleteContactAction } from './actions';
+import {
+  getContactsAction,
+  getContactStatsAction,
+  deleteContactAction,
+} from './actions';
 
 const contactReplySchema = z.object({
   selectedStatus: z.string(),
@@ -39,6 +44,13 @@ const contactReplySchema = z.object({
 
 export default function ContactsPage() {
   const confirmDelete = useConfirm();
+  const { hasPermission, isAuthorized, isSuperAdmin } = useAdmin();
+
+  // Granular RBAC permissions for 'contacts' module
+  const canView = isSuperAdmin || hasPermission('contacts', 'view');
+  const canUpdate = isSuperAdmin || hasPermission('contacts', 'update');
+  const canDelete = isSuperAdmin || hasPermission('contacts', 'delete');
+
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -78,6 +90,12 @@ export default function ContactsPage() {
     { value: 'name-desc', label: 'Name (Z-A)' },
   ];
 
+  // Retrieve current user JWT token for server actions
+  const getAuthToken = async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  };
+
   // Synchronize reply view state with browser history (Back/Forward support)
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
@@ -96,7 +114,7 @@ export default function ContactsPage() {
 
   const openReply = (contact: Contact) => {
     setSelectedContact(contact);
-    setReplyText(contact.reply_message || '');
+    setReplyText('');
     setReplyError(null);
     setSelectedStatus(contact.status === 'hide' || contact.status === 'hidden' ? 'hide' : 'replied');
     window.history.pushState({ contactOpen: true, contactData: contact }, '');
@@ -113,88 +131,60 @@ export default function ContactsPage() {
     }
   };
 
+  // Fetch stats and sparklines via Server Action (Service Role Key + RBAC)
   const fetchStats = useCallback(async () => {
+    if (!canView) return;
     try {
-      const [
-        { count: cAll },
-        { count: cNew },
-        { count: cReplied },
-        { count: cHide },
-        trends
-      ] = await Promise.all([
-        supabase.from('contacts').select('*', { count: 'exact', head: true }),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('status', 'new'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('status', 'replied'),
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).or('status.eq.hide,status.eq.hidden'),
-        fetchSparklinesForStatuses('contacts', [null, 'new', 'replied', 'hide'], 'created_at', 7)
-      ]);
+      const token = await getAuthToken();
+      if (!token) return;
 
-      const allCount = cAll || 0;
-      const newCount = cNew || 0;
-      const repliedCount = cReplied || 0;
-      const hideCount = cHide || 0;
-
-      setStats({
-        all: allCount,
-        new: newCount,
-        replied: repliedCount,
-        hide: hideCount,
-      });
-
-      if (trends) {
-        setSparklines({
-          all: trends['all'] || [],
-          new: trends['new'] || [],
-          replied: trends['replied'] || [],
-          hide: trends['hide'] || [],
-        });
+      const res = await getContactStatsAction(token);
+      if (res.success && res.stats) {
+        setStats(res.stats);
+        if (res.sparklines) {
+          setSparklines((prev) => ({
+            ...prev,
+            ...res.sparklines,
+          }));
+        }
+        setRefreshKey((prev) => prev + 1);
+      } else if (res.error) {
+        console.warn('Error fetching contact stats:', res.error);
       }
-
-      setTotalCount(allCount);
-      setRefreshKey((prev) => prev + 1);
     } catch (err: any) {
       console.warn('Error fetching contact stats:', err?.message || err);
     }
-  }, []);
+  }, [canView]);
 
+  // Fetch contacts via Server Action (Service Role Key + RBAC)
   const fetchContacts = useCallback(
     async (manual = false) => {
+      if (!canView) return;
       if (manual) setIsRefreshing(true);
-      setLoading(true);
+      else setLoading(true);
 
       try {
-        if (manual) fetchStats();
+        const token = await getAuthToken();
+        if (!token) return;
 
-        let query = supabase.from('contacts').select('*', { count: 'exact' });
+        const res = await getContactsAction(
+          {
+            page: currentPage,
+            pageSize,
+            search: searchQuery,
+            status: statusFilter,
+            sortBy,
+            sortOrder,
+          },
+          token
+        );
 
-        if (searchQuery) {
-          query = query.or(
-            `name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,subject.ilike.%${searchQuery}%`
-          );
+        if (res.success && res.data) {
+          setContacts(res.data);
+          setTotalCount(res.count ?? 0);
+        } else if (res.error) {
+          console.warn('Error fetching contacts:', res.error);
         }
-
-        if (statusFilter === 'new') {
-          query = query.eq('status', 'new');
-        } else if (statusFilter === 'replied') {
-          query = query.eq('status', 'replied');
-        } else if (statusFilter === 'hide') {
-          query = query.or('status.eq.hide,status.eq.hidden');
-        }
-
-        const sortCol = sortBy === 'created_at' || sortBy === 'updated_at' ? 'created_at' : sortBy;
-        query = query
-          .order(sortCol, { ascending: sortOrder === 'asc' })
-          .order('contact_id', { ascending: sortOrder === 'asc' });
-
-        const from = (currentPage - 1) * pageSize;
-        const to = from + pageSize - 1;
-        query = query.range(from, to);
-
-        const { data, count, error } = await query;
-        if (error) throw error;
-
-        setContacts(data || []);
-        setTotalCount(count || 0);
       } catch (err: any) {
         console.warn('Error fetching contacts:', err?.message || err);
       } finally {
@@ -202,16 +192,20 @@ export default function ContactsPage() {
         setIsRefreshing(false);
       }
     },
-    [currentPage, statusFilter, searchQuery, sortBy, sortOrder, fetchStats]
+    [canView, currentPage, pageSize, searchQuery, statusFilter, sortBy, sortOrder]
   );
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    if (canView) {
+      fetchStats();
+    }
+  }, [canView, fetchStats]);
 
   useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
+    if (canView) {
+      fetchContacts();
+    }
+  }, [canView, fetchContacts]);
 
   useEffect(() => {
     if (searchInputValue === '') {
@@ -231,7 +225,17 @@ export default function ContactsPage() {
     setSortOrder(newOrder);
   };
 
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([fetchStats(), fetchContacts()]);
+    setIsRefreshing(false);
+  };
+
   const handleSaveReply = async () => {
+    if (!canUpdate) {
+      setReplyError('Access denied: You do not have permission to reply or update inquiries.');
+      return;
+    }
     if (!selectedContact) return;
     setReplyError(null);
 
@@ -245,16 +249,14 @@ export default function ContactsPage() {
 
     setIsActionLoading(true);
     try {
-      // 1. Retrieve session access token for authenticated API call
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const token = await getAuthToken();
+      if (!token) throw new Error('Authentication required.');
 
-      // 2. Dispatch response via backend API (handles SMTP email sending and DB update)
       const res = await fetch('/api/contacts/reply', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           contact_id: selectedContact.contact_id,
@@ -268,8 +270,7 @@ export default function ContactsPage() {
         throw new Error(data.error || 'Failed to dispatch response. Please try again.');
       }
 
-      await fetchStats();
-      await fetchContacts(true);
+      await Promise.all([fetchStats(), fetchContacts()]);
       closeReply();
     } catch (err: any) {
       console.error('Error saving reply:', err);
@@ -280,6 +281,10 @@ export default function ContactsPage() {
   };
 
   const handleDelete = async (id: number, name?: string) => {
+    if (!canDelete) {
+      alert('Access denied: You do not have permission to delete support inquiries.');
+      return;
+    }
     const confirmed = await confirmDelete({
       title: 'Delete Support Inquiry',
       itemName: name,
@@ -289,8 +294,7 @@ export default function ContactsPage() {
     if (!confirmed) return;
     setIsRefreshing(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const token = await getAuthToken();
       if (!token) throw new Error('Authentication required.');
 
       const res = await deleteContactAction(id, token);
@@ -298,8 +302,7 @@ export default function ContactsPage() {
         throw new Error(res.error || 'Failed to delete inquiry.');
       }
 
-      await fetchStats();
-      await fetchContacts();
+      await Promise.all([fetchStats(), fetchContacts()]);
     } catch (err: any) {
       console.error('Error deleting inquiry:', err);
       alert(err.message || 'Failed to delete inquiry.');
@@ -307,6 +310,32 @@ export default function ContactsPage() {
       setIsRefreshing(false);
     }
   };
+
+  // While authenticating, show spinner
+  if (isAuthorized === null) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <Spinner size={32} className="text-zinc-500" />
+      </div>
+    );
+  }
+
+  // Unauthorized state for subadmins lacking contacts permission
+  if (isAuthorized && !canView) {
+    return (
+      <div className="max-w-[1500px] mx-auto p-6 md:p-8 animate-fade-in">
+        <div className="p-8 rounded-2xl border border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/5 flex flex-col items-center justify-center text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <ShieldAlert size={24} />
+          </div>
+          <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">Access Restricted</h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-md">
+            Your account does not have permission to view or manage customer support inquiries. Please contact a Super Admin to request access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in max-w-[1500px] mx-auto p-6 md:p-8">
@@ -322,7 +351,7 @@ export default function ContactsPage() {
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              onClick={() => fetchContacts(true)}
+              onClick={handleManualRefresh}
               disabled={isRefreshing}
               className="gap-2 text-sm font-semibold border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               suppressHydrationWarning

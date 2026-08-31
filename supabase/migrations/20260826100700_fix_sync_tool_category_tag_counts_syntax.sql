@@ -21,20 +21,20 @@ BEGIN
     new_is_show := (TG_OP <> 'DELETE' AND NEW.status = 'show');
 
     IF TG_OP = 'DELETE' THEN
-        old_cats := CASE WHEN jsonb_typeof(OLD.tool_info->'categories') = 'array' THEN OLD.tool_info->'categories' ELSE '[]'::jsonb END;
-        old_tags := CASE WHEN jsonb_typeof(OLD.tool_info->'tags') = 'array' THEN OLD.tool_info->'tags' ELSE '[]'::jsonb END;
+        old_cats := COALESCE(OLD.tool_info->'categories', '[]'::jsonb);
+        old_tags := COALESCE(OLD.tool_info->'tags',       '[]'::jsonb);
         new_cats := '[]'::jsonb;
         new_tags := '[]'::jsonb;
     ELSIF TG_OP = 'INSERT' THEN
         old_cats := '[]'::jsonb;
         old_tags := '[]'::jsonb;
-        new_cats := CASE WHEN jsonb_typeof(NEW.tool_info->'categories') = 'array' THEN NEW.tool_info->'categories' ELSE '[]'::jsonb END;
-        new_tags := CASE WHEN jsonb_typeof(NEW.tool_info->'tags') = 'array' THEN NEW.tool_info->'tags' ELSE '[]'::jsonb END;
+        new_cats := COALESCE(NEW.tool_info->'categories', '[]'::jsonb);
+        new_tags := COALESCE(NEW.tool_info->'tags',       '[]'::jsonb);
     ELSE
-        old_cats := CASE WHEN jsonb_typeof(OLD.tool_info->'categories') = 'array' THEN OLD.tool_info->'categories' ELSE '[]'::jsonb END;
-        new_cats := CASE WHEN jsonb_typeof(NEW.tool_info->'categories') = 'array' THEN NEW.tool_info->'categories' ELSE '[]'::jsonb END;
-        old_tags := CASE WHEN jsonb_typeof(OLD.tool_info->'tags') = 'array' THEN OLD.tool_info->'tags' ELSE '[]'::jsonb END;
-        new_tags := CASE WHEN jsonb_typeof(NEW.tool_info->'tags') = 'array' THEN NEW.tool_info->'tags' ELSE '[]'::jsonb END;
+        old_cats := COALESCE(OLD.tool_info->'categories', '[]'::jsonb);
+        new_cats := COALESCE(NEW.tool_info->'categories', '[]'::jsonb);
+        old_tags := COALESCE(OLD.tool_info->'tags',       '[]'::jsonb);
+        new_tags := COALESCE(NEW.tool_info->'tags',       '[]'::jsonb);
     END IF;
 
     -- Collect only the distinct affected categories for fast indexed lookup

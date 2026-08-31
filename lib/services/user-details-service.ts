@@ -161,6 +161,8 @@ export interface ToolReportItem {
   created_at: string;
 }
 
+import type { ContactReplyItem } from '@/lib/contacts';
+
 export interface ContactMessageItem {
   contact_id: number;
   name: string | null;
@@ -168,7 +170,7 @@ export interface ContactMessageItem {
   subject: string | null;
   message: string;
   status: string;
-  reply_message: string | null;
+  reply_message: ContactReplyItem[] | string | null;
   replied_at: string | null;
   created_at: string;
 }

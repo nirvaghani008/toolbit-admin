@@ -22,7 +22,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { generateContactReplyEmail } from '@/lib/email/templates/contact-reply';
-import { Contact, ContactStatusBadge } from './ContactTable';
+import { Contact, getReplyHistoryList } from '@/lib/contacts';
+import { ContactStatusBadge } from './ContactTable';
 
 interface ContactReplyViewProps {
   contact: Contact;
@@ -129,22 +130,69 @@ export default function ContactReplyView({
               &quot;{contact.message}&quot;
             </div>
 
-            {contact.reply_message && (
-              <div className="mt-5 pt-4 border-t border-[var(--border-color)]/60">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">
-                  <MessageSquare size={13} className="text-emerald-600 dark:text-emerald-400" />
-                  <span>Previous Response</span>
-                  {contact.replied_at && (
-                    <span className="font-normal lowercase">
-                      ({new Date(contact.replied_at).toLocaleDateString()})
-                    </span>
+            {/* Conversation History Timeline */}
+            {(() => {
+              const replies = getReplyHistoryList(contact.reply_message, contact.replied_at);
+              return (
+                <div className="mt-6 pt-5 border-t border-[var(--border-color)]/60">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                      <MessageSquare size={13} className="text-emerald-600 dark:text-emerald-400" />
+                      <span>Conversation History</span>
+                    </div>
+                    {replies.length > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        {replies.length} {replies.length === 1 ? 'Response' : 'Responses'}
+                      </span>
+                    )}
+                  </div>
+
+                  {replies.length > 0 ? (
+                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                      {replies.map((item, idx) => {
+                        const formattedSentAt = item.sent_at
+                          ? new Date(item.sent_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : null;
+
+                        return (
+                          <div
+                            key={item.id || `reply-${idx}`}
+                            className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-2 flex-wrap text-[11px]">
+                              <div className="flex items-center gap-1.5 font-bold text-[var(--text-primary)]">
+                                <span className="w-5 h-5 rounded-full bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-extrabold shrink-0">
+                                  {(item.admin_name || item.admin_email || 'A').charAt(0).toUpperCase()}
+                                </span>
+                                <span>{item.admin_name || 'Admin'}</span>
+                              </div>
+                              {formattedSentAt && (
+                                <span className="text-[10px] text-[var(--text-muted)] font-medium">
+                                  {formattedSentAt}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap font-medium">
+                              {item.message}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-[var(--bg-elevated)]/40 border border-dashed border-[var(--border-color)] text-center text-xs text-[var(--text-muted)]">
+                      No responses sent yet. Compose and dispatch your response on the right.
+                    </div>
                   )}
                 </div>
-                <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs text-[var(--text-primary)] leading-relaxed font-medium">
-                  {contact.reply_message}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </CardContent>
         </Card>
 

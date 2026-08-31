@@ -1,6 +1,9 @@
 'use server';
 
 import { supabaseAdmin, verifyAdminPermission } from '@/lib/supabase-admin';
+import { buildSearchOrClause } from '@/lib/postgrest-search';
+import { getWorkerFetchHeaders } from '@/lib/worker-headers';
+
 
 export interface ActionResponse<T = any> {
   success: boolean;
@@ -47,12 +50,19 @@ export async function getToolSubmissionsAction(
       query = query.eq('status', status);
     }
 
-    if (search && search.trim()) {
-      // Sanitize comma delimiters to prevent PostgREST .or() filter syntax splitting
-      const clean = search.trim().replace(/,/g, ' ').replace(/\s+/g, ' ');
-      query = query.or(
-        `full_name.ilike.%${clean}%,business_email.ilike.%${clean}%,tool_site_url.ilike.%${clean}%,tool_domain.ilike.%${clean}%,tool_url.ilike.%${clean}%,tool_info->>toolName.ilike.%${clean}%`
-      );
+    const orClause = buildSearchOrClause(
+      [
+        'full_name',
+        'business_email',
+        'tool_site_url',
+        'tool_domain',
+        'tool_url',
+        'tool_info->>toolName',
+      ],
+      search
+    );
+    if (orClause) {
+      query = query.or(orClause);
     }
 
     // Map tool_name to the actual JSONB path for true alphabetical sorting
@@ -273,6 +283,16 @@ export async function updateToolSubmissionAction(
       throw error;
     }
 
+    // Trigger non-blocking background media enrichment if media assets are missing
+    if (id && payload.tool_site_url) {
+      const missingMedia: ('favicon' | 'screenshot')[] = [];
+      if (!payload.favicon_url) missingMedia.push('favicon');
+      if (!payload.tool_screenshot_url) missingMedia.push('screenshot');
+      if (missingMedia.length > 0) {
+        enrichSubmissionMediaInBackground(id, payload.tool_site_url, missingMedia);
+      }
+    }
+
     return {
       success: true,
       data,
@@ -285,3 +305,97 @@ export async function updateToolSubmissionAction(
     };
   }
 }
+
+/**
+ * Asynchronously enriches missing favicon or screenshot for a submission in the background.
+ * Calls the `ai-tool-info` worker in pure extraction mode and updates
+ * the `ai_tool_submissions` row directly using supabaseAdmin.
+ */
+export async function enrichSubmissionMediaInBackground(
+  submissionId: number | string,
+  toolSiteUrl: string,
+  missingFields: ('favicon' | 'screenshot')[]
+): Promise<void> {
+  const targetFields = missingFields.filter((f) => f === 'favicon' || f === 'screenshot');
+  if (targetFields.length === 0) return;
+
+  const workerUrl = process.env.AI_TOOL_INFO_WORKER_URL;
+  const workerSecret = process.env.AI_TOOL_INFO_WORKER_SECRET;
+
+  if (!workerUrl || !workerSecret) {
+    console.warn('[enrichSubmissionMediaInBackground] Missing AI_TOOL_INFO_WORKER configuration; skipping background media enrichment.');
+    return;
+  }
+
+  // Fire and forget in the background
+  (async () => {
+    try {
+      console.log(`[enrichSubmissionMediaInBackground] Fetching missing media for submission #${submissionId} (${toolSiteUrl}). Fields: ${targetFields.join(', ')}`);
+
+      const response = await fetch(workerUrl, {
+        method: 'POST',
+        headers: getWorkerFetchHeaders(workerSecret),
+        body: JSON.stringify({
+          url: toolSiteUrl,
+          is_screenshot: targetFields.includes('screenshot'),
+          target_fields: targetFields,
+        }),
+        signal: AbortSignal.timeout(2.5 * 60 * 1000), // 2.5 min max for background crawl
+      });
+
+      if (!response.ok) {
+        console.warn(`[enrichSubmissionMediaInBackground] Worker returned status ${response.status} for submission #${submissionId}`);
+        return;
+      }
+
+      const result = (await response.json()) as {
+        success?: boolean;
+        favicon_url?: string | null;
+        screenshot_url?: string | null;
+      };
+
+      if (!result.success) {
+        console.warn(`[enrichSubmissionMediaInBackground] Worker extraction unsuccessful for submission #${submissionId}`);
+        return;
+      }
+
+      const updatePayload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      const resolvedFavicon = result.favicon_url || (result as any).data?.favicon_url || (result as any).data?.faviconUrl;
+      const resolvedScreenshot = result.screenshot_url || (result as any).data?.tool_screenshot_url || (result as any).data?.screenshotUrl;
+
+      if (targetFields.includes('favicon') && resolvedFavicon) {
+        updatePayload.favicon_url = resolvedFavicon;
+      }
+
+      if (targetFields.includes('screenshot') && resolvedScreenshot) {
+        updatePayload.tool_screenshot_url = resolvedScreenshot;
+      }
+
+
+      if (Object.keys(updatePayload).length <= 1) {
+        console.log(`[enrichSubmissionMediaInBackground] No new media URLs extracted for submission #${submissionId}`);
+        return;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('ai_tool_submissions')
+        .update(updatePayload)
+        .eq('id', submissionId);
+
+      if (updateError) {
+        console.error(`[enrichSubmissionMediaInBackground] Failed to update submission #${submissionId} with media URLs:`, updateError.message);
+      } else {
+        console.log(`[enrichSubmissionMediaInBackground] Successfully updated submission #${submissionId} with media:`, {
+          favicon: updatePayload.favicon_url ? 'updated' : 'unchanged',
+          screenshot: updatePayload.tool_screenshot_url ? 'updated' : 'unchanged',
+        });
+      }
+    } catch (err) {
+      console.error(`[enrichSubmissionMediaInBackground] Background media enrichment error for submission #${submissionId}:`, err);
+    }
+  })();
+}
+

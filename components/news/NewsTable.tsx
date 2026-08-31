@@ -70,6 +70,8 @@ interface NewsTableProps {
   onDelete: (id: number, title?: string) => void;
   onStatusChange?: (newsId: number, newStatus: string) => Promise<void> | void;
   isLoading?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 function NewsLogo({ item }: { item: NewsItem }) {
@@ -121,15 +123,17 @@ export default function NewsTable({
   onEdit,
   onDelete,
   onStatusChange,
-  isLoading = false
+  isLoading = false,
+  canEdit,
+  canDelete: canDeleteProp,
 }: NewsTableProps) {
   const [hoveredId, setHoveredId] = useState<number | string | null>(null);
   const [openStatusDropdownId, setOpenStatusDropdownId] = useState<number | null>(null);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ item: NewsItem; newStatus: string } | null>(null);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const { hasPermission } = useAdmin();
-  const canUpdate = hasPermission('news', 'update');
-  const canDelete = hasPermission('news', 'delete');
+  const canUpdate = canEdit !== undefined ? canEdit : hasPermission('news', 'update');
+  const canDelete = canDeleteProp !== undefined ? canDeleteProp : hasPermission('news', 'delete');
 
   // Close dropdown on outside click or escape
   useEffect(() => {
