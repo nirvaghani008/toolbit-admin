@@ -110,7 +110,7 @@ export default function SocialTable({
   const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'info' | 'violet' | 'slate' | 'default' => {
     const s = (status || 'show').toLowerCase();
     if (s === 'show' || s === 'active' || s === 'published') return 'success';
-    if (s === 'hide') return 'destructive';
+    if (s === 'hide') return 'slate';
     if (s === 'draft') return 'warning';
     if (s === 'archived') return 'violet';
     return 'slate';

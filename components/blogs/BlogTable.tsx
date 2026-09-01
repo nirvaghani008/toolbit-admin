@@ -345,9 +345,7 @@ export default function BlogTable({
                           </div>
                         </div>
                       ) : (
-                        <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider whitespace-nowrap">
-                          ⏱ Pending
-                        </Badge>
+                        <span className="text-xs text-[var(--text-muted)] font-medium">-</span>
                       )}
                     </TableCell>
 

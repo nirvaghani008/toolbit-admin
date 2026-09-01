@@ -92,10 +92,10 @@ export default function AdvertiseTable({
     return getToolNameFromUrl(item.tool_site_url || item.url || '');
   };
 
-  const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'default' => {
+  const getStatusBadgeVariant = (status?: string): 'success' | 'warning' | 'destructive' | 'violet' | 'default' => {
     const s = (status || '').toLowerCase();
     if (s === 'active') return 'success';
-    if (s === 'inactive') return 'warning';
+    if (s === 'inactive') return 'violet';
     if (s === 'expired') return 'destructive';
     return 'default';
   };
@@ -310,6 +310,7 @@ export default function AdvertiseTable({
                         onStatusChange={onStatusChange}
                         getVariant={getStatusBadgeVariant}
                         formatStatus={(status) => status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Inactive'}
+                        getDotColor={(val) => val === 'active' ? 'bg-emerald-500' : val === 'inactive' ? 'bg-violet-500' : 'bg-rose-500'}
                       />
                     ) : (
                       <Badge

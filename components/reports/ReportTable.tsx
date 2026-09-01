@@ -52,14 +52,14 @@ export function formatReportType(type: string) {
 
 export function ReportTypeBadge({ type }: { type: string }) {
   const norm = (type || '').toLowerCase().replace(/_/g, ' ').trim();
-  let variant: 'destructive' | 'warning' | 'violet' | 'info' | 'slate' = 'slate';
+  let variant: 'destructive' | 'warning' | 'success' | 'violet' | 'info' | 'slate' = 'slate';
 
   if (norm === 'not working') {
     variant = 'destructive';
   } else if (norm === 'false info') {
     variant = 'warning';
   } else if (norm === 'needs review' || norm === 'need review' || norm.includes('review')) {
-    variant = 'warning';
+    variant = 'success';
   } else if (norm === 'detail mismatch') {
     variant = 'violet';
   } else {

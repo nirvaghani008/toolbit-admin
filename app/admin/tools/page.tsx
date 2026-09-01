@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ToolTable from '@/components/tools/ToolTable';
 import { supabase } from '@/lib/supabase';
 import CountUp from '@/components/common/CountUp';
@@ -73,13 +73,29 @@ export default function ToolsPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showForm, setShowForm] = useState(false);
   const [editingTool, setEditingTool] = useState<any>(null);
+  const isProgrammaticCloseRef = useRef(false);
 
   // Synchronize form state with browser history (Back/Forward support)
   useEffect(() => {
+    // Sanitize any stale formOpen state on initial page load / refresh
+    if (typeof window !== 'undefined' && window.history.state?.formOpen) {
+      window.history.replaceState({ ...window.history.state, formOpen: false, editingData: null }, '');
+    }
+
     const handlePopState = (e: PopStateEvent) => {
+      if (isProgrammaticCloseRef.current) {
+        isProgrammaticCloseRef.current = false;
+        setShowForm(false);
+        setEditingTool(null);
+        if (typeof window !== 'undefined' && window.history.state?.formOpen) {
+          window.history.replaceState({ ...window.history.state, formOpen: false, editingData: null }, '');
+        }
+        return;
+      }
+
       if (e.state?.formOpen) {
         setShowForm(true);
-        if (e.state.editingData) setEditingTool(e.state.editingData);
+        setEditingTool(e.state.editingData || null);
       } else {
         setShowForm(false);
         setEditingTool(null);
@@ -107,13 +123,11 @@ export default function ToolsPage() {
   };
 
   const closeForm = () => {
-    if (showForm) {
-      setShowForm(false);
-      setEditingTool(null);
-      // If we are currently in the form state in history, go back
-      if (window.history.state?.formOpen) {
-        window.history.back();
-      }
+    setShowForm(false);
+    setEditingTool(null);
+    if (typeof window !== 'undefined' && window.history.state?.formOpen) {
+      isProgrammaticCloseRef.current = true;
+      window.history.back();
     }
   };
 

@@ -149,14 +149,13 @@ export default function ToolTable({
         <Table className="table-fixed">
           <TableHeader>
             <TableRow className="bg-[var(--bg-elevated)]/40 hover:bg-[var(--bg-elevated)]/40">
-              <TableHead className="w-[28%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Details</TableHead>
-              <TableHead className="w-[18%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Categories</TableHead>
+              <TableHead className="w-[32%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Details</TableHead>
+              <TableHead className="w-[20%] px-4 py-3.5 text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Categories</TableHead>
               <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Views</TableHead>
-              <TableHead className="w-[9%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Paid Status</TableHead>
-              <TableHead className="w-[12%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">AI Moderation</TableHead>
-              <TableHead className="w-[9%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Pricing</TableHead>
-              <TableHead className="w-[8%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
-              <TableHead className="w-[8%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
+              <TableHead className="w-[10%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Plan Type</TableHead>
+              <TableHead className="w-[11%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Tool Pricing</TableHead>
+              <TableHead className="w-[10%] px-2 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</TableHead>
+              <TableHead className="w-[9%] px-4 py-3.5 text-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Manage</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -186,9 +185,6 @@ export default function ToolTable({
                     <Skeleton className="h-5 w-14 mx-auto rounded-md" />
                   </TableCell>
                   <TableCell className="px-2 py-4 text-center">
-                    <Skeleton className="h-5 w-20 mx-auto rounded-md" />
-                  </TableCell>
-                  <TableCell className="px-2 py-4 text-center">
                     <Skeleton className="h-5 w-14 mx-auto rounded-md" />
                   </TableCell>
                   <TableCell className="px-2 py-4 text-center">
@@ -204,7 +200,7 @@ export default function ToolTable({
               ))
             ) : tools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-12 text-center text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                <TableCell colSpan={7} className="px-6 py-12 text-center text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
                   No tools found.
                 </TableCell>
               </TableRow>
@@ -317,7 +313,7 @@ export default function ToolTable({
                       </div>
                     </TableCell>
 
-                    {/* Paid Status */}
+                    {/* Plan Type */}
                     <TableCell className="px-2 py-4 text-center">
                       <div className="flex items-center justify-center">
                         {isPaidSubmission ? (
@@ -334,35 +330,6 @@ export default function ToolTable({
                         ) : (
                           <Badge variant="slate" className="text-[9px] px-2 py-0.5 font-bold tracking-wider">
                             Free
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    {/* AI Moderation */}
-                    <TableCell className="px-2 py-4 text-center">
-                      <div className="flex items-center justify-center">
-                        {tool.ai_approved === true ? (
-                          <Badge variant="success" className="text-[9px] px-2 py-0.5 font-bold tracking-wider whitespace-nowrap">
-                            ✓ AI Approved
-                          </Badge>
-                        ) : tool.ai_approved === false ? (
-                          <div className="relative group/reason inline-block cursor-help whitespace-nowrap">
-                            <Badge variant="destructive" className="text-[9px] px-2 py-0.5 font-bold tracking-wider hover:bg-rose-500/20 inline-flex items-center gap-1 whitespace-nowrap cursor-help">
-                              ✕ AI Denied
-                            </Badge>
-                            <div className={`hidden group-hover/reason:block absolute left-1/2 -translate-x-1/2 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl text-[11px] leading-relaxed z-[9999] border border-slate-700 pointer-events-none whitespace-normal ${idx === 0 ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
-                              <div className="font-bold text-rose-400 mb-1 flex items-center gap-1 whitespace-nowrap">
-                                <span>✕ AI Rejection Reason</span>
-                              </div>
-                              <p className="text-slate-200 text-xs">
-                                {tool.ai_denied_reason || tool.rejection_reason || 'No specific rejection reason recorded.'}
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <Badge variant="warning" className="text-[9px] px-2 py-0.5 font-bold tracking-wider whitespace-nowrap">
-                            ⏱ Pending
                           </Badge>
                         )}
                       </div>
