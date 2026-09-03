@@ -65,6 +65,7 @@ const navItems: NavItem[] = [
     sub: [
       { label: 'Users', href: '/admin/users', module: 'users' },
       { label: 'Newsletter Subs', href: '/admin/newsletter', module: 'newsletter' },
+      { label: 'Marketing Mail', href: '/admin/marketing', module: 'marketing' },
     ],
   },
   { label: 'Contacts', href: '/admin/contacts', icon: Mail, module: 'contacts' },

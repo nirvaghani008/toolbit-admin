@@ -96,6 +96,7 @@ export const ALL_MODULES = [
   'users',
   'newsletter',
   'contacts',
+  'marketing',
   'profiles',
   'manage_admins',
 ] as const;

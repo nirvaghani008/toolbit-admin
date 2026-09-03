@@ -111,6 +111,22 @@ interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
   hideCloseButton?: boolean;
 }
 
+let activeDialogCount = 0;
+
+function lockBodyScroll() {
+  activeDialogCount++;
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function unlockBodyScroll() {
+  activeDialogCount = Math.max(0, activeDialogCount - 1);
+  if (activeDialogCount === 0 && typeof document !== 'undefined' && document.body) {
+    document.body.style.overflow = '';
+  }
+}
+
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, onClose, hideCloseButton = false, ...props }, ref) => {
     const { onOpenChange } = useDialog();
@@ -125,11 +141,11 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       };
 
       document.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
 
       return () => {
         document.removeEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = '';
+        unlockBodyScroll();
       };
     }, [onOpenChange, onClose]);
 

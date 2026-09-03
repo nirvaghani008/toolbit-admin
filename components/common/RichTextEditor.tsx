@@ -38,6 +38,7 @@ interface RichTextEditorProps {
   hasError?: boolean;
   className?: string;
   onBusyChange?: (isBusy: boolean) => void;
+  outputFormat?: 'markdown' | 'html';
 }
 
 declare module '@tiptap/core' {
@@ -991,7 +992,7 @@ const MenuBar = ({
   );
 };
 
-export default function RichTextEditor({ content, onChange, placeholder, showFormatButton = true, name, hasError = false, className, onBusyChange }: RichTextEditorProps) {
+export default function RichTextEditor({ content, onChange, placeholder, showFormatButton = true, name, hasError = false, className, onBusyChange, outputFormat = 'markdown' }: RichTextEditorProps) {
   const { theme } = useTheme();
   const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(theme);
   const [hasToggledLocally, setHasToggledLocally] = useState(false);
@@ -1105,15 +1106,19 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
       TaskList,
       TaskItem.configure({ nested: true }),
     ],
-    content: formatMarkdownToHTML(content || ''),
+    content: outputFormat === 'html' ? (content || '') : formatMarkdownToHTML(content || ''),
     onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      const markdownContent = convertHTMLToMarkdown(html);
-      onChange(markdownContent);
+      if (outputFormat === 'html') {
+        onChange(editor.getHTML());
+      } else {
+        const html = editor.getHTML();
+        const markdownContent = convertHTMLToMarkdown(html);
+        onChange(markdownContent);
+      }
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none p-8 min-h-[400px] outline-none leading-relaxed transition-colors duration-300',
+        class: 'prose prose-sm max-w-none p-6 min-h-[260px] outline-none leading-relaxed transition-colors duration-300',
       },
       handlePaste(view, event) {
         const files = event.clipboardData?.files;
@@ -1292,16 +1297,23 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
 
   useEffect(() => {
     if (editor && content !== undefined && !editor.isFocused) {
-      const currentMarkdown = convertHTMLToMarkdown(editor.getHTML());
-      if (currentMarkdown.trim() !== (content || '').trim()) {
-        const formatted = formatMarkdownToHTML(content || '');
-        editor.commands.setContent(formatted);
+      if (outputFormat === 'html') {
+        const currentHtml = editor.getHTML();
+        if (currentHtml !== (content || '')) {
+          editor.commands.setContent(content || '');
+        }
+      } else {
+        const currentMarkdown = convertHTMLToMarkdown(editor.getHTML());
+        if (currentMarkdown.trim() !== (content || '').trim()) {
+          const formatted = formatMarkdownToHTML(content || '');
+          editor.commands.setContent(formatted);
+        }
       }
     }
-  }, [content, editor]);
+  }, [content, editor, outputFormat]);
 
   return (
-    <div id={name} data-field={name} className={`border rounded-xl shadow-2xs transition-colors duration-300 relative flex flex-col max-h-[680px] overflow-hidden ${
+    <div id={name} data-field={name} className={`border rounded-xl shadow-2xs transition-colors duration-300 relative flex flex-col ${
       hasError
         ? 'border-rose-500 saas-input-error'
         : (editorTheme === 'dark'
@@ -1315,7 +1327,7 @@ export default function RichTextEditor({ content, onChange, placeholder, showFor
         showFormatButton={showFormatButton}
         onOpenImageModal={() => setIsImageModalOpen(true)}
       />
-      <div className="overflow-y-auto flex-1 rounded-b-xl max-h-[600px]">
+      <div className="flex-1 rounded-b-xl">
         <EditorContent editor={editor} className={`${editorTheme === 'dark' ? 'dark:bg-zinc-950 text-gray-100' : 'bg-white text-gray-900'}`} />
       </div>
 
