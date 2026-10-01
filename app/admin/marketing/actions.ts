@@ -1213,27 +1213,48 @@ export async function getOutreachSendPrecheckAction(
  * Specifically transforms Toolbit CTA links like https://www.toolbit.ai/submit or https://toolbit.ai/submit
  * in email content to include outreach_id, utm_source, utm_medium, and utm_campaign while leaving generic
  * links (e.g. homepage, contact) untouched.
+ *
+ * In HTML mode (isHtml: true), only destination URLs inside `href="..."` or `href='...'` are updated
+ * with tracking parameters, ensuring visible anchor text (e.g. `https://www.toolbit.ai/submit` or `toolbit.ai/submit`)
+ * stays clean without displaying long query parameters to recipients.
  */
 function appendOutreachCtaParams(
   content: string,
   outreachId: string,
-  campaign: string
+  campaign: string,
+  options?: { isHtml?: boolean }
 ): string {
   if (!content) return content;
-  return content.replace(
-    /(https?:\/\/(?:www\.)?toolbit\.ai\/submit)([\w\-.~:/?#\[\]@!$&'()*+,;=]*)?/gi,
-    (match, basePath, existingQuery) => {
-      try {
-        const url = new URL(basePath + (existingQuery || ''), 'https://www.toolbit.ai');
-        url.searchParams.set('outreach_id', outreachId);
-        url.searchParams.set('utm_source', 'email');
-        url.searchParams.set('utm_medium', 'outreach');
-        url.searchParams.set('utm_campaign', campaign);
-        return url.toString();
-      } catch {
-        return match;
-      }
+  const isHtml = options?.isHtml ?? false;
+
+  const buildTrackingUrl = (basePath: string, existingQuery?: string): string => {
+    try {
+      const normalizedQuery = (existingQuery || '').replace(/&amp;/g, '&');
+      const url = new URL(basePath + normalizedQuery, 'https://www.toolbit.ai');
+      url.searchParams.set('outreach_id', outreachId);
+      url.searchParams.set('utm_source', 'email');
+      url.searchParams.set('utm_medium', 'outreach');
+      url.searchParams.set('utm_campaign', campaign);
+      return url.toString();
+    } catch {
+      return basePath + (existingQuery || '');
     }
+  };
+
+  if (isHtml) {
+    // Only update CTA URLs when inside href="..." or href='...'
+    return content.replace(
+      /(href\s*=\s*(['"]))(https?:\/\/(?:www\.)?toolbit\.ai\/submit\/?)([\w\-.~:/?#\[\]@!$&'()*+,;=]*)?(\2)/gi,
+      (_match, prefix, quote, basePath, existingQuery) => {
+        const trackingUrl = buildTrackingUrl(basePath, existingQuery);
+        return `${prefix}${trackingUrl}${quote}`;
+      }
+    );
+  }
+
+  return content.replace(
+    /(https?:\/\/(?:www\.)?toolbit\.ai\/submit\/?)([\w\-.~:/?#\[\]@!$&'()*+,;=]*)?/gi,
+    (_match, basePath, existingQuery) => buildTrackingUrl(basePath, existingQuery)
   );
 }
 
@@ -1387,8 +1408,8 @@ export async function sendOutreachLeadEmailAction(
 
       // Specifically inject outreach tracking into Toolbit CTA destination links (e.g. toolbit.ai/submit)
       // leaving generic brand links (e.g. homepage, contact) untouched.
-      const finalHtml = appendOutreachCtaParams(rawHtml, lead.id, input.templateId);
-      const finalText = rawText ? appendOutreachCtaParams(rawText, lead.id, input.templateId) : undefined;
+      const finalHtml = appendOutreachCtaParams(rawHtml, lead.id, input.templateId, { isHtml: true });
+      const finalText = rawText ? appendOutreachCtaParams(rawText, lead.id, input.templateId, { isHtml: false }) : undefined;
 
       const result = await sendResendEmail({
         from: fromAddress,
