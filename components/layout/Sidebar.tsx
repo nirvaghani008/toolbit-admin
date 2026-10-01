@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useAdmin } from '@/contexts/AdminContext';
+import { cn } from '@/lib/utils';
 import {
   ChevronLeft, ChevronDown,
   LayoutDashboard, Wrench, FileText, Inbox,
@@ -186,44 +188,70 @@ export default function Sidebar({
         {collapsed ? (
           <div
             onClick={onToggle}
-            className="flex items-center justify-center cursor-pointer group"
+            className="flex items-center justify-center cursor-pointer group w-full py-2"
             title="Open Sidebar"
           >
-            <div className="flex items-center justify-center shrink-0 w-10 h-10 rounded-xl overflow-hidden shadow-xs transition-transform group-hover:scale-105">
-              <img
-                src="/images/logo.png"
-                alt="Toolbit Logo"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  (e.target as HTMLImageElement).parentElement!.innerHTML = '🤖';
-                }}
+            <div className="relative flex items-center justify-center shrink-0">
+              <Image
+                src="/logo-icon.png"
+                alt="Toolbit.ai"
+                width={32}
+                height={32}
+                priority
+                className="w-7.5 h-7.5 p-0.5 object-contain transition-transform group-hover:rotate-[360deg] duration-[1200ms]"
+                style={{
+                  width: 'auto',
+                  height: 'auto',
+                  transitionTimingFunction: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                } as React.CSSProperties}
               />
             </div>
           </div>
         ) : (
           <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center shrink-0 w-10 h-10 rounded-xl overflow-hidden shadow-xs">
-                <img
-                  src="/images/logo.png"
-                  alt="Toolbit Logo"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    (e.target as HTMLImageElement).parentElement!.innerHTML = '🤖';
-                  }}
+            <Link
+              href="/admin/dashboard"
+              className="group flex items-center gap-2.5 transition-all duration-300 shrink-0 select-none cursor-pointer"
+              aria-label="Toolbit.ai Admin Panel"
+            >
+              <div className="relative block shrink-0">
+                <Image
+                  src="/logo-icon.png"
+                  alt="Toolbit.ai"
+                  width={32}
+                  height={32}
+                  priority
+                  className="w-7.5 h-7.5 p-0.5 object-contain transition-transform group-hover:rotate-[360deg] duration-[1200ms]"
+                  style={{
+                    width: 'auto',
+                    height: 'auto',
+                    transitionTimingFunction: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                  } as React.CSSProperties}
                 />
               </div>
-              <div className="whitespace-nowrap">
-                <div className="text-[14px] font-bold text-zinc-950 dark:text-[var(--text-primary)] leading-tight tracking-tight">
-                  Toolbit
-                </div>
-                <div className="text-[9px] text-zinc-400 dark:text-[var(--text-muted)] font-bold tracking-wider uppercase">
+              <div className="flex flex-col whitespace-nowrap">
+                <span 
+                  className={cn(
+                    "font-bold bg-gradient-to-r from-teal-600 via-teal-500 to-emerald-500 dark:from-teal-400 dark:via-teal-300 dark:to-cyan-400 bg-clip-text text-transparent tracking-tight whitespace-nowrap transition-all duration-300 group-hover:from-teal-500 group-hover:via-emerald-400 group-hover:to-cyan-500 text-[16.5px] leading-tight"
+                  )}
+                  style={{
+                    WebkitBackfaceVisibility: 'hidden',
+                    backfaceVisibility: 'hidden',
+                    WebkitTransform: 'translate3d(0, 0, 0)',
+                    transform: 'translate3d(0, 0, 0)',
+                    WebkitFontSmoothing: 'antialiased',
+                    MozOsxFontSmoothing: 'grayscale',
+                    willChange: 'transform',
+                    isolation: 'isolate',
+                  } as React.CSSProperties}
+                >
+                  Toolbit.ai
+                </span>
+                <span className="text-[9px] text-zinc-400 dark:text-[var(--text-muted)] font-bold tracking-wider uppercase leading-tight mt-0.5">
                   ADMIN PANEL
-                </div>
+                </span>
               </div>
-            </div>
+            </Link>
 
             <button
               onClick={() => {

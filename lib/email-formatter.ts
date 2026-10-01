@@ -9,6 +9,41 @@
  * - Typography: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
  */
 
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/**
+ * Escapes a plain-text value for HTML text and (quoted) attribute contexts.
+ * Use for untrusted values (e.g. scraped tool names / URLs) inserted into email HTML.
+ */
+export function escapeHtml(value: string | null | undefined): string {
+  return (value || '').replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
+}
+
+/**
+ * Returns the URL if it is an absolute http(s) URL ("foo.ai/x" is treated as https://foo.ai/x),
+ * otherwise ''. Prevents javascript:, data: and other schemes from ending up in links.
+ */
+export function safeHttpUrl(value: string | null | undefined): string {
+  let url = (value || '').trim();
+  if (!url || /\s/.test(url)) return '';
+  if (!/^https?:\/\//i.test(url)) {
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+(?:[/?#]|$)/i.test(url)) return '';
+    url = `https://${url}`;
+  }
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:' ? url : '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Formats a single text line: auto-links URLs and bold text.
  */
@@ -18,8 +53,8 @@ export function formatEmailLine(line: string): string {
     /(https?:\/\/[^\s<"']+)/g,
     '<a href="$1" style="color: #0d9488; text-decoration: underline; font-weight: 500;" target="_blank">$1</a>'
   );
-  // Convert markdown bold **text** to styled strong
-  result = result.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #18181b; font-weight: 700;">$1</strong>');
+  // Convert markdown bold **text** to styled strong (font-weight: 600)
+  result = result.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #18181b; font-weight: 600;">$1</strong>');
   return result;
 }
 
@@ -42,17 +77,17 @@ export function normalizeEmailBodyHtml(content: string): string {
         // Check if paragraph is an ordered list (1. / 2.)
         if (lines.length > 0 && lines.every((l) => /^\d+[\.\)]\s+/.test(l.trim()))) {
           const items = lines
-            .map((l) => `<li style="margin-bottom: 8px;">${formatEmailLine(l.replace(/^\d+[\.\)]\s+/, ''))}</li>`)
+            .map((l) => `<li style="margin-bottom: 8px; list-style-type: decimal !important; display: list-item !important;">${formatEmailLine(l.replace(/^\d+[\.\)]\s+/, ''))}</li>`)
             .join('');
-          return `<ol style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px;">${items}</ol>`;
+          return `<ol style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px; list-style-type: decimal !important; list-style: decimal outside !important;">${items}</ol>`;
         }
 
         // Check if paragraph is an unordered list (• / - / *)
         if (lines.length > 0 && lines.every((l) => /^[\-\*•]\s+/.test(l.trim()))) {
           const items = lines
-            .map((l) => `<li style="margin-bottom: 8px;">${formatEmailLine(l.replace(/^[\-\*•]\s+/, ''))}</li>`)
+            .map((l) => `<li style="margin-bottom: 8px; list-style-type: disc !important; display: list-item !important;">${formatEmailLine(l.replace(/^[\-\*•]\s+/, ''))}</li>`)
             .join('');
-          return `<ul style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px;">${items}</ul>`;
+          return `<ul style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px; list-style-type: disc !important; list-style: disc outside !important;">${items}</ul>`;
         }
 
         // Check if signature block (starts with Best regards, Regards, Thanks, etc.)
@@ -75,8 +110,8 @@ export function normalizeEmailBodyHtml(content: string): string {
   formattedHtml = formattedHtml.replace(/border-top:\s*1px\s+solid\s+#[a-zA-Z0-9]+;?/gi, '');
   formattedHtml = formattedHtml.replace(/padding-top:\s*18px;?/gi, '');
 
-  // Convert remaining markdown bold **text** to styled strong
-  formattedHtml = formattedHtml.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #18181b; font-weight: 700;">$1</strong>');
+  // Convert remaining markdown bold **text** to styled strong (font-weight: 600)
+  formattedHtml = formattedHtml.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #18181b; font-weight: 600;">$1</strong>');
 
   // Convert raw URLs not inside href or tags into styled links
   formattedHtml = formattedHtml.replace(
@@ -98,13 +133,13 @@ export function normalizeEmailBodyHtml(content: string): string {
     return `<p style="margin: 0 0 18px 0; line-height: 1.65; color: #3f3f46; font-size: 15px;" ${attrs}>`;
   });
 
-  // Apply explicit inline styles to strong, a, ul, ol, li if not already styled
+  // Apply explicit inline styles to strong, a, ul, ol, li if not already styled (font-weight: 600)
   formattedHtml = formattedHtml
-    .replace(/<strong(?:\s+[^>]*)?>/gi, '<strong style="color: #18181b; font-weight: 700;">')
+    .replace(/<strong(?:\s+[^>]*)?>/gi, '<strong style="color: #18181b; font-weight: 600;">')
     .replace(/<a\s+(?!style=)/gi, '<a style="color: #0d9488; text-decoration: underline; font-weight: 500;" ')
-    .replace(/<ul(?:\s+[^>]*)?>/gi, '<ul style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px;">')
-    .replace(/<ol(?:\s+[^>]*)?>/gi, '<ol style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px;">')
-    .replace(/<li(?:\s+[^>]*)?>/gi, '<li style="margin-bottom: 8px; line-height: 1.65;">');
+    .replace(/<ul(?:\s+[^>]*)?>/gi, '<ul style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px; list-style-type: disc !important; list-style: disc outside !important;">')
+    .replace(/<ol(?:\s+[^>]*)?>/gi, '<ol style="margin: 0 0 20px 0; padding-left: 24px; line-height: 1.65; color: #3f3f46; font-size: 15px; list-style-type: decimal !important; list-style: decimal outside !important;">')
+    .replace(/<li(?:\s+[^>]*)?>/gi, '<li style="margin-bottom: 8px; line-height: 1.65; list-style-type: inherit !important; display: list-item !important;">');
 
   return formattedHtml;
 }
@@ -140,10 +175,11 @@ export function htmlBodyToFullEmailHtml(innerHtml: string): string {
     img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
     body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #f9f8f6; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
     p { margin: 0 0 18px 0 !important; line-height: 1.65 !important; color: #3f3f46 !important; font-size: 15px !important; }
-    strong { color: #18181b !important; font-weight: 700 !important; }
+    strong { color: #18181b !important; font-weight: 600 !important; }
     a { color: #0d9488 !important; text-decoration: underline !important; font-weight: 500 !important; }
-    ul, ol { margin: 0 0 20px 0 !important; padding-left: 24px !important; line-height: 1.65 !important; color: #3f3f46 !important; }
-    li { margin-bottom: 8px !important; }
+    ul { margin: 0 0 20px 0 !important; padding-left: 24px !important; line-height: 1.65 !important; color: #3f3f46 !important; list-style-type: disc !important; list-style: disc outside !important; }
+    ol { margin: 0 0 20px 0 !important; padding-left: 24px !important; line-height: 1.65 !important; color: #3f3f46 !important; list-style-type: decimal !important; list-style: decimal outside !important; }
+    li { margin-bottom: 8px !important; display: list-item !important; list-style-type: inherit !important; }
     @media only screen and (max-width: 600px) {
       .responsive-table { width: 100% !important; }
       .mobile-padding { padding-left: 20px !important; padding-right: 20px !important; }
@@ -158,27 +194,11 @@ export function htmlBodyToFullEmailHtml(innerHtml: string): string {
           
           <!-- Header -->
           <tr>
-            <td style="padding: 24px 32px 18px 32px; border-bottom: 1px solid #f4f4f5;" class="mobile-padding">
-              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
-                <tr>
-                  <td align="left" valign="middle">
-                    <table role="presentation" border="0" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td valign="middle" style="padding-right: 10px;">
-                          <a href="https://www.toolbit.ai/" target="_blank" style="text-decoration: none; border: 0; display: block;">
-                            <img src="https://www.toolbit.ai/apple-icon.png" alt="Toolbit.ai Logo" width="28" height="28" border="0" style="display: block; width: 28px; height: 28px; border: 0; outline: none; text-decoration: none; border-radius: 6px;" />
-                          </a>
-                        </td>
-                        <td valign="middle">
-                          <a href="https://www.toolbit.ai/" target="_blank" style="text-decoration: none; border: 0;">
-                            <span style="font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 20px; font-weight: 700; color: #0d9488; letter-spacing: -0.6px; text-decoration: none;">Toolbit.ai</span>
-                          </a>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+            <td style="padding: 24px 32px 18px 32px; background-color: #fcfbfa; border-bottom: 1px solid #f4f4f5; text-align: left;" class="mobile-padding">
+              <a href="https://www.toolbit.ai/" target="_blank" style="text-decoration: none; display: inline-block;">
+                <img src="https://www.toolbit.ai/logo-icon.png" alt="Toolbit.ai Logo" width="28" height="28" style="display: inline-block; vertical-align: middle; margin-right: 8px; width: 28px; height: 28px; border: 0;" />
+                <span style="display: inline-block; vertical-align: middle; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 20px; font-weight: 750; letter-spacing: -0.8px; color: #0d9488;">Toolbit.ai</span>
+              </a>
             </td>
           </tr>
 
@@ -191,16 +211,19 @@ export function htmlBodyToFullEmailHtml(innerHtml: string): string {
 
           <!-- Footer (Centered with Copyright on New Line) -->
           <tr>
-            <td align="center" style="padding: 20px 32px 24px 32px; background-color: #faf9f7; border-top: 1px solid #f4f4f5; text-align: center;" class="mobile-padding">
-              <p style="margin: 0 0 8px 0; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 12px; color: #71717a; line-height: 1.5; text-align: center;">
-                You received this email regarding AI tool discovery and partnership opportunities on Toolbit.ai.
+            <td align="center" style="padding: 22px 24px 24px 24px; background-color: #fcfbfa; border-top: 1px solid #f4f4f5; text-align: center;" class="mobile-padding">
+              <p style="margin: 0 0 0 0 !important; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 13px !important; color: #52525b !important; line-height: 1.4 !important; text-align: center;">
+                You received this email regarding AI tool discovery and opportunities on Toolbit.ai.
               </p>
-              <p style="margin: 0 0 6px 0; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 12px; color: #71717a; line-height: 1.5; text-align: center;">
-                <a href="https://www.toolbit.ai/" style="color: #0d9488; text-decoration: underline;" target="_blank">Home</a> &middot;
-                <a href="https://www.toolbit.ai/contact" style="color: #0d9488; text-decoration: underline;" target="_blank">Contact</a>
+              <p style="margin: 4px 0 12px 0 !important; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11px !important; color: #a1a1aa !important; line-height: 1.4 !important; text-align: center;">
+                Feel free to reply this mail or reach out to us at <a href="mailto:contact@toolbit.ai" style="color: #a1a1aa !important; text-decoration: underline !important; font-weight: 400 !important;">contact@toolbit.ai</a>.
               </p>
-              <p style="margin: 0; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 12px; color: #a1a1aa; line-height: 1.5; text-align: center;">
-                &copy; ${currentYear} Toolbit.ai. All rights reserved.
+              <div style="margin-bottom: 12px;">
+                <a href="https://www.toolbit.ai/" style="color: #71717a; text-decoration: none; font-weight: 600; font-size: 12px; margin: 0 6px;" target="_blank">Home</a> &middot;
+                <a href="https://www.toolbit.ai/contact" style="color: #71717a; text-decoration: none; font-weight: 600; font-size: 12px; margin: 0 6px;" target="_blank">Contact</a>
+              </div>
+              <p style="margin: 0 !important; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, Arial, sans-serif; font-size: 11px !important; color: #94a3b8 !important; line-height: 1.4 !important; text-align: center;">
+                &copy; ${currentYear} Toolbit AI. All rights reserved.
               </p>
             </td>
           </tr>

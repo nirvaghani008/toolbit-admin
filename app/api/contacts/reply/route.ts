@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin, verifyAdminPermission } from '@/lib/supabase-admin';
-import { sendEmail } from '@/lib/email/transporter';
+import { sendEmail, resolveEffectiveBcc } from '@/lib/email/transporter';
 import { generateContactReplyEmail } from '@/lib/email/templates/contact-reply';
 import { getReplyHistoryList, ContactReplyItem } from '@/lib/contacts';
 
@@ -9,6 +9,7 @@ const replyRequestSchema = z.object({
   contact_id: z.number().int().positive(),
   replyText: z.string().default(''),
   selectedStatus: z.enum(['replied', 'hide']).default('replied'),
+  bcc: z.union([z.string().email(), z.array(z.string().email())]).optional(),
 }).superRefine((data, ctx) => {
   if (data.selectedStatus === 'replied' && !data.replyText.trim()) {
     ctx.addIssue({
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { contact_id, replyText, selectedStatus } = parseResult.data;
+    const { contact_id, replyText, selectedStatus, bcc } = parseResult.data;
 
     // 3. Fetch the verified contact record from Supabase
     const { data: contact, error: fetchError } = await supabaseAdmin
@@ -82,12 +83,14 @@ export async function POST(req: NextRequest) {
         submittedAt: contact.created_at,
       });
 
-      // Dispatch through Hostinger SMTP transporter
+      // Dispatch through Hostinger SMTP transporter with resolved BCC
+      const bccAddress = resolveEffectiveBcc(bcc);
       const sendResult = await sendEmail({
         to: recipientEmail,
         subject: emailContent.subject,
         html: emailContent.html,
         text: emailContent.text,
+        bcc: bccAddress,
       });
 
       if (!sendResult.success) {

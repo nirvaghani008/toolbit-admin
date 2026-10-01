@@ -27,6 +27,7 @@ export const supabaseAdmin = createClient(
   }
 );
 
+
 export type AdminAction = 'view' | 'insert' | 'update' | 'delete';
 
 export interface VerifyAuthResult {

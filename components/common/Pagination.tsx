@@ -4,19 +4,22 @@ import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 interface PaginationProps {
   totalCount: number;
   pageSize: number;
   currentPage: number;
   onPageChange: (page: number) => void;
+  className?: string;
 }
 
 export default function Pagination({
   totalCount,
   pageSize,
   currentPage,
-  onPageChange
+  onPageChange,
+  className
 }: PaginationProps) {
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
 
@@ -110,7 +113,12 @@ export default function Pagination({
   const end = Math.min(currentPage * pageSize, totalCount);
 
   return (
-    <div className="px-6 py-4 bg-[var(--bg-elevated)]/20 border-t border-[var(--border-color)] flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div
+      className={cn(
+        'px-6 py-4 bg-[var(--bg-elevated)]/20 border-t border-[var(--border-color)] flex flex-col sm:flex-row items-center justify-between gap-4',
+        className
+      )}
+    >
       <div className="text-xs font-medium text-[var(--text-muted)]">
         Showing <span className="text-[var(--text-primary)] font-bold">{start}</span> to <span className="text-[var(--text-primary)] font-bold">{end}</span> of <span className="text-[var(--text-primary)] font-bold">{totalCount}</span>
       </div>

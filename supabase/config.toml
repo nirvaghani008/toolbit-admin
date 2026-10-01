@@ -1,0 +1,16 @@
+# Supabase CLI configuration.
+# Only the settings this repo needs are listed; everything else uses CLI defaults.
+# `project_id` is a local identifier only - the remote project is chosen with
+# `supabase link --project-ref <ref>` or `--project-ref` on each command.
+project_id = "toolbit-admin"
+
+# Resend calls this webhook without a Supabase JWT. Requests are authenticated
+# inside the function by verifying the Svix signature (RESEND_WEBHOOK_SECRET).
+[functions.resend-webhook]
+verify_jwt = false
+
+# Toolbit app calls this webhook without a Supabase JWT. Requests are authenticated
+# inside the function by verifying the pre-shared Bearer secret (OUTREACH_CONVERSION_SECRET).
+[functions.record-conversion]
+verify_jwt = false
+

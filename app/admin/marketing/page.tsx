@@ -50,6 +50,7 @@ import {
   RotateCcw,
   Info,
   Clock,
+  Users,
 } from 'lucide-react';
 import {
   getMarketingTemplatesAction,
@@ -65,17 +66,20 @@ import type { ResendEmailListItem, ResendEmailDetails } from '@/lib/resend';
 import { textToEmailHtml, htmlBodyToFullEmailHtml } from '@/lib/email-formatter';
 import RichTextEditor from '@/components/common/RichTextEditor';
 import MarketingToolSearchSelect from '@/components/marketing/MarketingToolSearchSelect';
+import OutreachLeadsTable from '@/components/marketing/OutreachLeadsTable';
+import ResendReceivedHistory from '@/components/marketing/ResendReceivedHistory';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Tab definitions
 // ────────────────────────────────────────────────────────────────────────────
 
-type TabId = 'templates' | 'send' | 'history';
+type TabId = 'leads' | 'templates' | 'send' | 'history';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: 'leads', label: 'Outreach Leads', icon: <Users size={15} /> },
   { id: 'templates', label: 'Templates', icon: <FileEdit size={15} /> },
-  { id: 'send', label: 'Send Email', icon: <Send size={15} /> },
-  { id: 'history', label: 'Resend Sent History', icon: <History size={15} /> },
+  { id: 'send', label: 'Direct Composer', icon: <Send size={15} /> },
+  { id: 'history', label: 'Resend History', icon: <History size={15} /> },
 ];
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -86,6 +90,8 @@ const TEMPLATE_ICONS: Record<string, React.ReactNode> = {
   sponsored_feature: <Megaphone size={18} />,
   new_tool_launch: <Sparkles size={18} />,
   affiliate_partnership: <Handshake size={18} />,
+  tool_relist: <RefreshCw size={18} />,
+  relist_launch: <RefreshCw size={18} />,
 };
 
 // Helper: Format a single editor line (bold and links)
@@ -114,17 +120,17 @@ function convertTextToEditorHtml(text: string): string {
       // Check ordered list (1. / 2.)
       if (lines.length > 0 && lines.every((l) => /^\d+[\.\)]\s+/.test(l.trim()))) {
         const items = lines
-          .map((l) => `<li>${formatEditorLine(l.replace(/^\d+[\.\)]\s+/, ''))}</li>`)
+          .map((l) => `<li style="list-style-type: decimal !important; margin-bottom: 8px;">${formatEditorLine(l.replace(/^\d+[\.\)]\s+/, ''))}</li>`)
           .join('');
-        return `<ol>${items}</ol>`;
+        return `<ol style="list-style-type: decimal !important; padding-left: 24px; margin-bottom: 18px;">${items}</ol>`;
       }
 
       // Check unordered list (- / * / •)
       if (lines.length > 0 && lines.every((l) => /^[\-\*•]\s+/.test(l.trim()))) {
         const items = lines
-          .map((l) => `<li>${formatEditorLine(l.replace(/^[\-\*•]\s+/, ''))}</li>`)
+          .map((l) => `<li style="list-style-type: disc !important; margin-bottom: 8px;">${formatEditorLine(l.replace(/^[\-\*•]\s+/, ''))}</li>`)
           .join('');
-        return `<ul>${items}</ul>`;
+        return `<ul style="list-style-type: disc !important; padding-left: 24px; margin-bottom: 18px;">${items}</ul>`;
       }
 
       // Normal paragraph
@@ -170,7 +176,7 @@ export default function MarketingMailPage() {
   const canView = isSuperAdmin || hasPermission('marketing', 'view');
   const canUpdate = isSuperAdmin || hasPermission('marketing', 'update');
 
-  const [activeTab, setActiveTab] = useState<TabId>('templates');
+  const [activeTab, setActiveTab] = useState<TabId>('leads');
   const [templates, setTemplates] = useState<Record<string, MarketingTemplate>>({});
   const [resendHistory, setResendHistory] = useState<ResendEmailListItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -208,6 +214,8 @@ export default function MarketingMailPage() {
   // History filtering
   const [historySearch, setHistorySearch] = useState('');
   const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
+  // Resend History sub-view: sent (existing) or received (Resend Receiving API)
+  const [historyView, setHistoryView] = useState<'sent' | 'received'>('sent');
 
   // Send state
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -269,9 +277,12 @@ export default function MarketingMailPage() {
   // Helper: Generate populated template HTML & Subject
   const getSubstitutedTemplateData = useCallback(
     (tmpl: MarketingTemplate, vars: Record<string, string>, recipientName?: string) => {
+      const trimmedName = recipientName?.trim();
+      const firstName = trimmedName ? trimmedName.split(' ')[0] : 'there';
       const allVars: Record<string, string> = {
         ...vars,
-        recipient_name: recipientName || 'there',
+        recipient_name: trimmedName || 'there',
+        first_name: firstName,
       };
 
       const toolName = (allVars.tool_name || '').trim();
@@ -283,7 +294,12 @@ export default function MarketingMailPage() {
         bodyVars.tool_name = `[${toolName}](${toolSiteUrl})`;
       }
 
-      const rawText = tmpl.text;
+      let rawText = tmpl.text;
+      // In "If you want {{tool_name}}", do not use link tag, keep as normal plain tool name
+      rawText = rawText.replace(
+        /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*tool_name\s*\}\}/gi,
+        `$1${toolName}`
+      );
       const substitutedText = substituteVariablesInContent(rawText, bodyVars);
       const substitutedHtml = convertTextToEditorHtml(substitutedText);
 
@@ -551,7 +567,11 @@ export default function MarketingMailPage() {
         : textToEmailHtml(template.text);
     setPreviewHtml(html);
     setPreviewSubject(template.subject);
-    setPreviewFrom(`${template.from_name} <${template.from_email}>`);
+    const fromName =
+      !template.from_name || template.from_name === 'Toolbit Team'
+        ? 'Toolbit AI'
+        : template.from_name;
+    setPreviewFrom(`${fromName} <${template.from_email}>`);
     setPreviewDialogOpen(true);
   };
 
@@ -560,10 +580,12 @@ export default function MarketingMailPage() {
     if (!selectedTemplate) return;
     const firstRecipient = recipients.find((r) => r.email.trim() || r.name.trim());
     const firstRecipientName = firstRecipient?.name?.trim() || 'there';
+    const firstWord = firstRecipientName ? firstRecipientName.split(' ')[0] : 'there';
 
     const allVars: Record<string, string> = {
       ...sendVariables,
       recipient_name: firstRecipientName,
+      first_name: firstWord || firstRecipientName,
     };
 
     let baseHtml = '';
@@ -589,13 +611,24 @@ export default function MarketingMailPage() {
       bodyVars.tool_name = `<a href="${toolSiteUrl}" target="_blank" style="color: #0d9488; text-decoration: underline; font-weight: 600;">${toolName}</a>`;
     }
 
+    let cleanBaseHtml = baseHtml;
+    // In "If you want {{tool_name}}", do not use link tag, keep as normal plain tool name
+    cleanBaseHtml = cleanBaseHtml.replace(
+      /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*tool_name\s*\}\}/gi,
+      `$1${toolName}`
+    );
+
     // Apply robust substitution for all variable types
-    const finalHtml = substituteVariablesInContent(baseHtml, bodyVars);
+    const finalHtml = substituteVariablesInContent(cleanBaseHtml, bodyVars);
     const finalSubj = substituteVariablesInContent(baseSubj, { ...allVars, tool_name: toolName });
 
     setPreviewHtml(finalHtml);
     setPreviewSubject(finalSubj);
-    setPreviewFrom(`${selectedTemplate.from_name} <${selectedTemplate.from_email}>`);
+    const fromName =
+      !selectedTemplate.from_name || selectedTemplate.from_name === 'Toolbit Team'
+        ? 'Toolbit AI'
+        : selectedTemplate.from_name;
+    setPreviewFrom(`${fromName} <${selectedTemplate.from_email}>`);
     setPreviewDialogOpen(true);
   };
 
@@ -922,6 +955,17 @@ export default function MarketingMailPage() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* TAB 0: OUTREACH LEADS (marketing_outreach_leads) */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'leads' && (
+        <OutreachLeadsTable
+          token={authToken}
+          templates={templates}
+          onEmailSentSuccess={() => fetchData(true)}
+        />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
       {/* TAB 1: TEMPLATES */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'templates' && (
@@ -932,7 +976,7 @@ export default function MarketingMailPage() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {Object.values(templates).map((template) => {
               const icon = TEMPLATE_ICONS[template.id] || <Mail size={18} />;
 
@@ -968,7 +1012,7 @@ export default function MarketingMailPage() {
                       <div className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 text-[11px]">
                         <span>From:</span>
                         <span className="truncate">
-                          {template.from_name} &lt;{template.from_email}&gt;
+                          {template.from_name === 'Toolbit Team' || !template.from_name ? 'Toolbit AI' : template.from_name} &lt;{template.from_email}&gt;
                         </span>
                       </div>
                     </div>
@@ -998,6 +1042,18 @@ export default function MarketingMailPage() {
                     >
                       <Eye size={13} />
                       Preview
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(template.text);
+                        setSendSuccess(`Copied "${template.name}" plain text for DM!`);
+                      }}
+                      className="h-8 text-xs px-2.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                      title="Copy plain text for DM / outreach"
+                    >
+                      <Copy size={13} />
                     </Button>
                     {canUpdate && (
                       <Button
@@ -1034,7 +1090,7 @@ export default function MarketingMailPage() {
               </label>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {Object.values(templates).map((template) => {
                 const isSelected = selectedTemplateId === template.id;
                 const icon = TEMPLATE_ICONS[template.id] || <Mail size={18} />;
@@ -1144,7 +1200,7 @@ export default function MarketingMailPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {selectedTemplate.variables
-                      .filter((v) => v !== '{{recipient_name}}' && v !== '{{recipient_email}}')
+                      .filter((v) => v !== '{{recipient_name}}' && v !== '{{recipient_email}}' && v !== '{{first_name}}')
                       .map((rawVar) => {
                         const cleanKey = rawVar.replace(/[{}]/g, '');
                         const label = cleanKey
@@ -1487,9 +1543,42 @@ export default function MarketingMailPage() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* TAB 3: RESEND SENT HISTORY (Live via Resend REST API) */}
+      {/* TAB 3: RESEND HISTORY – Sent / Received (Live via Resend REST API) */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'history' && (
+        <div
+          role="tablist"
+          aria-label="Resend history view"
+          className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 w-fit"
+        >
+          {(['sent', 'received'] as const).map((view) => {
+            const isActive = historyView === view;
+            return (
+              <button
+                key={view}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setHistoryView(view)}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xs font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                }`}
+              >
+                {view === 'sent' ? <Send size={13} /> : <Mail size={13} />}
+                {view === 'sent' ? 'Sent' : 'Received'}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {activeTab === 'history' && historyView === 'received' && (
+        <ResendReceivedHistory token={authToken} />
+      )}
+
+      {activeTab === 'history' && historyView === 'sent' && (
         <div className="space-y-6">
           {/* Stats Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1708,7 +1797,7 @@ export default function MarketingMailPage() {
                 <Input
                   value={editForm.from_name}
                   onChange={(e) => setEditForm({ ...editForm, from_name: e.target.value })}
-                  placeholder="e.g. Toolbit Team"
+                  placeholder="e.g. Toolbit AI"
                   className="h-9 text-xs"
                 />
               </div>
@@ -1767,12 +1856,12 @@ export default function MarketingMailPage() {
                     key={v}
                     type="button"
                     onClick={() => {
-                      const boldTag = v === '{{recipient_name}}' ? v : `**${v}**`;
+                      const boldTag = v === '{{recipient_name}}' || v === '{{first_name}}' ? v : `**${v}**`;
                       setEditForm({ ...editForm, text: editForm.text + ` ${boldTag} ` });
                     }}
                     className="px-2 py-0.5 rounded text-[10px] font-mono bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:border-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors cursor-pointer"
                   >
-                    + {v === '{{recipient_name}}' ? v : `**${v}**`}
+                    + {v === '{{recipient_name}}' || v === '{{first_name}}' ? v : `**${v}**`}
                   </button>
                 ))}
               </div>
@@ -1855,7 +1944,7 @@ export default function MarketingMailPage() {
           <div className="px-5 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-100 dark:border-zinc-800 text-xs space-y-1">
             <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
               <span className="text-zinc-400 w-12 shrink-0">From:</span>
-              <span className="font-medium truncate">{previewFrom || 'Toolbit Team <team@mail.toolbit.ai>'}</span>
+              <span className="font-medium truncate">{previewFrom || 'Toolbit AI <team@mail.toolbit.ai>'}</span>
             </div>
             <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
               <span className="text-zinc-400 w-12 shrink-0">Subject:</span>
@@ -1871,7 +1960,7 @@ export default function MarketingMailPage() {
               }`}
             >
               <div
-                className="bg-white text-zinc-900 rounded-xl shadow-md border border-zinc-200 overflow-hidden"
+                className="bg-white text-zinc-900 rounded-xl shadow-md border border-zinc-200 overflow-hidden email-preview-container [&_ul]:!list-disc [&_ul]:!pl-6 [&_ol]:!list-decimal [&_ol]:!pl-6 [&_li]:!list-item"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             </div>
@@ -1986,7 +2075,7 @@ export default function MarketingMailPage() {
                   </span>
                   <div className="p-4 rounded-xl bg-white text-zinc-900 border border-zinc-200 shadow-xs max-h-80 overflow-y-auto">
                     <div
-                      className="bg-white text-zinc-900 selection:bg-zinc-200"
+                      className="bg-white text-zinc-900 selection:bg-zinc-200 email-preview-container [&_ul]:!list-disc [&_ul]:!pl-6 [&_ol]:!list-decimal [&_ol]:!pl-6 [&_li]:!list-item"
                       dangerouslySetInnerHTML={{ __html: historyDetailsEmail.html }}
                     />
                   </div>

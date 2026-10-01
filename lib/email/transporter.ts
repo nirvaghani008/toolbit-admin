@@ -50,12 +50,76 @@ export interface SendMailOptions {
   html: string;
   text: string;
   replyTo?: string;
+  bcc?: string | string[];
+  cc?: string | string[];
 }
 
 export interface SendMailResult {
   success: boolean;
   messageId?: string;
   error?: string;
+}
+
+/**
+ * Helper to parse, sanitize, and deduplicate email addresses.
+ * Removes empty values and optionally excludes primary recipient addresses.
+ */
+export function sanitizeEmailList(
+  input?: string | string[] | null,
+  exclude?: string | string[] | null
+): string[] | undefined {
+  if (!input) return undefined;
+
+  const rawList = Array.isArray(input)
+    ? input
+    : input.split(/[,;\n]+/).map((s) => s.trim());
+
+  const excludeSet = new Set<string>();
+  if (exclude) {
+    const rawExclude = Array.isArray(exclude)
+      ? exclude
+      : exclude.split(/[,;\n]+/).map((s) => s.trim());
+    rawExclude.forEach((e) => {
+      if (e) excludeSet.add(e.toLowerCase());
+    });
+  }
+
+  const seen = new Set<string>();
+  const sanitized: string[] = [];
+
+  for (const item of rawList) {
+    const email = item.trim();
+    if (!email || !email.includes('@')) continue;
+    const lower = email.toLowerCase();
+    if (excludeSet.has(lower) || seen.has(lower)) continue;
+    seen.add(lower);
+    sanitized.push(email);
+  }
+
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
+/**
+ * Resolves the effective BCC recipient:
+ * 1. Explicit BCC passed in the request takes precedence.
+ * 2. If no explicit BCC is provided and ENABLE_DEFAULT_BCC is not 'false'/'0', falls back to DEFAULT_BCC_EMAIL.
+ * 3. Returns undefined if disabled or unconfigured.
+ */
+export function resolveEffectiveBcc(
+  explicitBcc?: string | string[] | null
+): string | string[] | undefined {
+  if (explicitBcc) return explicitBcc;
+
+  const isBccEnabled =
+    process.env.ENABLE_DEFAULT_BCC !== 'false' &&
+    process.env.ENABLE_DEFAULT_BCC !== '0';
+
+  if (isBccEnabled && process.env.DEFAULT_BCC_EMAIL) {
+    const defaultEmail = process.env.DEFAULT_BCC_EMAIL.trim();
+    if (defaultEmail) return defaultEmail;
+  }
+
+  return undefined;
 }
 
 /**
@@ -67,6 +131,8 @@ export async function sendEmail({
   html,
   text,
   replyTo,
+  bcc,
+  cc,
 }: SendMailOptions): Promise<SendMailResult> {
   if (!isSMTPConfigured()) {
     const missing = [
@@ -84,6 +150,9 @@ export async function sendEmail({
   }
 
   try {
+    const sanitizedBcc = sanitizeEmailList(bcc, to);
+    const sanitizedCc = sanitizeEmailList(cc, to);
+
     const info = await transporter.sendMail({
       from: defaultFrom,
       to,
@@ -91,6 +160,8 @@ export async function sendEmail({
       text,
       html,
       replyTo: replyTo || defaultFrom,
+      bcc: sanitizedBcc,
+      cc: sanitizedCc,
     });
 
     return {

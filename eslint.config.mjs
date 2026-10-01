@@ -22,6 +22,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "scratch/**",
+    // Supabase Edge Functions run on Deno (npm:/jsr: imports, Deno globals); checked with `deno check` / `deno lint`.
+    "supabase/functions/**",
   ]),
 ]);
 

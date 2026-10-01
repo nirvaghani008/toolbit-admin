@@ -149,11 +149,6 @@ export function generateContactReplyEmail(params: ContactReplyTemplateParams): R
                 Hi ${safeName},
               </p>
 
-              <!-- Standard Courteous Acknowledgment -->
-              <p style="margin: 0 0 10px 0; font-size: 15px; line-height: 1.6; color: #52525b;">
-                Thank you for reaching out!
-              </p>
-
               <!-- Admin Response Message -->
               <div style="color: #18181b; margin-top: 16px;">
                 ${formattedReplyHtml}
@@ -162,7 +157,7 @@ export function generateContactReplyEmail(params: ContactReplyTemplateParams): R
               <!-- Sign-off -->
               <p style="margin: 28px 0 0 0; font-size: 14px; line-height: 1.5; color: #52525b;">
                 Best regards,<br>
-                <strong style="color: #18181b;">The Toolbit AI Team</strong><br>
+                <strong style="color: #18181b;">Toolbit AI</strong><br>
                 <a href="https://www.toolbit.ai" style="color: #0d9488; font-size: 13px; text-decoration: none; font-weight: 600;">toolbit.ai</a>
               </p>
 
@@ -214,7 +209,7 @@ ${replyMessage.trim()}
 
 ---
 Best regards,
-The Toolbit Team
+Toolbit AI
 https://www.toolbit.ai
 contact@toolbit.ai
 
