@@ -26,6 +26,7 @@ import {
   type MarketingOutreachLead,
   type OutreachLeadConversation,
 } from '@/app/admin/marketing/actions';
+import { getAllEmails } from '@/lib/marketing/business-emails';
 import {
   EMAIL_IFRAME_SANDBOX,
   buildSandboxedEmailDoc,
@@ -208,7 +209,7 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
           )}
           {message.template_id && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border bg-white text-zinc-600 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:border-zinc-700 font-mono">
-              {message.template_id}
+              {message.template_id === 'tool_relist' || message.template_id === 'relist_launch' ? 'tool_outreach' : message.template_id}
             </span>
           )}
           {attachments.map((a) => (
@@ -475,7 +476,7 @@ export default function LeadConversationDialog({
               <Button
                 size="sm"
                 onClick={() => onSendFollowUp(lead)}
-                disabled={!lead.business_emails?.length}
+                disabled={getAllEmails(lead).length === 0}
                 className="h-8 text-xs gap-1.5 bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-semibold cursor-pointer"
               >
                 <Send size={12} />

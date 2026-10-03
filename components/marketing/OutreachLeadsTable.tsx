@@ -32,14 +32,22 @@ import {
   Link as LinkIcon,
   MessageSquare,
   MessageSquareText,
+  Plus,
+  Edit2,
+  Sparkles,
 } from 'lucide-react';
 import {
   getMarketingOutreachLeadsAction,
   updateOutreachLeadStatusAction,
+  updateOutreachLeadEmailStatusAction,
   type MarketingOutreachLead,
   type OutreachLeadsStats,
   type MarketingTemplate,
 } from '@/app/admin/marketing/actions';
+import {
+  type BusinessEmailsMap,
+  type EmailDeliverabilityStatus,
+} from '@/lib/marketing/business-emails';
 import { formatRelativeTime } from '@/lib/marketing/conversation';
 import {
   LEAD_STATUS_OPTIONS as STATUS_OPTIONS,
@@ -52,6 +60,8 @@ import { LinkedinIcon, TwitterIcon } from './SocialIcons';
 import SendLeadEmailModal from './SendLeadEmailModal';
 import LeadConversationDialog from './LeadConversationDialog';
 import LeadDetailsDialog from './LeadDetailsDialog';
+import ManageLeadEmailsModal from './ManageLeadEmailsModal';
+import EmailDeliverabilityBadge from './EmailDeliverabilityBadge';
 
 /** Clicks on these (or inside them) keep their own behavior and never open the details dialog. */
 const ROW_CLICK_IGNORE_SELECTOR = 'a, button, input, select, textarea, label, [data-no-row-click]';
@@ -87,6 +97,7 @@ export default function OutreachLeadsTable({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [hasEmailOnly, setHasEmailOnly] = useState(false);
   const [hasRepliesOnly, setHasRepliesOnly] = useState(false);
+  const [isToolSubmissionOnly, setIsToolSubmissionOnly] = useState(false);
 
   // Conversation dialog (history is written by the Resend webhook)
   const [conversationLead, setConversationLead] = useState<MarketingOutreachLead | null>(null);
@@ -107,6 +118,9 @@ export default function OutreachLeadsTable({
   // Modal State
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [leadsForModal, setLeadsForModal] = useState<MarketingOutreachLead[]>([]);
+
+  // Email management modal
+  const [managingEmailsLead, setManagingEmailsLead] = useState<MarketingOutreachLead | null>(null);
 
   // Toast / notification
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -144,6 +158,7 @@ export default function OutreachLeadsTable({
           source: sourceFilter,
           hasEmailOnly,
           hasRepliesOnly,
+          isToolSubmissionOnly,
         });
 
         if (res.success && res.data) {
@@ -158,7 +173,7 @@ export default function OutreachLeadsTable({
         setIsRefreshing(false);
       }
     },
-    [token, page, pageSize, debouncedSearch, statusFilter, sourceFilter, hasEmailOnly, hasRepliesOnly]
+    [token, page, pageSize, debouncedSearch, statusFilter, sourceFilter, hasEmailOnly, hasRepliesOnly, isToolSubmissionOnly]
   );
 
   useEffect(() => {
@@ -237,6 +252,71 @@ export default function OutreachLeadsTable({
   const handleSendFollowUp = (lead: MarketingOutreachLead) => {
     setConversationLead(null);
     handleOpenSingleSend(lead);
+  };
+
+  // Handler when emails are updated (added, edited, deleted) for a lead
+  const handleEmailsUpdated = (leadId: string, updatedEmails: BusinessEmailsMap) => {
+    setLeads((prev) =>
+      prev.map((l) => {
+        if (l.id === leadId) {
+          const wasEmpty = Object.keys(l.business_emails || {}).length === 0;
+          const isNowEmpty = Object.keys(updatedEmails || {}).length === 0;
+
+          if (wasEmpty && !isNowEmpty) {
+            setStats((s) => ({ ...s, withEmails: s.withEmails + 1 }));
+          } else if (!wasEmpty && isNowEmpty) {
+            setStats((s) => ({ ...s, withEmails: Math.max(0, s.withEmails - 1) }));
+          }
+
+          return { ...l, business_emails: updatedEmails };
+        }
+        return l;
+      })
+    );
+
+    setManagingEmailsLead((prev) =>
+      prev && prev.id === leadId ? { ...prev, business_emails: updatedEmails } : prev
+    );
+  };
+
+  // Quick deliverability status toggle/change from the table badge
+  const handleEmailStatusChange = async (
+    leadId: string,
+    email: string,
+    newStatus: EmailDeliverabilityStatus
+  ) => {
+    // Optimistic UI update
+    setLeads((prev) =>
+      prev.map((l) => {
+        if (l.id === leadId) {
+          const curRec = l.business_emails?.[email];
+          return {
+            ...l,
+            business_emails: {
+              ...l.business_emails,
+              [email]: {
+                ...curRec,
+                status: newStatus,
+              },
+            },
+          };
+        }
+        return l;
+      })
+    );
+
+    try {
+      const res = await updateOutreachLeadEmailStatusAction(token, leadId, email, newStatus);
+      if (res.success && res.data) {
+        handleEmailsUpdated(leadId, res.data.business_emails);
+      } else {
+        console.error('Failed to update email deliverability status:', res.error);
+        fetchLeads(); // Revert from server
+      }
+    } catch (err) {
+      console.error('Error updating email deliverability status:', err);
+      fetchLeads();
+    }
   };
 
   // ── Lead details dialog ──
@@ -407,6 +487,7 @@ export default function OutreachLeadsTable({
                 <SelectItem value="toolify">Toolify</SelectItem>
                 <SelectItem value="theresanaiforthat">There&apos;s An AI</SelectItem>
                 <SelectItem value="codehype">CodeHype</SelectItem>
+                <SelectItem value="tool_submission">Tool Submissions</SelectItem>
               </Select>
             </div>
 
@@ -443,6 +524,24 @@ export default function OutreachLeadsTable({
             >
               <MessageSquareText size={13} />
               <span>Has Replies</span>
+            </button>
+
+            {/* Only Tool Submissions Toggle */}
+            <button
+              type="button"
+              aria-pressed={isToolSubmissionOnly}
+              onClick={() => {
+                setIsToolSubmissionOnly(!isToolSubmissionOnly);
+                setPage(1);
+              }}
+              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
+                isToolSubmissionOnly
+                  ? 'bg-amber-600 text-white dark:bg-amber-500 dark:text-zinc-900 border-amber-600 dark:border-amber-500 shadow-xs'
+                  : 'bg-zinc-50 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400'
+              }`}
+            >
+              <Sparkles size={13} className={isToolSubmissionOnly ? 'text-amber-100 dark:text-zinc-900' : 'text-amber-500'} />
+              <span>Tool Submissions</span>
             </button>
           </div>
 
@@ -516,7 +615,7 @@ export default function OutreachLeadsTable({
             </p>
           </div>
         ) : (
-          <Table containerClassName="max-h-[600px] 2xl:max-h-[680px] rounded-t-2xl pb-8" className="min-w-[1380px] border-collapse">
+          <Table containerClassName="max-h-[600px] 2xl:max-h-[680px] rounded-t-2xl table-scrollbar" className="min-w-[1520px] border-collapse">
             <TableHeader className="sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shadow-2xs">
               <TableRow>
                 {/* Select All Checkbox - Sticky Left */}
@@ -568,11 +667,11 @@ export default function OutreachLeadsTable({
             <TableBody className="divide-y divide-zinc-100 dark:divide-zinc-800/80">
                 {leads.map((lead) => {
                   const isSelected = selectedLeadIds.has(lead.id);
-                  const emails = lead.business_emails || [];
+                  const emailEntries = Object.entries(lead.business_emails || {});
                   const sources = Array.isArray(lead.sources) ? lead.sources : [];
                   const socials = lead.social_links || [];
                   const contactUrls = lead.contact_page_url || [];
-                  const hasEmail = emails.length > 0;
+                  const hasEmail = emailEntries.length > 0;
 
                   return (
                     <TableRow
@@ -613,6 +712,11 @@ export default function OutreachLeadsTable({
                             <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
                               {lead.tool_name}
                             </span>
+                            {(lead.metadata?.is_tool_submission === true || lead.metadata?.is_tool_submission === 'true') && (
+                              <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] px-1.5 py-0 font-medium shrink-0">
+                                Submitted Tool
+                              </Badge>
+                            )}
                             {lead.tool_site_url && (
                               <a
                                 href={lead.tool_site_url}
@@ -645,28 +749,90 @@ export default function OutreachLeadsTable({
                         </div>
                       </TableCell>
 
-                      {/* Business Emails (Badges) */}
-                      <TableCell className="px-6 py-3.5 min-w-[260px]">
+                      {/* Business Emails (Clean & Modern Layout) */}
+                      <TableCell className="px-6 py-3.5 min-w-[300px]">
                         {hasEmail ? (
-                          <div className="flex flex-col gap-1 max-w-[240px]">
-                            {emails.slice(0, 3).map((email) => (
-                              <span
-                                key={email}
-                                className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/80 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 w-fit truncate max-w-full"
-                                title={email}
-                              >
-                                <Mail size={11} className="text-zinc-400 shrink-0" />
-                                <span className="truncate">{email}</span>
-                              </span>
-                            ))}
-                            {emails.length > 3 && (
-                              <span className="text-[10px] text-zinc-400 font-medium pl-1">
-                                +{emails.length - 3} more emails
-                              </span>
-                            )}
+                          <div className="flex items-start justify-between gap-2 max-w-[320px]">
+                            <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+                              {emailEntries.slice(0, 2).map(([email, rawRecord], idx) => {
+                                const record =
+                                  typeof rawRecord === 'object' && rawRecord !== null
+                                    ? rawRecord
+                                    : { status: (rawRecord as any) || 'unverified' };
+
+                                return (
+                                  <div
+                                    key={email}
+                                    className="flex items-center gap-2 min-w-0"
+                                  >
+                                    <span
+                                      className="text-xs font-mono text-zinc-800 dark:text-zinc-200 truncate select-all"
+                                      title={email}
+                                    >
+                                      {email}
+                                    </span>
+
+
+                                    <EmailDeliverabilityBadge
+                                      email={email}
+                                      record={record}
+                                      size="sm"
+                                      showEmail={false}
+                                      showPrimaryBadge={false}
+                                      onStatusChange={(newStatus) =>
+                                        handleEmailStatusChange(lead.id, email, newStatus)
+                                      }
+                                    />
+                                  </div>
+                                );
+                              })}
+
+                              {emailEntries.length > 2 && (
+                                <button
+                                  type="button"
+                                  data-no-row-click
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setManagingEmailsLead(lead);
+                                  }}
+                                  className="text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 font-medium text-left cursor-pointer transition-colors w-fit"
+                                >
+                                  +{emailEntries.length - 2} more emails
+                                </button>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              data-no-row-click
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setManagingEmailsLead(lead);
+                              }}
+                              className="size-7 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center shrink-0 transition-colors cursor-pointer mt-0.5"
+                              title={`Manage emails for ${lead.tool_name}`}
+                              aria-label={`Manage emails for ${lead.tool_name}`}
+                            >
+                              <Edit2 size={12} />
+                            </button>
                           </div>
                         ) : (
-                          <span className="text-xs text-zinc-400 italic">No email found</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-zinc-400 italic">No email</span>
+                            <button
+                              type="button"
+                              data-no-row-click
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setManagingEmailsLead(lead);
+                              }}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                              title={`Add email for ${lead.tool_name}`}
+                            >
+                              <Plus size={11} />
+                              <span>Add</span>
+                            </button>
+                          </div>
                         )}
                       </TableCell>
 
@@ -906,7 +1072,7 @@ export default function OutreachLeadsTable({
                 }
               }
             }}
-            className="sticky bottom-0 z-20 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 shadow-md rounded-b-2xl"
+            className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 rounded-b-2xl"
           />
         )}
       </Card>
@@ -945,6 +1111,20 @@ export default function OutreachLeadsTable({
           lead={detailLead}
           onViewConversation={handleViewConversationFromDetails}
           onSendEmail={handleSendFromDetails}
+          onLeadUpdated={(updatedLead) => handleEmailsUpdated(updatedLead.id, updatedLead.business_emails)}
+        />
+      )}
+
+      {/* ── Manage Lead Emails Modal ── */}
+      {managingEmailsLead && (
+        <ManageLeadEmailsModal
+          open
+          onOpenChange={(open) => {
+            if (!open) setManagingEmailsLead(null);
+          }}
+          lead={managingEmailsLead}
+          token={token}
+          onEmailsUpdated={handleEmailsUpdated}
         />
       )}
     </div>

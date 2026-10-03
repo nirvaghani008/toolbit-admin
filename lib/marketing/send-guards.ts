@@ -42,6 +42,7 @@ export type OutreachSkipReason =
   | 'existing_tool'
   | 'lead_not_found'
   | 'recipient_not_on_lead'
+  | 'undeliverable_recipient'
   | 'duplicate_recipient'
   | 'replied'
   | 'template_already_sent';
@@ -60,6 +61,7 @@ const SKIP_REASON_LABELS: Record<OutreachSkipReason, string> = {
   existing_tool: 'already on Toolbit',
   lead_not_found: 'lead not found',
   recipient_not_on_lead: 'address not on the lead',
+  undeliverable_recipient: 'email marked as undeliverable',
   duplicate_recipient: 'duplicate recipient',
   replied: 'already replied',
   template_already_sent: 'already received this template',
@@ -124,7 +126,14 @@ export function evaluateOutreachHistory(
   }
 
   let templateSent: string | null = null;
-  const sent = templateId && hasOwn(history.templates, templateId) ? history.templates[templateId] : undefined;
+  const aliasTemplateId =
+    templateId === 'tool_outreach' ? 'tool_relist' : templateId === 'tool_relist' ? 'tool_outreach' : null;
+  const sent =
+    templateId && hasOwn(history.templates, templateId)
+      ? history.templates[templateId]
+      : aliasTemplateId && hasOwn(history.templates, aliasTemplateId)
+      ? history.templates[aliasTemplateId]
+      : undefined;
   if (sent) {
     const date = formatGuardDate(sent.lastSentAt);
     const times = sent.count > 1 ? ` ${sent.count} times` : '';

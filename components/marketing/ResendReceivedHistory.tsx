@@ -175,7 +175,7 @@ export default function ResendReceivedHistory({ token }: ResendReceivedHistoryPr
       </div>
 
       {/* Filters & actions */}
-      <Card className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+      <Card className="sticky top-20 z-20 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 shadow-xs">
         <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <div className="relative flex-1 max-w-md">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -238,9 +238,9 @@ export default function ResendReceivedHistory({ token }: ResendReceivedHistoryPr
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">
+          <div className="max-h-[600px] 2xl:max-h-[680px] overflow-auto custom-scrollbar table-scrollbar">
+            <table className="w-full text-left text-xs min-w-[860px]">
+              <thead className="sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 font-semibold uppercase tracking-wider text-[10px] shadow-2xs">
                 <tr>
                   <th scope="col" className="py-3 px-4">From</th>
                   <th scope="col" className="py-3 px-4">Subject</th>

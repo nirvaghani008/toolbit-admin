@@ -65,7 +65,10 @@ export async function recordOutboundMessage(input: OutboundMessageInput): Promis
       to: sanitizeText(input.toEmail),
       body_text: text.value,
       body_html: html.value,
-      template_id: input.templateId || null,
+      template_id:
+        input.templateId === 'tool_relist' || input.templateId === 'relist_launch'
+          ? 'tool_outreach'
+          : input.templateId || null,
       truncated: html.truncated || text.truncated || undefined,
       error: input.error ? sanitizeText(input.error) : null,
     };

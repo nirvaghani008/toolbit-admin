@@ -42,6 +42,23 @@ import {
   type OutreachSendHistory,
   type OutreachSkipReason,
 } from '@/lib/marketing/send-guards';
+import {
+  type EmailDeliverabilityStatus,
+  type ResendDeliveryStatus,
+  type EmailRecord,
+  type BusinessEmailsMap,
+  normalizeBusinessEmails,
+} from '@/lib/marketing/business-emails';
+import {
+  isNo2BounceConfigured,
+  verifySingleEmail,
+  verifyEmailsBatch,
+  type No2BounceVerificationResult,
+} from '@/lib/no2bounce';
+import {
+  getCachedEmailVerifications,
+  saveEmailVerifications,
+} from '@/lib/marketing/email-verification-cache';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -85,11 +102,11 @@ export interface SendResult {
 // Zod Validation Schemas
 // ────────────────────────────────────────────────────────────────────────────
 
-const TemplateIdSchema = z.enum(
-  ['sponsored_feature', 'new_tool_launch', 'affiliate_partnership', 'tool_relist', 'relist_launch'],
-  {
+const TemplateIdSchema = z.preprocess(
+  (val) => (val === 'tool_relist' || val === 'relist_launch' ? 'tool_outreach' : val),
+  z.enum(['sponsored_feature', 'new_tool_launch', 'affiliate_partnership', 'tool_outreach'], {
     message: 'Invalid template ID.',
-  }
+  })
 );
 
 const UpdateTemplateSchema = z.object({
@@ -133,15 +150,99 @@ async function readTemplatesFromDB(): Promise<Record<string, MarketingTemplate> 
   const rawTemplates = data.value as Record<string, MarketingTemplate>;
   const normalizedTemplates: Record<string, MarketingTemplate> = {};
   for (const [k, v] of Object.entries(rawTemplates)) {
-    normalizedTemplates[k] = {
+    // Migrate legacy 'tool_relist' / 'relist_launch' keys to 'tool_outreach'
+    const isRelist = k === 'tool_relist' || k === 'relist_launch' || v.id === 'tool_relist' || v.id === 'relist_launch';
+    const key = isRelist ? 'tool_outreach' : k;
+    const id = isRelist ? 'tool_outreach' : (v.id || key);
+    const name = isRelist
+      ? (v.name === 'Toolbit Listing Outreach' || v.name === 'Listing Outreach' ? 'Tool Outreach' : v.name)
+      : v.name;
+
+    let subject = v.subject;
+    let text = v.text;
+    let html = v.html;
+    let variables = v.variables;
+
+    if (isRelist || key === 'tool_outreach') {
+      if (subject && /\{\{\s*tool_name\s*\}\}/i.test(subject)) {
+        subject = subject.replace(/\{\{\s*tool_name\s*\}\}/gi, '{{tool_domain}}');
+      }
+      if (text && /tool_name/i.test(text)) {
+        text = text
+          .replace(/\{\{\s*tool_name\s*\}\}\s*\(\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}\s*\)/gi, '{{tool_domain}}')
+          .replace(/\{\{\s*tool_name\s*\}\}/gi, '{{tool_domain}}');
+      }
+      if (html && /tool_name/i.test(html)) {
+        html = html
+          .replace(/\{\{\s*tool_name\s*\}\}\s*\(\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}\s*\)/gi, '{{tool_domain}}')
+          .replace(/\{\{\s*tool_name\s*\}\}/gi, '{{tool_domain}}');
+      }
+      if (Array.isArray(variables)) {
+        variables = Array.from(
+          new Set(
+            variables.map((varName) =>
+              /tool_name/i.test(varName) ? '{{tool_domain}}' : varName
+            )
+          )
+        );
+      }
+    }
+
+    normalizedTemplates[key] = {
       ...v,
+      id,
+      name,
+      subject,
+      text,
+      html,
+      variables,
       from_name:
         !v.from_name?.trim() || v.from_name.trim() === 'Toolbit Team'
           ? 'Toolbit AI'
           : v.from_name.trim(),
     };
   }
+
+  // Ensure tool_relist and relist_launch are never returned as an active template key
+  delete normalizedTemplates['tool_relist'];
+  delete normalizedTemplates['relist_launch'];
+
   return normalizedTemplates;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Helper: Extract domain from URL
+// ────────────────────────────────────────────────────────────────────────────
+
+function getToolDomain(siteUrl: string): string {
+  if (!siteUrl) return '';
+  try {
+    const parsed = new URL(siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`);
+    return parsed.hostname.replace(/^www\./i, '');
+  } catch {
+    return siteUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Helper: Append UTM params to a URL
+// ────────────────────────────────────────────────────────────────────────────
+
+function appendUtmParams(url: string, params: Record<string, string>): string {
+  if (!url) return url;
+  try {
+    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+    for (const [k, v] of Object.entries(params)) {
+      u.searchParams.set(k, v);
+    }
+    return u.toString();
+  } catch {
+    const sep = url.includes('?') ? '&' : '?';
+    const qs = Object.entries(params)
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join('&');
+    return `${url}${sep}${qs}`;
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -160,12 +261,10 @@ function substituteVariables(
   const siteUrlForDomain = (vars.tool_site_url || vars.tool_url || '').trim();
   let resolvedDomain = (vars.tool_domain || vars.domain_name || '').trim();
   if (!resolvedDomain && siteUrlForDomain) {
-    try {
-      const parsed = new URL(siteUrlForDomain.startsWith('http') ? siteUrlForDomain : `https://${siteUrlForDomain}`);
-      resolvedDomain = parsed.hostname.replace(/^www\./i, '');
-    } catch {
-      resolvedDomain = siteUrlForDomain.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
-    }
+    resolvedDomain = getToolDomain(siteUrlForDomain);
+  }
+  if (!resolvedDomain && vars.tool_name) {
+    resolvedDomain = vars.tool_name.trim();
   }
 
   // If no domain available, remove any trailing domain parentheses like " ({{tool_domain}})"
@@ -185,18 +284,19 @@ function substituteVariables(
     const keyPattern = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let val = value || '';
 
-    // If key is tool_name and we have tool_site_url or tool_url, and isHtml is true:
-    if (key === 'tool_name' && isHtml) {
-      const siteUrl = (effectiveVars.tool_site_url || effectiveVars.tool_url || '').trim();
-      if (siteUrl && val.trim() && !val.includes('<a ')) {
-        // In "If you want {{tool_name}}", do not use link tag, keep as normal plain tool name:
-        const plainName = val;
-        result = result.replace(
-          /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*tool_name\s*\}\}/gi,
-          (_match, prefix: string) => `${prefix}${plainName}`
-        );
-        val = `<a href="${siteUrl}" target="_blank" style="color: #0d9488; text-decoration: underline; font-weight: 600;">${val}</a>`;
-      }
+    // tool_domain / tool_name / domain_name: always substitute as plain text.
+    //
+    // In HTML mode, insert zero-width non-joiners (&zwnj;) around dots in domain values
+    // (e.g. "example&zwnj;.&zwnj;com") so that Gmail, Apple Mail, and other email clients
+    // do NOT auto-detect the bare domain as a clickable URL pattern and apply their own
+    // teal/blue link styling. The &zwnj; entity is zero-width and invisible to the human eye,
+    // but breaks the URL regex pattern matching in email client linkifiers.
+    if (
+      isHtml &&
+      (key === 'tool_domain' || key === 'domain_name' || key === 'tool_name') &&
+      val.trim()
+    ) {
+      val = val.replace(/(?:\.|&#46;)/g, '&zwnj;.&zwnj;');
     }
 
     // Replacer functions insert values literally ("$&", "$1" in a tool name stay as typed)
@@ -209,6 +309,7 @@ function substituteVariables(
     // URL encoded %7B%7Bkey%7D%7D (often produced in href attributes)
     const encodedRegex = new RegExp(`%7B%7B\\s*${keyPattern}\\s*%7D%7D`, 'gi');
     result = result.replace(encodedRegex, () => replacement);
+
   }
   return result;
 }
@@ -261,6 +362,7 @@ export async function updateMarketingTemplateAction(
     if (!idResult.success) {
       return { success: false, error: 'Invalid template ID.' };
     }
+    const targetTemplateId = idResult.data;
 
     // Validate payload
     const payloadResult = UpdateTemplateSchema.safeParse(payload);
@@ -271,12 +373,12 @@ export async function updateMarketingTemplateAction(
 
     // Read current templates
     const templates = await readTemplatesFromDB();
-    if (!templates || !templates[templateId]) {
-      return { success: false, error: `Template "${templateId}" not found.` };
+    if (!templates || !templates[targetTemplateId]) {
+      return { success: false, error: `Template "${targetTemplateId}" not found.` };
     }
 
     // If text was updated and html wasn't provided or was empty, auto-generate html from text
-    const textValue = payloadResult.data.text ?? templates[templateId].text;
+    const textValue = payloadResult.data.text ?? templates[targetTemplateId].text;
     const htmlValue =
       payloadResult.data.html && payloadResult.data.html.trim().length > 0
         ? payloadResult.data.html
@@ -284,13 +386,16 @@ export async function updateMarketingTemplateAction(
 
     // Merge updates into the template
     const updatedTemplate: MarketingTemplate = {
-      ...templates[templateId],
+      ...templates[targetTemplateId],
       ...payloadResult.data,
+      id: targetTemplateId,
       html: htmlValue,
       updated_at: new Date().toISOString(),
     };
 
-    templates[templateId] = updatedTemplate;
+    templates[targetTemplateId] = updatedTemplate;
+    delete templates['tool_relist'];
+    delete templates['relist_launch'];
 
     // Write back entire JSONB value
     const { error } = await supabaseAdmin
@@ -383,10 +488,73 @@ export async function sendMarketingEmailAction(
         : template.from_name.trim();
     const fromAddress = `${fromName} <${template.from_email}>`;
 
+    // Pre-send Email Deliverability Verification via No2Bounce with persistent caching & fail-open resilience
+    const undeliverableEmails = new Map<string, string>();
+    if (isNo2BounceConfigured()) {
+      try {
+        const uniqueRecipientEmails = Array.from(
+          new Set(recipients.map((r) => r.email.trim().toLowerCase()).filter(Boolean))
+        );
+
+        // 1. Cross-lead persistent verification cache check
+        const cachedVerifications = await getCachedEmailVerifications(uniqueRecipientEmails);
+        const stillNeedingVerification: string[] = [];
+
+        for (const email of uniqueRecipientEmails) {
+          const cached = cachedVerifications.get(email);
+          if (cached) {
+            if (cached.status === 'undeliverable') {
+              undeliverableEmails.set(
+                email,
+                `Address is cached as undeliverable (${cached.score_status || 'invalid mailbox'}). Blocked to protect sender reputation.`
+              );
+            }
+          } else {
+            stillNeedingVerification.push(email);
+          }
+        }
+
+        // 2. Query No2Bounce for emails not in cache (bounded timeout, fail-open)
+        if (stillNeedingVerification.length > 0) {
+          const apiResults = await verifyEmailsBatch(stillNeedingVerification, { concurrency: 4, timeoutMs: 12000 });
+          const resultsToPersist: No2BounceVerificationResult[] = [];
+
+          for (const [email, result] of apiResults.entries()) {
+            if (!result.failOpen && (result.status === 'deliverable' || result.status === 'undeliverable')) {
+              resultsToPersist.push(result);
+            }
+
+            if (result.status === 'undeliverable') {
+              undeliverableEmails.set(
+                email,
+                `Address verified as undeliverable by No2Bounce (${result.scoreStatus || 'invalid mailbox'}). Blocked to protect sender reputation.`
+              );
+            }
+          }
+
+          if (resultsToPersist.length > 0) {
+            void saveEmailVerifications(resultsToPersist);
+          }
+        }
+      } catch (verificationErr: any) {
+        console.warn('[No2Bounce] Pre-send check in sendMarketingEmailAction degraded gracefully:', verificationErr?.message);
+      }
+    }
+
     // Send to each recipient individually for proper variable substitution
     const results: SendResult[] = [];
 
     for (const recipient of recipients) {
+      const cleanToEmail = recipient.email.trim().toLowerCase();
+      if (undeliverableEmails.has(cleanToEmail)) {
+        results.push({
+          email: recipient.email.trim(),
+          success: false,
+          error: undeliverableEmails.get(cleanToEmail) || 'Address verified as undeliverable by No2Bounce.',
+        });
+        continue;
+      }
+
       const recipientName =
         recipient.name && recipient.name.trim().length > 0
           ? recipient.name.trim()
@@ -642,7 +810,7 @@ export async function searchAdminToolsAction(
 
 export interface OutreachConversionEvent {
   id: string;
-  type: 'page_visit' | 'signup' | 'submission' | 'checkout' | 'purchase';
+  type: 'page_visit' | 'signup' | 'login' | 'submission' | 'checkout' | 'purchase';
   at: string;
   session_id?: string | null;
   user_id?: string | null;
@@ -677,11 +845,13 @@ export interface OutreachConversionSummary {
   total_spent_usd?: number;
 }
 
+export type { EmailDeliverabilityStatus, ResendDeliveryStatus, EmailRecord, BusinessEmailsMap };
+
 export interface MarketingOutreachLead {
   id: string;
   tool_name: string;
   tool_site_url: string;
-  business_emails: string[];
+  business_emails: BusinessEmailsMap;
   status: string;
   contact_page_url: string[];
   social_links: string[];
@@ -721,6 +891,7 @@ export interface GetOutreachLeadsParams {
   source?: string;
   hasEmailOnly?: boolean;
   hasRepliesOnly?: boolean;
+  isToolSubmissionOnly?: boolean;
 }
 
 /** JSONB containment used for "has replies" (real replies, not auto-responders). Hits the GIN index. */
@@ -728,6 +899,8 @@ const HAS_REPLIES_FILTER = JSON.stringify([{ messages: [{ direction: 'inbound', 
 
 const LEAD_LIST_COLUMNS =
   'id, tool_name, tool_site_url, business_emails, status, contact_page_url, social_links, marketing_medium, sources, metadata, conversions, created_at, updated_at';
+
+const LeadIdSchema = z.uuid({ message: 'Invalid lead ID.' });
 
 export interface OutreachLeadsResult {
   leads: MarketingOutreachLead[];
@@ -782,6 +955,7 @@ export async function getMarketingOutreachLeadsAction(
       data: {
         leads: ((leadsRes.data || []) as any[]).map((row) => ({
           ...row,
+          business_emails: normalizeBusinessEmails(row.business_emails),
           conversion_summary: row.conversions?.summary || row.conversion_summary || null,
           conversion_events: Array.isArray(row.conversions?.events) ? row.conversions.events : (row.conversion_events || []),
         })) as MarketingOutreachLead[],
@@ -848,7 +1022,13 @@ function applyOutreachLeadFilters(query: any, params: GetOutreachLeadsParams): a
         query = query.filter('sources', 'cs', JSON.stringify([{ source: 'theresanaiforthat.com' }]));
       } else if (params.source === 'codehype') {
         query = query.filter('sources', 'cs', JSON.stringify([{ source: 'codehype.ai' }]));
+      } else if (params.source === 'tool_submission') {
+        query = query.eq('metadata->>is_tool_submission', 'true');
       }
+    }
+
+    if (params.isToolSubmissionOnly) {
+      query = query.eq('metadata->>is_tool_submission', 'true');
     }
 
     if (params.hasEmailOnly) {
@@ -860,8 +1040,9 @@ function applyOutreachLeadFilters(query: any, params: GetOutreachLeadsParams): a
       const sanitized = rawSearch.replace(/[%_,]/g, '');
       if (sanitized) {
         if (sanitized.includes('@')) {
+          const safeEmail = sanitized.toLowerCase().replace(/["\\]/g, '');
           query = query.or(
-            `tool_name.ilike.%${sanitized}%,tool_site_url.ilike.%${sanitized}%,business_emails.cs.{${sanitized.toLowerCase()}}`
+            `tool_name.ilike.%${sanitized}%,tool_site_url.ilike.%${sanitized}%,business_emails->>"${safeEmail}".not.is.null`
           );
         } else {
           query = query.or(
@@ -910,6 +1091,476 @@ export async function updateOutreachLeadStatusAction(
   } catch (err: any) {
     console.error('updateOutreachLeadStatusAction error:', err);
     return { success: false, error: err?.message || 'Failed to update lead status.' };
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Actions: Manage Marketing Outreach Lead Business Emails
+// ────────────────────────────────────────────────────────────────────────────
+
+const EmailFormatSchema = z
+  .string()
+  .trim()
+  .min(3, { message: 'Email address is too short.' })
+  .max(255, { message: 'Email address is too long.' })
+  .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: 'Invalid email address format.' });
+
+export interface LeadEmailOperationResult {
+  leadId: string;
+  business_emails: BusinessEmailsMap;
+}
+
+export async function addOutreachLeadEmailAction(
+  token: string,
+  leadId: string,
+  email: string,
+  status: EmailDeliverabilityStatus = 'unverified'
+): Promise<ActionResponse<LeadEmailOperationResult>> {
+  try {
+    const auth = await verifyAdminPermission(token, 'marketing', 'update');
+    if (!auth.authorized) {
+      return { success: false, error: auth.error };
+    }
+
+    const parsedId = LeadIdSchema.safeParse(leadId);
+    if (!parsedId.success) {
+      return { success: false, error: 'Invalid lead ID.' };
+    }
+
+    const parsedEmail = EmailFormatSchema.safeParse(email);
+    if (!parsedEmail.success) {
+      return { success: false, error: parsedEmail.error.issues[0]?.message || 'Invalid email format.' };
+    }
+    const cleanEmail = parsedEmail.data.toLowerCase();
+
+    // 1. Attempt RPC call (migration 20261003001500)
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('marketing_add_lead_email', {
+      p_lead_id: parsedId.data,
+      p_email: cleanEmail,
+      p_status: status,
+    });
+
+    if (!rpcError && rpcData && typeof rpcData === 'object') {
+      return {
+        success: true,
+        data: {
+          leadId: parsedId.data,
+          business_emails: normalizeBusinessEmails(rpcData),
+        },
+      };
+    }
+
+    // 2. Resilient fallback: Direct table update if RPC is not yet applied
+    const { data: existingLead, error: fetchError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .select('id, business_emails')
+      .eq('id', parsedId.data)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existingLead) return { success: false, error: 'Marketing lead not found.' };
+
+    const currentEmails = normalizeBusinessEmails(existingLead.business_emails);
+    const updatedEmails: BusinessEmailsMap = { ...currentEmails, [cleanEmail]: { status } };
+
+    const { data: updatedData, error: updateError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .update({
+        business_emails: updatedEmails,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', parsedId.data)
+      .select('id, business_emails')
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      data: {
+        leadId: parsedId.data,
+        business_emails: normalizeBusinessEmails(updatedData?.business_emails || updatedEmails),
+      },
+    };
+  } catch (err: any) {
+    console.error('addOutreachLeadEmailAction error:', err);
+    return { success: false, error: err?.message || 'Failed to add lead email.' };
+  }
+}
+
+export async function updateOutreachLeadEmailAction(
+  token: string,
+  leadId: string,
+  oldEmail: string,
+  newEmail: string,
+  status?: EmailDeliverabilityStatus
+): Promise<ActionResponse<LeadEmailOperationResult>> {
+  try {
+    const auth = await verifyAdminPermission(token, 'marketing', 'update');
+    if (!auth.authorized) {
+      return { success: false, error: auth.error };
+    }
+
+    const parsedId = LeadIdSchema.safeParse(leadId);
+    if (!parsedId.success) {
+      return { success: false, error: 'Invalid lead ID.' };
+    }
+
+    const parsedNewEmail = EmailFormatSchema.safeParse(newEmail);
+    if (!parsedNewEmail.success) {
+      return { success: false, error: parsedNewEmail.error.issues[0]?.message || 'Invalid new email format.' };
+    }
+
+    const cleanOld = oldEmail.trim().toLowerCase();
+    const cleanNew = parsedNewEmail.data.toLowerCase();
+
+    // 1. Attempt RPC call (migration 20261003001500)
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('marketing_update_lead_email', {
+      p_lead_id: parsedId.data,
+      p_old_email: cleanOld,
+      p_new_email: cleanNew,
+      p_status: status || null,
+    });
+
+    if (!rpcError && rpcData && typeof rpcData === 'object') {
+      return {
+        success: true,
+        data: {
+          leadId: parsedId.data,
+          business_emails: normalizeBusinessEmails(rpcData),
+        },
+      };
+    }
+
+    // 2. Resilient fallback: Direct table update preserving priority order
+    const { data: existingLead, error: fetchError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .select('id, business_emails')
+      .eq('id', parsedId.data)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existingLead) return { success: false, error: 'Marketing lead not found.' };
+
+    const currentEmails = normalizeBusinessEmails(existingLead.business_emails);
+    const updatedEmails: BusinessEmailsMap = {};
+    for (const [key, val] of Object.entries(currentEmails)) {
+      if (key === cleanOld) {
+        updatedEmails[cleanNew] = status ? { ...val, status } : val;
+      } else if (key !== cleanNew) {
+        updatedEmails[key] = val;
+      }
+    }
+    if (!updatedEmails[cleanNew]) {
+      updatedEmails[cleanNew] = { status: status || 'unverified' };
+    }
+
+    const { data: updatedData, error: updateError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .update({
+        business_emails: updatedEmails,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', parsedId.data)
+      .select('id, business_emails')
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      data: {
+        leadId: parsedId.data,
+        business_emails: normalizeBusinessEmails(updatedData?.business_emails || updatedEmails),
+      },
+    };
+  } catch (err: any) {
+    console.error('updateOutreachLeadEmailAction error:', err);
+    return { success: false, error: err?.message || 'Failed to update lead email.' };
+  }
+}
+
+export async function updateOutreachLeadEmailStatusAction(
+  token: string,
+  leadId: string,
+  email: string,
+  status: EmailDeliverabilityStatus
+): Promise<ActionResponse<LeadEmailOperationResult>> {
+  try {
+    const auth = await verifyAdminPermission(token, 'marketing', 'update');
+    if (!auth.authorized) {
+      return { success: false, error: auth.error };
+    }
+
+    const parsedId = LeadIdSchema.safeParse(leadId);
+    if (!parsedId.success) {
+      return { success: false, error: 'Invalid lead ID.' };
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      return { success: false, error: 'Email address is required.' };
+    }
+
+    const validStatuses: EmailDeliverabilityStatus[] = ['unverified', 'deliverable', 'undeliverable'];
+    if (!validStatuses.includes(status)) {
+      return { success: false, error: 'Invalid deliverability status.' };
+    }
+
+    // 1. Attempt RPC call
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('marketing_update_lead_email', {
+      p_lead_id: parsedId.data,
+      p_old_email: cleanEmail,
+      p_new_email: cleanEmail,
+      p_status: status,
+    });
+
+    if (!rpcError && rpcData && typeof rpcData === 'object') {
+      return {
+        success: true,
+        data: {
+          leadId: parsedId.data,
+          business_emails: normalizeBusinessEmails(rpcData),
+        },
+      };
+    }
+
+    // 2. Direct table fallback preserving priority order
+    const { data: existingLead, error: fetchError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .select('id, business_emails')
+      .eq('id', parsedId.data)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existingLead) return { success: false, error: 'Marketing lead not found.' };
+
+    const currentEmails = normalizeBusinessEmails(existingLead.business_emails);
+    const updatedEmails: BusinessEmailsMap = {};
+    for (const [key, val] of Object.entries(currentEmails)) {
+      if (key === cleanEmail) {
+        updatedEmails[key] = { ...val, status };
+      } else {
+        updatedEmails[key] = val;
+      }
+    }
+    if (!updatedEmails[cleanEmail]) {
+      updatedEmails[cleanEmail] = { status };
+    }
+
+    const { data: updatedData, error: updateError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .update({
+        business_emails: updatedEmails,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', parsedId.data)
+      .select('id, business_emails')
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      data: {
+        leadId: parsedId.data,
+        business_emails: normalizeBusinessEmails(updatedData?.business_emails || updatedEmails),
+      },
+    };
+  } catch (err: any) {
+    console.error('updateOutreachLeadEmailStatusAction error:', err);
+    return { success: false, error: err?.message || 'Failed to update email deliverability status.' };
+  }
+}
+
+export interface LeadEmailVerificationResult {
+  leadId: string;
+  email: string;
+  status: EmailDeliverabilityStatus;
+  score: number | null;
+  scoreStatus: string | null;
+  provider: string;
+  verified_at: string;
+  business_emails: BusinessEmailsMap;
+}
+
+export async function verifyOutreachLeadEmailAction(
+  token: string,
+  leadId: string,
+  email: string
+): Promise<ActionResponse<LeadEmailVerificationResult>> {
+  try {
+    const auth = await verifyAdminPermission(token, 'marketing', 'update');
+    if (!auth.authorized) {
+      return { success: false, error: auth.error };
+    }
+
+    const parsedId = LeadIdSchema.safeParse(leadId);
+    if (!parsedId.success) {
+      return { success: false, error: 'Invalid lead ID.' };
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      return { success: false, error: 'Email address is required.' };
+    }
+
+    if (!isNo2BounceConfigured()) {
+      return {
+        success: false,
+        error: 'No2Bounce is not configured. Please set NO2BOUNCE_API_KEY in server environment variables.',
+      };
+    }
+
+    // Step 1: Query No2Bounce for verification
+    const verification = await verifySingleEmail(cleanEmail);
+
+    if (verification.failOpen && verification.error && verification.status === 'unverified') {
+      return {
+        success: false,
+        error: `Email verification failed: ${verification.error}`,
+      };
+    }
+
+    // Step 2: Persist to cross-lead cache table
+    if (verification.status === 'deliverable' || verification.status === 'undeliverable') {
+      void saveEmailVerifications([verification]);
+    }
+
+    // Step 3: Fetch existing lead to update business_emails
+    const { data: existingLead, error: fetchError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .select('id, business_emails')
+      .eq('id', parsedId.data)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existingLead) return { success: false, error: 'Marketing lead not found.' };
+
+    const currentEmails = normalizeBusinessEmails(existingLead.business_emails);
+    const existingRecord = currentEmails[cleanEmail] || { status: 'unverified' };
+
+    const updatedRecord: EmailRecord = {
+      ...existingRecord,
+      status: verification.status,
+      verification_provider: verification.provider,
+      verification_score: verification.score ?? undefined,
+      verification_status: verification.scoreStatus ?? undefined,
+      verified_at: verification.verifiedAt,
+    };
+
+    const updatedEmails: BusinessEmailsMap = {
+      ...currentEmails,
+      [cleanEmail]: updatedRecord,
+    };
+
+    const { data: updatedData, error: updateError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .update({
+        business_emails: updatedEmails,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', parsedId.data)
+      .select('id, business_emails')
+      .single();
+
+    if (updateError) throw updateError;
+
+    const normalizedUpdated = normalizeBusinessEmails(updatedData?.business_emails || updatedEmails);
+
+    return {
+      success: true,
+      data: {
+        leadId: parsedId.data,
+        email: cleanEmail,
+        status: verification.status,
+        score: verification.score,
+        scoreStatus: verification.scoreStatus,
+        provider: verification.provider,
+        verified_at: verification.verifiedAt,
+        business_emails: normalizedUpdated,
+      },
+    };
+  } catch (err: any) {
+    console.error('verifyOutreachLeadEmailAction error:', err);
+    return { success: false, error: err?.message || 'Failed to verify email deliverability.' };
+  }
+}
+
+export async function deleteOutreachLeadEmailAction(
+  token: string,
+  leadId: string,
+  email: string
+): Promise<ActionResponse<LeadEmailOperationResult>> {
+  try {
+    const auth = await verifyAdminPermission(token, 'marketing', 'update');
+    if (!auth.authorized) {
+      return { success: false, error: auth.error };
+    }
+
+    const parsedId = LeadIdSchema.safeParse(leadId);
+    if (!parsedId.success) {
+      return { success: false, error: 'Invalid lead ID.' };
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Attempt RPC call (migration 20261003001500)
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('marketing_delete_lead_email', {
+      p_lead_id: parsedId.data,
+      p_email: cleanEmail,
+    });
+
+    if (!rpcError && rpcData && typeof rpcData === 'object') {
+      return {
+        success: true,
+        data: {
+          leadId: parsedId.data,
+          business_emails: normalizeBusinessEmails(rpcData),
+        },
+      };
+    }
+
+    // 2. Resilient fallback: Direct table update preserving priority order
+    const { data: existingLead, error: fetchError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .select('id, business_emails')
+      .eq('id', parsedId.data)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existingLead) return { success: false, error: 'Marketing lead not found.' };
+
+    const currentEmails = normalizeBusinessEmails(existingLead.business_emails);
+    const updatedEmails: BusinessEmailsMap = {};
+    for (const [key, val] of Object.entries(currentEmails)) {
+      if (key !== cleanEmail) {
+        updatedEmails[key] = val;
+      }
+    }
+
+    const { data: updatedData, error: updateError } = await supabaseAdmin
+      .from('marketing_outreach_leads')
+      .update({
+        business_emails: updatedEmails,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', parsedId.data)
+      .select('id, business_emails')
+      .single();
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      data: {
+        leadId: parsedId.data,
+        business_emails: normalizeBusinessEmails(updatedData?.business_emails || updatedEmails),
+      },
+    };
+  } catch (err: any) {
+    console.error('deleteOutreachLeadEmailAction error:', err);
+    return { success: false, error: err?.message || 'Failed to delete lead email.' };
   }
 }
 
@@ -1017,7 +1668,9 @@ interface GuardLeadRow {
   toolSiteUrl: string | null;
   /** Lower-cased, trimmed business emails (recipients must be one of these). */
   businessEmails: ReadonlySet<string>;
+  businessEmailsMap: BusinessEmailsMap;
   status: string;
+  isToolSubmission: boolean;
   history: OutreachSendHistory;
 }
 
@@ -1040,7 +1693,7 @@ async function fetchGuardLeadRows(leadIds: unknown[]): Promise<Map<string, Guard
     chunks.map((chunk) =>
       supabaseAdmin
         .from('marketing_outreach_leads')
-        .select('id, tool_name, tool_site_url, business_emails, status, outreach_send_history')
+        .select('id, tool_name, tool_site_url, business_emails, status, outreach_send_history, metadata')
         .in('id', chunk)
     )
   );
@@ -1059,17 +1712,17 @@ async function fetchGuardLeadRows(leadIds: unknown[]): Promise<Map<string, Guard
     for (const row of (data || []) as any[]) {
       const history = parseOutreachSendHistory(row.outreach_send_history);
       if (!history) throw new Error(`Could not read the email history of lead ${row.id}.`);
+      const emailMap = normalizeBusinessEmails(row.business_emails);
       rows.set(row.id, {
         id: row.id,
         toolName: typeof row.tool_name === 'string' ? row.tool_name.trim() : '',
         toolSiteUrl: typeof row.tool_site_url === 'string' && row.tool_site_url.trim() ? row.tool_site_url : null,
-        businessEmails: new Set(
-          (Array.isArray(row.business_emails) ? row.business_emails : [])
-            .filter((e: unknown): e is string => typeof e === 'string')
-            .map((e: string) => e.trim().toLowerCase())
-            .filter(Boolean)
-        ),
+        businessEmails: new Set(Object.keys(emailMap)),
+        businessEmailsMap: emailMap,
         status: typeof row.status === 'string' ? row.status : '',
+        isToolSubmission: Boolean(
+          row.metadata?.is_tool_submission === true || row.metadata?.is_tool_submission === 'true'
+        ),
         history,
       });
     }
@@ -1137,12 +1790,29 @@ async function evaluateSendItems(
     if (!lead) return skip('lead_not_found', 'Lead not found (it may have been deleted)');
 
     const existing = collectExistingMatches(matches, urlsPerItem[index]);
-    if (existing.length > 0) return skip('existing_tool', describeExistingToolMatches(existing));
+    const filteredExisting = lead.isToolSubmission
+      ? existing.filter((m) => m.source !== 'ai_tool_submissions')
+      : existing;
+    if (filteredExisting.length > 0) return skip('existing_tool', describeExistingToolMatches(filteredExisting));
 
     // Only the lead's own business emails can be targeted (no arbitrary addresses via a modified request)
     const email = item.recipientEmail.toLowerCase();
     if (!lead.businessEmails.has(email)) {
       return skip('recipient_not_on_lead', "Address is not one of this lead's business emails");
+    }
+
+    // Protection for domain sender reputation: block undeliverable & bounced emails
+    const emailRecord = lead.businessEmailsMap[email];
+    const deliverabilityStatus = emailRecord?.status || 'unverified';
+    const isBounced =
+      emailRecord?.resend_status === 'bounced' ||
+      (deliverabilityStatus === 'undeliverable' && Boolean(emailRecord?.bounce_reason));
+    if (deliverabilityStatus === 'undeliverable' || isBounced) {
+      const reasonDetail = emailRecord?.bounce_reason ? ` (bounced: ${emailRecord.bounce_reason})` : '';
+      return skip(
+        'undeliverable_recipient',
+        `Address is marked as undeliverable and blocked to protect sender reputation${reasonDetail}`
+      );
     }
 
     const recipientKey = `${lead.id}|${email}`;
@@ -1192,10 +1862,15 @@ export async function getOutreachSendPrecheckAction(
 
     const data: Record<string, OutreachLeadGuard> = {};
     for (const lead of leads.values()) {
+      const existingMatches = lead.toolSiteUrl ? collectExistingMatches(matches, [lead.toolSiteUrl]) : [];
+      const filteredExisting = lead.isToolSubmission
+        ? existingMatches.filter((m) => m.source !== 'ai_tool_submissions')
+        : existingMatches;
+
       data[lead.id] = {
         status: lead.status,
         history: lead.history,
-        existing: lead.toolSiteUrl ? collectExistingMatches(matches, [lead.toolSiteUrl]) : [],
+        existing: filteredExisting,
       };
     }
     return { success: true, data };
@@ -1299,6 +1974,11 @@ export async function sendOutreachLeadEmailAction(
       };
     }
 
+    const effectiveTemplateId =
+      input.templateId === 'tool_relist' || input.templateId === 'relist_launch'
+        ? 'tool_outreach'
+        : input.templateId;
+
     // Guards (see lib/marketing/send-guards.ts): tools already on Toolbit, unknown leads /
     // addresses, duplicate recipients, leads that already replied or already received this
     // template. Fails closed: a sent email cannot be taken back, so if a check itself fails
@@ -1307,7 +1987,7 @@ export async function sendOutreachLeadEmailAction(
     try {
       decisions = await evaluateSendItems(
         items,
-        input.templateId,
+        effectiveTemplateId,
         new Set(input.allowRepliedLeadIds),
         new Set(input.allowRepeatLeadIds)
       );
@@ -1317,6 +1997,122 @@ export async function sendOutreachLeadEmailAction(
         error: `${checkErr?.message || 'Could not check the selected leads.'} No emails were sent.`,
       };
     }
+
+    // Pre-send Email Deliverability Verification via No2Bounce with persistent caching & fail-open resilience
+    if (isNo2BounceConfigured()) {
+      try {
+        const sendableIndices = items
+          .map((item, idx) => ({ item, idx }))
+          .filter(({ idx }) => !decisions[idx].skip && decisions[idx].lead);
+
+        const unverifiedItems = sendableIndices.filter(({ item, idx }) => {
+          const lead = decisions[idx].lead;
+          if (!lead) return false;
+          const email = item.recipientEmail.toLowerCase();
+          const record = lead.businessEmailsMap[email];
+          return record?.status !== 'deliverable' && record?.status !== 'undeliverable';
+        });
+
+        if (unverifiedItems.length > 0) {
+          const emailsToVerify = Array.from(
+            new Set(unverifiedItems.map(({ item }) => item.recipientEmail.toLowerCase()))
+          );
+          const leadsToUpdateInDb = new Set<string>();
+
+          // 1. Cross-lead persistent verification cache check (Credit Optimization)
+          const cachedVerifications = await getCachedEmailVerifications(emailsToVerify);
+          const stillNeedingVerification: string[] = [];
+
+          for (const email of emailsToVerify) {
+            const cached = cachedVerifications.get(email);
+            if (cached) {
+              for (const { idx } of unverifiedItems.filter(({ item }) => item.recipientEmail.toLowerCase() === email)) {
+                const lead = decisions[idx].lead!;
+                const curRec = lead.businessEmailsMap[email] || { status: 'unverified' };
+                lead.businessEmailsMap[email] = {
+                  ...curRec,
+                  status: cached.status,
+                  verification_provider: cached.provider,
+                  verification_score: cached.score ?? undefined,
+                  verification_status: cached.score_status ?? undefined,
+                  verified_at: cached.verified_at,
+                };
+                leadsToUpdateInDb.add(lead.id);
+
+                if (cached.status === 'undeliverable') {
+                  decisions[idx].skip = {
+                    reason: 'undeliverable_recipient',
+                    message: `Address is cached as undeliverable (${cached.score_status || 'invalid mailbox'}). Blocked to protect sender reputation.`,
+                  };
+                }
+              }
+            } else {
+              stillNeedingVerification.push(email);
+            }
+          }
+
+          // 2. Query No2Bounce for emails not in cache (bounded timeout, fail-open)
+          if (stillNeedingVerification.length > 0) {
+            const apiResults = await verifyEmailsBatch(stillNeedingVerification, { concurrency: 4, timeoutMs: 12000 });
+            const resultsToPersist: No2BounceVerificationResult[] = [];
+
+            for (const [email, result] of apiResults.entries()) {
+              if (!result.failOpen && (result.status === 'deliverable' || result.status === 'undeliverable')) {
+                resultsToPersist.push(result);
+              }
+
+              for (const { idx } of unverifiedItems.filter(({ item }) => item.recipientEmail.toLowerCase() === email)) {
+                const lead = decisions[idx].lead!;
+                const curRec = lead.businessEmailsMap[email] || { status: 'unverified' };
+
+                if (result.status === 'deliverable' || result.status === 'undeliverable') {
+                  lead.businessEmailsMap[email] = {
+                    ...curRec,
+                    status: result.status,
+                    verification_provider: result.provider,
+                    verification_score: result.score ?? undefined,
+                    verification_status: result.scoreStatus ?? undefined,
+                    verified_at: result.verifiedAt,
+                  };
+                  leadsToUpdateInDb.add(lead.id);
+
+                  if (result.status === 'undeliverable') {
+                    decisions[idx].skip = {
+                      reason: 'undeliverable_recipient',
+                      message: `Address verified as undeliverable by No2Bounce (${result.scoreStatus || 'invalid mailbox'}). Blocked to protect sender reputation.`,
+                    };
+                  }
+                }
+              }
+            }
+
+            // Persist to cross-lead cache table
+            if (resultsToPersist.length > 0) {
+              void saveEmailVerifications(resultsToPersist);
+            }
+          }
+
+          // Persist updated email deliverability records to marketing_outreach_leads table
+          for (const leadId of leadsToUpdateInDb) {
+            const matchingLead = Array.from(decisions.values())
+              .map((d) => d.lead)
+              .find((l) => l && l.id === leadId);
+            if (matchingLead) {
+              void supabaseAdmin
+                .from('marketing_outreach_leads')
+                .update({
+                  business_emails: matchingLead.businessEmailsMap,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', leadId);
+            }
+          }
+        }
+      } catch (verificationErr: any) {
+        console.warn('[No2Bounce] Pre-send deliverability check degraded gracefully:', verificationErr?.message);
+      }
+    }
+
     const skipReasons = decisions.flatMap((d) => (d.skip ? [d.skip.reason] : []));
     const sendableCount = items.length - skipReasons.length;
 
@@ -1336,11 +2132,11 @@ export async function sendOutreachLeadEmailAction(
     // Fetch template (own keys only, never inherited object properties)
     const templates = await readTemplatesFromDB();
     const template =
-      templates && Object.prototype.hasOwnProperty.call(templates, input.templateId)
-        ? templates[input.templateId]
+      templates && Object.prototype.hasOwnProperty.call(templates, effectiveTemplateId)
+        ? templates[effectiveTemplateId]
         : null;
     if (!template || typeof template !== 'object') {
-      return { success: false, error: `Template "${input.templateId}" not found.` };
+      return { success: false, error: `Template "${effectiveTemplateId}" not found.` };
     }
 
     const fromName =
@@ -1384,14 +2180,28 @@ export async function sendOutreachLeadEmailAction(
       const recipientName = item.recipientName?.trim() || toolName;
       const firstName = recipientName ? recipientName.split(' ')[0] : 'there';
 
-      const trackingCtaUrl = `https://www.toolbit.ai/submit?outreach_id=${encodeURIComponent(lead.id)}&utm_source=email&utm_medium=outreach&utm_campaign=${encodeURIComponent(input.templateId)}`;
+      const trackingCtaUrl = `https://www.toolbit.ai/submit?outreach_id=${encodeURIComponent(lead.id)}&utm_source=email&utm_medium=outreach&utm_campaign=${encodeURIComponent(effectiveTemplateId)}`;
+
+      const toolDomain = getToolDomain(toolSiteUrl) || toolName;
+
+      // Build a UTM-tagged version of the tool's site URL if needed by custom variables
+      const toolSiteUrlUtm = toolSiteUrl
+        ? appendUtmParams(toolSiteUrl, {
+            utm_source: 'toolbit.ai',
+            utm_medium: 'email',
+            utm_campaign: 'outreach',
+          })
+        : '';
 
       const textVars: Record<string, string> = {
         ...(input.variables || {}),
         tool_name: toolName,
         company_name: toolName,
+        tool_domain: toolDomain,
+        domain_name: toolDomain,
         tool_site_url: toolSiteUrl,
         tool_url: toolSiteUrl,
+        tool_site_url_utm: toolSiteUrlUtm,
         recipient_name: recipientName,
         first_name: firstName,
         recipient_email: email,
@@ -1408,8 +2218,8 @@ export async function sendOutreachLeadEmailAction(
 
       // Specifically inject outreach tracking into Toolbit CTA destination links (e.g. toolbit.ai/submit)
       // leaving generic brand links (e.g. homepage, contact) untouched.
-      const finalHtml = appendOutreachCtaParams(rawHtml, lead.id, input.templateId, { isHtml: true });
-      const finalText = rawText ? appendOutreachCtaParams(rawText, lead.id, input.templateId, { isHtml: false }) : undefined;
+      const finalHtml = appendOutreachCtaParams(rawHtml, lead.id, effectiveTemplateId, { isHtml: true });
+      const finalText = rawText ? appendOutreachCtaParams(rawText, lead.id, effectiveTemplateId, { isHtml: false }) : undefined;
 
       const result = await sendResendEmail({
         from: fromAddress,
@@ -1429,6 +2239,23 @@ export async function sendOutreachLeadEmailAction(
         error: result.error,
       });
 
+      if (result.success && result.messageId) {
+        const curRecord = lead.businessEmailsMap[email] || { status: 'unverified' };
+        lead.businessEmailsMap[email] = {
+          ...curRecord,
+          resend_status: 'sent',
+          last_sent_at: new Date().toISOString(),
+          last_resend_id: result.messageId,
+        };
+        // Background update to persist sent telemetry on lead email record
+        void supabaseAdmin
+          .from('marketing_outreach_leads')
+          .update({
+            business_emails: lead.businessEmailsMap,
+          })
+          .eq('id', lead.id);
+      }
+
       // Log into the lead's conversation thread (parent = this business email) while the
       // rate-limit pause runs. recordOutboundMessage never throws, so a logging problem cannot
       // affect the send result; both finish before the next send (appends stay in order).
@@ -1442,7 +2269,7 @@ export async function sendOutreachLeadEmailAction(
           html: finalHtml,
           text: finalText,
           resendEmailId: result.success ? result.messageId : undefined,
-          templateId: input.templateId,
+          templateId: effectiveTemplateId,
           error: result.success ? undefined : result.error,
         }),
         // Subtle delay between sends to respect provider rate limits (not after the last one)
@@ -1518,7 +2345,6 @@ export interface ReceivedEmailDetails {
   link: InboundLink | null;
 }
 
-const LeadIdSchema = z.uuid({ message: 'Invalid lead ID.' });
 const ResendIdSchema = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/, { message: 'Invalid email ID.' });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1558,6 +2384,7 @@ export async function getOutreachLeadConversationAction(
       data: {
         lead: {
           ...lead,
+          business_emails: normalizeBusinessEmails(lead.business_emails),
           conversions,
           conversion_summary: summary,
           conversion_events: events,

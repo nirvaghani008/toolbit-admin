@@ -31,6 +31,8 @@ import {
   Megaphone,
   Handshake,
   RefreshCw,
+  Clock,
+  Info,
 } from 'lucide-react';
 import type {
   MarketingTemplate,
@@ -43,8 +45,15 @@ import {
   sendOutreachLeadEmailAction,
 } from '@/app/admin/marketing/actions';
 import {
-  formatExistingToolBadge,
-  formatExistingToolTitle,
+  type BusinessEmailsMap,
+  type EmailDeliverabilityStatus,
+  type EmailRecord,
+  getAllEmails,
+  getPrimaryEmail,
+  getDeliverableEmails,
+  getUnverifiedEmails,
+} from '@/lib/marketing/business-emails';
+import {
   type ExistingToolMatch,
 } from '@/lib/marketing/existing-tools';
 import {
@@ -62,6 +71,36 @@ interface SendLeadEmailModalProps {
   selectedLeads: MarketingOutreachLead[];
   templates: Record<string, MarketingTemplate>;
   onSuccess: (sentCount: number) => void;
+}
+
+// Helper: Safely resolve candidate outreach emails for a lead based on deliverability
+function getRecommendedEmailsForLead(
+  lead: MarketingOutreachLead | null | undefined,
+  strategy: 'primary' | 'all'
+): string[] {
+  if (!lead || !lead.business_emails) return [];
+  const deliverable = getDeliverableEmails(lead);
+  const unverified = getUnverifiedEmails(lead);
+  const sendable = [...deliverable, ...unverified];
+
+  if (sendable.length === 0) return [];
+
+  if (strategy === 'primary') {
+    const primary = getPrimaryEmail(lead);
+    const primaryRecord = primary ? lead.business_emails[primary] : null;
+    const isUndeliverable =
+      primaryRecord?.status === 'undeliverable' || primaryRecord?.resend_status === 'bounced';
+    if (primary && !isUndeliverable) {
+      return [primary];
+    }
+    return deliverable.length > 0 ? [deliverable[0]] : [unverified[0]];
+  }
+
+  // Strategy 'all': return all non-undeliverable emails in key priority order
+  return getAllEmails(lead).filter((email) => {
+    const rec = lead.business_emails[email];
+    return rec?.status !== 'undeliverable' && rec?.resend_status !== 'bounced';
+  });
 }
 
 // Helper: Format editor text lines into clean HTML
@@ -122,12 +161,19 @@ function substituteVars(content: string, vars: Record<string, string>): string {
   return result;
 }
 
-/** "If you want {{tool_name}}" keeps the plain (not linked) tool name. `plainName` must be safe for the target format. */
-function replaceIfYouWantToolName(content: string, plainName: string): string {
-  return content.replace(
+/** "If you want {{tool_name}}" or "{{tool_domain}}" keeps the plain (not linked) tool name/domain. `plainName` must be safe for the target format. */
+function replaceIfYouWantToolName(content: string, plainName: string, plainDomain?: string): string {
+  let res = content.replace(
     /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*tool_name\s*\}\}/gi,
     (_match, prefix: string) => `${prefix}${plainName}`
   );
+  if (plainDomain) {
+    res = res.replace(
+      /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}/gi,
+      (_match, prefix: string) => `${prefix}${plainDomain}`
+    );
+  }
+  return res;
 }
 
 /**
@@ -174,6 +220,8 @@ function buildEditorDefaults(
   }
 
   const v = getLeadVars(lead);
+  const displayDomain = v.html.toolDomain || v.html.toolName;
+  const rawDomain = v.toolDomain || v.toolName;
 
   // Body becomes editor HTML -> escaped values. Subject is plain text (an <input>) -> raw values.
   const htmlVars: Record<string, string> = {
@@ -181,8 +229,8 @@ function buildEditorDefaults(
     company_name: v.html.toolName,
     tool_site_url: v.html.siteUrl,
     tool_url: v.html.siteUrl,
-    tool_domain: v.html.toolDomain,
-    domain_name: v.html.toolDomain,
+    tool_domain: v.siteUrl ? `[${displayDomain}](${v.html.siteUrl})` : displayDomain,
+    domain_name: v.siteUrl ? `[${displayDomain}](${v.html.siteUrl})` : displayDomain,
     recipient_name: v.html.toolName,
     first_name: 'there',
   };
@@ -191,14 +239,14 @@ function buildEditorDefaults(
     company_name: v.toolName,
     tool_site_url: v.siteUrl,
     tool_url: v.siteUrl,
-    tool_domain: v.toolDomain,
-    domain_name: v.toolDomain,
+    tool_domain: rawDomain,
+    domain_name: rawDomain,
     recipient_name: v.toolName,
     first_name: 'there',
   };
 
-  // In "If you want {{tool_name}}", do not use link tag, keep as normal plain tool name
-  let rawText = replaceIfYouWantToolName(template.text, v.html.toolName);
+  // In "If you want {{tool_name}} / {{tool_domain}}", do not use link tag, keep as normal plain tool name/domain
+  let rawText = replaceIfYouWantToolName(template.text, v.html.toolName, displayDomain);
   if (!v.toolDomain) {
     rawText = rawText.replace(/\s*\(\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}\s*\)/gi, '');
   }
@@ -217,7 +265,7 @@ const TEMPLATE_META: Record<
     description: string;
   }
 > = {
-  tool_relist: {
+  tool_outreach: {
     icon: <RefreshCw size={15} className="text-teal-600 dark:text-teal-400" />,
     badge: 'Listing',
     description: 'Invite founders to list on Toolbit (Free & Paid launch)',
@@ -239,6 +287,15 @@ const TEMPLATE_META: Record<
   },
 };
 
+/** Simplify long guard messages into clean, readable one-liners */
+function cleanHistoryReason(reason: string): string {
+  if (!reason) return '';
+  return reason
+    .replace(/^Already received this template\s*/i, 'Previously sent ')
+    .replace(/\s+to\s+[^)]+\)/, ')')
+    .replace(/\s*\(last on\s+([^)]+)\)/, ' (last $1)');
+}
+
 /** Leads that need an explicit confirmation (already replied / already received the template). */
 function ContactedLeadsGroup({
   title,
@@ -255,30 +312,27 @@ function ContactedLeadsGroup({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const isSingle = leads.length === 1;
+  const singleLead = isSingle ? leads[0] : null;
+  const rawReason = singleLead ? reasonOf(singleLead) : '';
+  const singleReason = cleanHistoryReason(rawReason);
+
   return (
-    <div className="space-y-2" role="status">
-      <div className="flex items-start gap-2 font-semibold">
-        <AlertCircle size={14} className="shrink-0 mt-0.5 text-violet-600 dark:text-violet-400" />
-        <span>{title}</span>
+    <div className="flex items-center justify-between gap-3 text-xs" role="status">
+      <div className="flex items-center gap-1.5 min-w-0 text-zinc-700 dark:text-zinc-300">
+        <Clock size={13} className="shrink-0 text-zinc-400" />
+        <span className="truncate">
+          {isSingle ? (singleReason || title) : title}
+        </span>
       </div>
-      <ul className="max-h-28 overflow-y-auto space-y-1 pl-6">
-        {leads.map((lead) => (
-          <li key={lead.id} className="flex items-center justify-between gap-3 text-[11px]">
-            <span className="font-medium truncate" title={lead.tool_site_url}>
-              {lead.tool_name}
-            </span>
-            <span className="text-right text-violet-800/80 dark:text-violet-300/80">{reasonOf(lead)}</span>
-          </li>
-        ))}
-      </ul>
-      <label className="flex items-center gap-2 pl-6 text-[11px] font-medium cursor-pointer w-fit">
+      <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-900 dark:text-zinc-100 hover:text-black dark:hover:text-white cursor-pointer shrink-0">
         <input
           type="checkbox"
           checked={checked}
           onChange={(e) => onCheckedChange(e.target.checked)}
-          className="cursor-pointer accent-violet-600"
+          className="cursor-pointer accent-zinc-900 dark:accent-zinc-100 rounded"
         />
-        {confirmLabel}
+        <span>Resend anyway</span>
       </label>
     </div>
   );
@@ -297,7 +351,7 @@ export default function SendLeadEmailModal({
 
   // Template selection: Order all 4 templates logically
   const templateList = useMemo(() => {
-    const preferredOrder = ['tool_relist', 'new_tool_launch', 'sponsored_feature', 'affiliate_partnership'];
+    const preferredOrder = ['tool_outreach', 'new_tool_launch', 'sponsored_feature', 'affiliate_partnership'];
     const list = Object.values(templates);
     return list.sort((a, b) => {
       const ai = preferredOrder.indexOf(a.id);
@@ -468,14 +522,13 @@ export default function SendLeadEmailModal({
     setSelectedTemplateId('');
 
     if (isSingleLead && singleLead) {
-      // Default select all emails for this single tool
-      setSingleSelectedEmails([...singleLead.business_emails]);
+      // Default select all deliverable & unverified emails for this single tool
+      setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'all'));
     } else if (!isSingleLead && selectedLeads.length > 0) {
-      // Default: select the primary (first) email for each tool as currently working
+      // Default: select the primary sendable email for each tool
       const initial: Record<string, string[]> = {};
       for (const lead of selectedLeads) {
-        const emails = lead.business_emails || [];
-        initial[lead.id] = emails.length > 0 ? [emails[0]] : [];
+        initial[lead.id] = getRecommendedEmailsForLead(lead, 'primary');
       }
       setBulkSelectedEmails(initial);
       setBulkStrategy('primary');
@@ -488,18 +541,39 @@ export default function SendLeadEmailModal({
     setBulkStrategy(strat);
     const updated: Record<string, string[]> = {};
     for (const lead of selectedLeads) {
-      const emails = lead.business_emails || [];
-      if (strat === 'primary') {
-        updated[lead.id] = emails.length > 0 ? [emails[0]] : [];
-      } else {
-        updated[lead.id] = [...emails];
-      }
+      updated[lead.id] = getRecommendedEmailsForLead(lead, strat);
     }
     setBulkSelectedEmails(updated);
   };
 
+  // Helper to re-evaluate bulk strategy state
+  const recalcBulkStrategy = (updated: Record<string, string[]>) => {
+    let matchesPrimary = true;
+    let matchesAll = true;
+    for (const lead of selectedLeads) {
+      const primaryRec = getRecommendedEmailsForLead(lead, 'primary');
+      const allRec = getRecommendedEmailsForLead(lead, 'all');
+      const sel = updated[lead.id] || [];
+      if (allRec.length > 0) {
+        if (sel.length !== primaryRec.length || !primaryRec.every((e) => sel.includes(e))) {
+          matchesPrimary = false;
+        }
+        if (sel.length !== allRec.length || !allRec.every((e) => sel.includes(e))) {
+          matchesAll = false;
+        }
+      }
+    }
+    if (matchesPrimary) setBulkStrategy('primary');
+    else if (matchesAll) setBulkStrategy('all');
+    else setBulkStrategy('custom');
+  };
+
   // Toggle single email for a specific lead in bulk mode
   const handleToggleBulkEmail = (leadId: string, email: string) => {
+    const lead = selectedLeads.find((l) => l.id === leadId);
+    const rec = lead?.business_emails?.[email];
+    if (rec?.status === 'undeliverable' || rec?.resend_status === 'bounced') return; // Cannot select undeliverable email
+
     setBulkSelectedEmails((prev) => {
       const current = prev[leadId] ?? [];
       const isChecked = current.includes(email);
@@ -511,63 +585,31 @@ export default function SendLeadEmailModal({
         [leadId]: nextEmails,
       };
 
-      // Recalculate if it still matches pure primary or all strategy across all leads
-      let matchesPrimary = true;
-      let matchesAll = true;
-      for (const lead of selectedLeads) {
-        const leadEmails = lead.business_emails || [];
-        const sel = updated[lead.id] || [];
-        if (leadEmails.length > 0) {
-          if (sel.length !== 1 || sel[0] !== leadEmails[0]) matchesPrimary = false;
-          if (sel.length !== leadEmails.length) matchesAll = false;
-        }
-      }
-      if (matchesPrimary) setBulkStrategy('primary');
-      else if (matchesAll) setBulkStrategy('all');
-      else setBulkStrategy('custom');
-
+      recalcBulkStrategy(updated);
       return updated;
     });
   };
 
   // Helper for single tool: select only primary email
-  const handleSelectLeadPrimaryEmail = (leadId: string, primaryEmail: string) => {
+  const handleSelectLeadPrimaryEmail = (leadId: string) => {
+    const lead = selectedLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+    const primaryRec = getRecommendedEmailsForLead(lead, 'primary');
     setBulkSelectedEmails((prev) => {
-      const updated = { ...prev, [leadId]: [primaryEmail] };
-      let matchesPrimary = true;
-      let matchesAll = true;
-      for (const lead of selectedLeads) {
-        const leadEmails = lead.business_emails || [];
-        const sel = updated[lead.id] || [];
-        if (leadEmails.length > 0) {
-          if (sel.length !== 1 || sel[0] !== leadEmails[0]) matchesPrimary = false;
-          if (sel.length !== leadEmails.length) matchesAll = false;
-        }
-      }
-      if (matchesPrimary) setBulkStrategy('primary');
-      else if (matchesAll) setBulkStrategy('all');
-      else setBulkStrategy('custom');
+      const updated = { ...prev, [leadId]: primaryRec };
+      recalcBulkStrategy(updated);
       return updated;
     });
   };
 
-  // Helper for single tool: select all emails
-  const handleSelectLeadAllEmails = (leadId: string, allEmails: string[]) => {
+  // Helper for single tool: select all sendable emails
+  const handleSelectLeadAllEmails = (leadId: string) => {
+    const lead = selectedLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+    const allRec = getRecommendedEmailsForLead(lead, 'all');
     setBulkSelectedEmails((prev) => {
-      const updated = { ...prev, [leadId]: [...allEmails] };
-      let matchesPrimary = true;
-      let matchesAll = true;
-      for (const lead of selectedLeads) {
-        const leadEmails = lead.business_emails || [];
-        const sel = updated[lead.id] || [];
-        if (leadEmails.length > 0) {
-          if (sel.length !== 1 || sel[0] !== leadEmails[0]) matchesPrimary = false;
-          if (sel.length !== leadEmails.length) matchesAll = false;
-        }
-      }
-      if (matchesPrimary) setBulkStrategy('primary');
-      else if (matchesAll) setBulkStrategy('all');
-      else setBulkStrategy('custom');
+      const updated = { ...prev, [leadId]: allRec };
+      recalcBulkStrategy(updated);
       return updated;
     });
   };
@@ -585,6 +627,9 @@ export default function SendLeadEmailModal({
       const email = (rawEmail || '').trim();
       const key = `${lead.id}|${email.toLowerCase()}`;
       if (!email || seen.has(key)) return;
+      // Safeguard: Never dispatch to undeliverable email addresses
+      const rec = lead.business_emails?.[email];
+      if (rec?.status === 'undeliverable' || rec?.resend_status === 'bounced') return;
       seen.add(key);
       items.push({
         leadId: lead.id,
@@ -606,7 +651,7 @@ export default function SendLeadEmailModal({
       if (excludedLeadIds.has(lead.id)) continue;
       const emails = bulkSelectedEmails[lead.id] !== undefined
         ? bulkSelectedEmails[lead.id]
-        : (bulkStrategy === 'primary' ? (lead.business_emails?.[0] ? [lead.business_emails[0]] : []) : (lead.business_emails || []));
+        : getRecommendedEmailsForLead(lead, bulkStrategy === 'all' ? 'all' : 'primary');
       for (const email of emails) add(lead, email);
     }
 
@@ -616,9 +661,31 @@ export default function SendLeadEmailModal({
   // Lead without any business email count (leads skipped for other reasons are reported separately)
   const leadsMissingEmailCount = useMemo(() => {
     return selectedLeads.filter(
-      (l) => !excludedLeadIds.has(l.id) && (l.business_emails || []).length === 0
+      (l) => !excludedLeadIds.has(l.id) && getAllEmails(l).length === 0
     ).length;
   }, [selectedLeads, excludedLeadIds]);
+
+  const leadsAllUndeliverableCount = useMemo(() => {
+    return selectedLeads.filter(
+      (l) =>
+        !excludedLeadIds.has(l.id) &&
+        getAllEmails(l).length > 0 &&
+        getRecommendedEmailsForLead(l, 'all').length === 0
+    ).length;
+  }, [selectedLeads, excludedLeadIds]);
+
+  const hasUnverifiedSelected = useMemo(() => {
+    if (isSingleLead && singleLead) {
+      return singleSelectedEmails.some(
+        (email) => singleLead.business_emails?.[email]?.status === 'unverified'
+      );
+    }
+    return Object.entries(bulkSelectedEmails).some(([leadId, emails]) => {
+      const lead = selectedLeads.find((l) => l.id === leadId);
+      if (!lead) return false;
+      return emails.some((email) => lead.business_emails?.[email]?.status === 'unverified');
+    });
+  }, [isSingleLead, singleLead, singleSelectedEmails, bulkSelectedEmails, selectedLeads]);
 
   // Sample data for live preview (prefer a tool that will actually be emailed)
   const sampleLead = isSingleLead
@@ -665,14 +732,15 @@ export default function SendLeadEmailModal({
     if (!activeTemplate) return '';
     // Rendered with dangerouslySetInnerHTML: lead values are escaped, only http(s) links
     const { html: v, siteUrl } = getLeadVars(sampleLead);
+    const displayDomain = v.toolDomain || v.toolName;
 
     const vars: Record<string, string> = {
       tool_name: siteUrl ? `<a href="${v.siteUrl}" target="_blank" rel="noopener noreferrer" style="color: #0d9488; text-decoration: underline; font-weight: 600;">${v.toolName}</a>` : v.toolName,
       company_name: v.toolName,
       tool_site_url: v.siteUrl,
       tool_url: v.siteUrl,
-      tool_domain: v.toolDomain,
-      domain_name: v.toolDomain,
+      tool_domain: siteUrl ? `<a href="${v.siteUrl}" target="_blank" rel="noopener noreferrer" style="color: #0d9488; text-decoration: underline; font-weight: 600;">${displayDomain}</a>` : displayDomain,
+      domain_name: siteUrl ? `<a href="${v.siteUrl}" target="_blank" rel="noopener noreferrer" style="color: #0d9488; text-decoration: underline; font-weight: 600;">${displayDomain}</a>` : displayDomain,
       recipient_name: v.toolName,
       first_name: 'there',
     };
@@ -686,8 +754,8 @@ export default function SendLeadEmailModal({
       base = textToEmailHtml(activeTemplate.text);
     }
 
-    // In "If you want {{tool_name}}", do not use link tag, keep as normal plain tool name
-    base = replaceIfYouWantToolName(base, v.toolName);
+    // In "If you want {{tool_name}} / {{tool_domain}}", do not use link tag, keep as normal plain tool name/domain
+    base = replaceIfYouWantToolName(base, v.toolName, displayDomain);
     if (!v.toolDomain) {
       base = base.replace(/\s*\(\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}\s*\)/gi, '');
     }
@@ -699,8 +767,16 @@ export default function SendLeadEmailModal({
   const previewSubject = useMemo(() => {
     if (!activeTemplate) return '';
     const toolName = sampleLead?.tool_name || 'AI Tool';
+    const siteUrl = safeHttpUrl(sampleLead?.tool_site_url);
+    const toolDomain = getToolDomain(siteUrl) || toolName;
     const base = isCustomizing && customSubject.trim() ? customSubject.trim() : activeTemplate.subject;
-    return substituteVars(base, { tool_name: toolName, first_name: 'there' });
+    return substituteVars(base, {
+      tool_name: toolName,
+      company_name: toolName,
+      tool_domain: toolDomain,
+      domain_name: toolDomain,
+      first_name: 'there',
+    });
   }, [activeTemplate, sampleLead, isCustomizing, customSubject]);
 
   // Execute Send
@@ -828,10 +904,10 @@ export default function SendLeadEmailModal({
           <div className="space-y-4 pt-1">
             {/* Send guards: tools already on Toolbit, missing leads */}
             {checkingGuards && (
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5" role="status">
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5" role="status">
                 <Spinner size={12} className="text-zinc-500" />
                 Checking Toolbit listings and email history…
-              </p>
+              </div>
             )}
 
             {guardCheckError && (
@@ -855,25 +931,15 @@ export default function SendLeadEmailModal({
 
             {existingLeads.length > 0 && (
               <div
-                className="p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-900 dark:text-amber-300 text-xs space-y-1.5"
+                className="p-2.5 rounded-lg bg-zinc-100/70 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700/80 text-zinc-700 dark:text-zinc-300 text-xs flex items-center gap-2"
                 role="status"
               >
-                <div className="flex items-start gap-2 font-medium">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-                  <span>
-                    {isSingleLead
-                      ? `${singleLead?.tool_name || 'This tool'} is already listed on Toolbit (skipped).`
-                      : `${existingLeads.length} of ${selectedLeads.length} tools are already on Toolbit and will be skipped.`}
-                  </span>
-                </div>
-                <ul className="max-h-24 overflow-y-auto space-y-0.5 pl-6 text-[11px]">
-                  {existingLeads.map((lead) => (
-                    <li key={lead.id} className="flex items-center justify-between gap-2">
-                      <span className="font-medium truncate">{lead.tool_name}</span>
-                      <span className="text-[10px] text-amber-700 dark:text-amber-400">Already on Toolbit</span>
-                    </li>
-                  ))}
-                </ul>
+                <Info size={13} className="shrink-0 text-zinc-400" />
+                <span className="truncate">
+                  {isSingleLead
+                    ? `${singleLead?.tool_name || 'This tool'} is already listed on Toolbit (sending skipped)`
+                    : `${existingLeads.length} of ${selectedLeads.length} tools already on Toolbit (skipped)`}
+                </span>
               </div>
             )}
 
@@ -893,70 +959,110 @@ export default function SendLeadEmailModal({
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                       <Mail size={13} className="text-zinc-500" />
-                      Target Email{singleLead.business_emails.length > 1 ? 's' : ''}
+                      Target Email{getAllEmails(singleLead).length > 1 ? 's' : ''}
                     </span>
-                    {singleLead.business_emails.length > 1 && (
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => setSingleSelectedEmails([...singleLead.business_emails])}
-                          className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium underline cursor-pointer"
-                        >
-                          All
-                        </button>
-                        <span className="text-zinc-300 dark:text-zinc-700">•</span>
-                        <button
-                          type="button"
-                          onClick={() => setSingleSelectedEmails([singleLead.business_emails[0]])}
-                          className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium underline cursor-pointer"
-                        >
-                          Primary only
-                        </button>
-                      </div>
+                    {getAllEmails(singleLead).length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (singleSelectedEmails.length === getAllEmails(singleLead).length) {
+                            setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'primary'));
+                          } else {
+                            setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'all'));
+                          }
+                        }}
+                        className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium cursor-pointer transition-colors text-[11px]"
+                      >
+                        {singleSelectedEmails.length === getAllEmails(singleLead).length ? 'Reset to 1' : 'Select all'}
+                      </button>
                     )}
                   </div>
 
-                  {singleLead.business_emails.length === 0 ? (
-                    <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-900 dark:text-amber-300 text-xs flex items-center gap-2">
-                      <AlertCircle size={13} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                  {getAllEmails(singleLead).length === 0 ? (
+                    <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs flex items-center gap-2">
+                      <AlertCircle size={13} className="shrink-0 text-zinc-400" />
                       <span>No business emails found for <strong>{singleLead.tool_name}</strong>.</span>
                     </div>
                   ) : (
-                    <div className="flex flex-wrap gap-1.5 pt-0.5">
-                      {singleLead.business_emails.map((email) => {
-                        const isChecked = singleSelectedEmails.includes(email);
-                        return (
-                          <button
-                            key={email}
-                            type="button"
-                            onClick={() => {
-                              if (isChecked) {
-                                if (singleSelectedEmails.length > 1) {
-                                  setSingleSelectedEmails(singleSelectedEmails.filter((e) => e !== email));
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(singleLead.business_emails || {}).map(([email, rawRecord]) => {
+                          const record: EmailRecord = typeof rawRecord === 'object' && rawRecord !== null ? (rawRecord as EmailRecord) : { status: (rawRecord as any) || 'unverified' };
+                          const isBounced = record.resend_status === 'bounced' || (record.status === 'undeliverable' && Boolean(record.bounce_reason));
+                          const isUndeliverable = record.status === 'undeliverable' || isBounced;
+                          const isDeliverable = record.status === 'deliverable' && !isBounced;
+                          const isChecked = singleSelectedEmails.includes(email) && !isUndeliverable;
+
+                          const chipTitle = isBounced
+                            ? `Bounced in Resend: ${record.bounce_reason || 'Mailbox delivery failed'} — sending is blocked`
+                            : isUndeliverable
+                            ? 'Undeliverable email — blocked from sending'
+                            : isDeliverable
+                            ? 'Verified deliverable email'
+                            : 'Unverified email';
+
+                          return (
+                            <button
+                              key={email}
+                              type="button"
+                              disabled={isUndeliverable}
+                              onClick={() => {
+                                if (isUndeliverable) return;
+                                if (isChecked) {
+                                  if (singleSelectedEmails.length > 1) {
+                                    setSingleSelectedEmails(singleSelectedEmails.filter((e) => e !== email));
+                                  }
+                                } else {
+                                  setSingleSelectedEmails([...singleSelectedEmails, email]);
                                 }
-                              } else {
-                                setSingleSelectedEmails([...singleSelectedEmails, email]);
-                              }
-                            }}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-mono transition-colors cursor-pointer ${
-                              isChecked
-                                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium'
-                                : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'
-                            }`}
-                          >
-                            <div
-                              className={`w-3 h-3 rounded-xs flex items-center justify-center border ${
-                                isChecked
-                                  ? 'border-white bg-white/20 dark:border-zinc-900 dark:bg-zinc-900/20 text-white dark:text-zinc-900'
-                                  : 'border-zinc-400'
+                              }}
+                              title={chipTitle}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-mono transition-colors ${
+                                isUndeliverable
+                                  ? 'bg-rose-50/50 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/40 line-through opacity-60 cursor-not-allowed'
+                                  : isChecked
+                                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium cursor-pointer shadow-2xs'
+                                  : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 cursor-pointer'
                               }`}
                             >
-                              {isChecked && <Check size={9} strokeWidth={3} />}
-                            </div>
-                            <span>{email}</span>
-                          </button>
-                        );
-                      })}
+                              <div
+                                className={`w-3.5 h-3.5 rounded-xs flex items-center justify-center border ${
+                                  isUndeliverable
+                                    ? 'border-rose-400 bg-rose-100/50 dark:bg-rose-900/30 text-rose-500'
+                                    : isChecked
+                                    ? 'border-white bg-white/20 dark:border-zinc-900 dark:bg-zinc-900/20 text-white dark:text-zinc-900'
+                                    : 'border-zinc-300 dark:border-zinc-600'
+                                }`}
+                              >
+                                {isChecked && <Check size={10} strokeWidth={3} />}
+                                {isUndeliverable && <span className="text-[8px] font-bold">✕</span>}
+                              </div>
+                              <span>{email}</span>
+                              <span
+                                className={`size-1.5 rounded-full shrink-0 ${
+                                  isDeliverable
+                                    ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
+                                    : isUndeliverable
+                                    ? 'bg-rose-500'
+                                    : 'bg-zinc-400 dark:bg-zinc-500'
+                                }`}
+                              />
+                              {isBounced && (
+                                <span className="text-[9px] px-1 py-0 rounded font-sans uppercase font-bold tracking-wider bg-rose-200/80 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                                  Bounced
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {hasUnverifiedSelected && (
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 pt-0.5">
+                          <Info size={12} className="shrink-0 text-zinc-400" />
+                          <span>Unverified address selected (deliverability hasn&apos;t been tested)</span>
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -1000,7 +1106,7 @@ export default function SendLeadEmailModal({
                             : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
                         }`}
                       >
-                        Primary only
+                        1 per tool
                       </button>
                       <button
                         type="button"
@@ -1023,12 +1129,30 @@ export default function SendLeadEmailModal({
                     </p>
                   )}
 
+                  {leadsAllUndeliverableCount > 0 && (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      {leadsAllUndeliverableCount} of {selectedLeads.length} tools have only undeliverable emails (skipped).
+                    </p>
+                  )}
+
+                  {hasUnverifiedSelected && (
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 pt-0.5">
+                      <Info size={12} className="shrink-0 text-zinc-400" />
+                      <span>Unverified addresses selected (deliverability hasn&apos;t been tested)</span>
+                    </p>
+                  )}
+
                   {showRecipientsList && (
                     <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950 p-2.5 max-h-44 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/80">
                       {selectedLeads.map((lead) => {
-                        const emails = lead.business_emails || [];
+                        const emailEntries = Object.entries(lead.business_emails || {});
                         const isExcluded = excludedLeadIds.has(lead.id);
                         const selectedForLead = bulkSelectedEmails[lead.id] || [];
+                        const hasSendable = emailEntries.some(([, raw]) => {
+                          const rec: EmailRecord = typeof raw === 'object' && raw !== null ? (raw as EmailRecord) : { status: (raw as any) || 'unverified' };
+                          return rec.status !== 'undeliverable' && rec.resend_status !== 'bounced';
+                        });
 
                         if (isExcluded) {
                           return (
@@ -1043,7 +1167,7 @@ export default function SendLeadEmailModal({
                           );
                         }
 
-                        if (emails.length === 0) {
+                        if (emailEntries.length === 0) {
                           return (
                             <div key={lead.id} className="py-1.5 flex items-center justify-between text-xs opacity-70">
                               <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
@@ -1056,25 +1180,38 @@ export default function SendLeadEmailModal({
                           );
                         }
 
+                        if (!hasSendable) {
+                          return (
+                            <div key={lead.id} className="py-1.5 flex items-center justify-between text-xs opacity-70">
+                              <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
+                                {lead.tool_name}
+                              </span>
+                              <span className="text-[10px] text-rose-500 dark:text-rose-400 font-medium">
+                                Undeliverable only (Skipped)
+                              </span>
+                            </div>
+                          );
+                        }
+
                         return (
                           <div key={lead.id} className="py-2 first:pt-0.5 last:pb-0.5 space-y-1.5">
                             <div className="flex items-center justify-between text-xs">
                               <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[240px]">
                                 {lead.tool_name}
                               </span>
-                              {emails.length > 1 && (
+                              {emailEntries.length > 1 && (
                                 <div className="flex items-center gap-1.5 text-[10px]">
                                   <button
                                     type="button"
-                                    onClick={() => handleSelectLeadPrimaryEmail(lead.id, emails[0])}
+                                    onClick={() => handleSelectLeadPrimaryEmail(lead.id)}
                                     className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline cursor-pointer"
                                   >
-                                    Primary
+                                    First
                                   </button>
                                   <span className="text-zinc-300 dark:text-zinc-700">/</span>
                                   <button
                                     type="button"
-                                    onClick={() => handleSelectLeadAllEmails(lead.id, emails)}
+                                    onClick={() => handleSelectLeadAllEmails(lead.id)}
                                     className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline cursor-pointer"
                                   >
                                     All
@@ -1085,29 +1222,65 @@ export default function SendLeadEmailModal({
 
                             {/* Email Selection Pills with Checkbox */}
                             <div className="flex flex-wrap gap-1.5">
-                              {emails.map((email) => {
-                                const isChecked = selectedForLead.includes(email);
+                              {emailEntries.map(([email, rawRecord]) => {
+                                const record: EmailRecord = typeof rawRecord === 'object' && rawRecord !== null ? (rawRecord as EmailRecord) : { status: (rawRecord as any) || 'unverified' };
+                                const isBounced = record.resend_status === 'bounced' || (record.status === 'undeliverable' && Boolean(record.bounce_reason));
+                                const isUndeliverable = record.status === 'undeliverable' || isBounced;
+                                const isDeliverable = record.status === 'deliverable' && !isBounced;
+                                const isChecked = selectedForLead.includes(email) && !isUndeliverable;
+
                                 return (
                                   <button
                                     key={email}
                                     type="button"
+                                    disabled={isUndeliverable}
                                     onClick={() => handleToggleBulkEmail(lead.id, email)}
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-mono transition-colors cursor-pointer ${
-                                      isChecked
-                                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium'
-                                        : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80 hover:border-zinc-300'
+                                    title={
+                                      isBounced
+                                        ? `Bounced in Resend: ${record.bounce_reason || 'Mailbox delivery failed'} — sending is blocked`
+                                        : isUndeliverable
+                                        ? 'Undeliverable email — blocked from sending'
+                                        : isDeliverable
+                                        ? 'Verified deliverable email'
+                                        : 'Unverified email'
+                                    }
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-mono transition-colors ${
+                                      isUndeliverable
+                                        ? 'bg-rose-50/40 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/40 line-through opacity-60 cursor-not-allowed'
+                                        : isChecked
+                                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium cursor-pointer shadow-2xs'
+                                        : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80 hover:border-zinc-300 cursor-pointer'
                                     }`}
                                   >
                                     <div
-                                      className={`w-3 h-3 rounded-xs flex items-center justify-center border ${
-                                        isChecked
+                                      className={`w-3.5 h-3.5 rounded-xs flex items-center justify-center border ${
+                                        isUndeliverable
+                                          ? 'border-rose-400 bg-rose-100/50 dark:bg-rose-900/30 text-rose-500'
+                                          : isChecked
                                           ? 'border-white bg-white/20 dark:border-zinc-900 dark:bg-zinc-900/20 text-white dark:text-zinc-900'
                                           : 'border-zinc-400 dark:border-zinc-600'
                                       }`}
                                     >
-                                      {isChecked && <Check size={9} strokeWidth={3} />}
+                                      {isChecked && <Check size={10} strokeWidth={3} />}
+                                      {isUndeliverable && <span className="text-[8px] font-bold">✕</span>}
                                     </div>
                                     <span className="truncate max-w-[240px]">{email}</span>
+                                    <span
+                                      className={`size-1.5 rounded-full shrink-0 ${
+                                        isBounced
+                                          ? 'bg-rose-600'
+                                          : isDeliverable
+                                          ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
+                                          : isUndeliverable
+                                          ? 'bg-rose-500'
+                                          : 'bg-zinc-400 dark:bg-zinc-500'
+                                      }`}
+                                    />
+                                    {isBounced && (
+                                      <span className="text-[8px] px-1 py-0 rounded font-sans uppercase font-bold tracking-wider bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300">
+                                        Bounced
+                                      </span>
+                                    )}
                                   </button>
                                 );
                               })}
@@ -1181,17 +1354,17 @@ export default function SendLeadEmailModal({
 
             {/* Already contacted: skipped unless explicitly confirmed */}
             {(repliedLeads.length > 0 || repeatLeads.length > 0) && (
-              <div className="p-3 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 text-violet-950 dark:text-violet-200 text-xs space-y-2.5">
+              <div className="p-2.5 rounded-lg bg-zinc-100/70 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700/80 text-zinc-800 dark:text-zinc-200 text-xs space-y-2">
                 {repliedLeads.length > 0 && (
                   <ContactedLeadsGroup
                     title={
                       isSingleLead
-                        ? `${repliedLeads[0].tool_name} already replied, so no email will be sent unless you confirm.`
-                        : `${repliedLeads.length} of ${selectedLeads.length} selected tools already replied and will be skipped unless you confirm.`
+                        ? `${repliedLeads[0].tool_name} already replied`
+                        : `${repliedLeads.length} of ${selectedLeads.length} tools already replied`
                     }
                     leads={repliedLeads}
                     reasonOf={(lead) => historyByLeadId.get(lead.id)?.replied || ''}
-                    confirmLabel={`Send anyway to ${repliedLeads.length === 1 ? 'this tool' : `these ${repliedLeads.length} tools`}`}
+                    confirmLabel="Send anyway"
                     checked={allowReplied}
                     onCheckedChange={setAllowReplied}
                   />
@@ -1200,12 +1373,12 @@ export default function SendLeadEmailModal({
                   <ContactedLeadsGroup
                     title={
                       isSingleLead
-                        ? `${repeatLeads[0].tool_name} already received "${activeTemplate.name}", so it will not be sent again unless you confirm.`
-                        : `${repeatLeads.length} of ${selectedLeads.length} selected tools already received "${activeTemplate.name}" and will be skipped unless you confirm.`
+                        ? `${repeatLeads[0].tool_name} previously received this template`
+                        : `${repeatLeads.length} of ${selectedLeads.length} tools previously received this template`
                     }
                     leads={repeatLeads}
                     reasonOf={(lead) => historyByLeadId.get(lead.id)?.templateSent || ''}
-                    confirmLabel={`Send "${activeTemplate.name}" again to ${repeatLeads.length === 1 ? 'this tool' : `these ${repeatLeads.length} tools`}`}
+                    confirmLabel="Resend anyway"
                     checked={allowRepeat}
                     onCheckedChange={setAllowRepeat}
                   />

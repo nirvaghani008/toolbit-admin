@@ -177,6 +177,7 @@ export function htmlBodyToFullEmailHtml(innerHtml: string): string {
     p { margin: 0 0 18px 0 !important; line-height: 1.65 !important; color: #3f3f46 !important; font-size: 15px !important; }
     strong { color: #18181b !important; font-weight: 600 !important; }
     a { color: #0d9488 !important; text-decoration: underline !important; font-weight: 500 !important; }
+    strong a, .no-link a, a[x-apple-data-detectors] { color: #18181b !important; text-decoration: none !important; font-weight: 600 !important; pointer-events: none !important; cursor: default !important; }
     ul { margin: 0 0 20px 0 !important; padding-left: 24px !important; line-height: 1.65 !important; color: #3f3f46 !important; list-style-type: disc !important; list-style: disc outside !important; }
     ol { margin: 0 0 20px 0 !important; padding-left: 24px !important; line-height: 1.65 !important; color: #3f3f46 !important; list-style-type: decimal !important; list-style: decimal outside !important; }
     li { margin-bottom: 8px !important; display: list-item !important; list-style-type: inherit !important; }

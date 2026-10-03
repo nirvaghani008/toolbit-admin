@@ -151,6 +151,50 @@ input[type=number] {
   background: var(--text-muted);
 }
 
+/* ─── Data Table Scrollbar Utility (Prominent Horizontal & Vertical) ─── */
+.table-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #a1a1aa #f4f4f5;
+}
+
+.dark .table-scrollbar {
+  scrollbar-color: #52525b #18181b;
+}
+
+.table-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 10px;
+}
+
+.table-scrollbar::-webkit-scrollbar-track {
+  background: #f4f4f5;
+  border-radius: 6px;
+}
+
+.dark .table-scrollbar::-webkit-scrollbar-track {
+  background: #18181b;
+  border-radius: 6px;
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb {
+  background: #a1a1aa;
+  border-radius: 6px;
+  border: 2px solid #f4f4f5;
+}
+
+.dark .table-scrollbar::-webkit-scrollbar-thumb {
+  background: #52525b;
+  border: 2px solid #18181b;
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
+.dark .table-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
 /* ─── Selection ─── */
 ::selection {
   background: rgba(99, 102, 241, 0.2);

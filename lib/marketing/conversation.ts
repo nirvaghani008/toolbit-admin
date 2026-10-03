@@ -81,7 +81,13 @@ export function normalizeConversationHistory(raw: unknown): ConversationThread[]
     const messages = (Array.isArray(t.messages) ? t.messages : [])
       .filter((m): m is Record<string, unknown> => Boolean(m) && typeof m === 'object')
       .filter((m) => m.direction === 'outbound' || m.direction === 'inbound')
-      .map((m) => m as unknown as ConversationMessage)
+      .map((m) => {
+        const msg = m as unknown as ConversationMessage;
+        if (msg.template_id === 'tool_relist' || msg.template_id === 'relist_launch') {
+          return { ...msg, template_id: 'tool_outreach' };
+        }
+        return msg;
+      })
       .sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
 
     const status = typeof t.status === 'string' && VALID_STATUSES.has(t.status)

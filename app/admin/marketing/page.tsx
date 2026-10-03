@@ -90,8 +90,7 @@ const TEMPLATE_ICONS: Record<string, React.ReactNode> = {
   sponsored_feature: <Megaphone size={18} />,
   new_tool_launch: <Sparkles size={18} />,
   affiliate_partnership: <Handshake size={18} />,
-  tool_relist: <RefreshCw size={18} />,
-  relist_launch: <RefreshCw size={18} />,
+  tool_outreach: <RefreshCw size={18} />,
 };
 
 // Helper: Format a single editor line (bold and links)
@@ -287,25 +286,50 @@ export default function MarketingMailPage() {
 
       const toolName = (allVars.tool_name || '').trim();
       const toolSiteUrl = (allVars.tool_site_url || allVars.tool_url || '').trim();
+      let toolDomain = (allVars.tool_domain || allVars.domain_name || '').trim();
+      if (!toolDomain && toolSiteUrl) {
+        try {
+          const parsed = new URL(toolSiteUrl.startsWith('http') ? toolSiteUrl : `https://${toolSiteUrl}`);
+          toolDomain = parsed.hostname.replace(/^www\./i, '');
+        } catch {
+          toolDomain = toolSiteUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0];
+        }
+      }
+      const displayDomain = toolDomain || toolName;
 
-      // For email body: If we have both tool_name and a site URL, make it a clickable anchor tag
-      const bodyVars = { ...allVars };
+      // For email body: If we have tool_name/tool_domain and a site URL, make it a clickable anchor tag
+      const bodyVars: Record<string, string> = { ...allVars, tool_domain: displayDomain, domain_name: displayDomain };
       if (toolName && toolSiteUrl) {
         bodyVars.tool_name = `[${toolName}](${toolSiteUrl})`;
       }
+      if (displayDomain && toolSiteUrl) {
+        bodyVars.tool_domain = `[${displayDomain}](${toolSiteUrl})`;
+        bodyVars.domain_name = `[${displayDomain}](${toolSiteUrl})`;
+      }
 
       let rawText = tmpl.text;
-      // In "If you want {{tool_name}}", do not use link tag, keep as normal plain tool name
+      // In "If you want {{tool_name}} / {{tool_domain}}", do not use link tag, keep as normal plain tool name/domain
       rawText = rawText.replace(
         /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*tool_name\s*\}\}/gi,
         `$1${toolName}`
       );
+      if (displayDomain) {
+        rawText = rawText.replace(
+          /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}/gi,
+          `$1${displayDomain}`
+        );
+      }
       const substitutedText = substituteVariablesInContent(rawText, bodyVars);
       const substitutedHtml = convertTextToEditorHtml(substitutedText);
 
       // Subject MUST remain clean plain text (never an anchor tag or markdown link)
       const rawSubj = tmpl.subject;
-      const subjectVars = { ...allVars, tool_name: toolName };
+      const subjectVars = {
+        ...allVars,
+        tool_name: toolName,
+        tool_domain: displayDomain,
+        domain_name: displayDomain,
+      };
       const substitutedSubj = substituteVariablesInContent(rawSubj, subjectVars);
 
       return {
@@ -431,9 +455,7 @@ export default function MarketingMailPage() {
   }, [fetchData]);
 
   // Selected template helper
-  const selectedTemplate = useMemo(() => {
-    return templates[selectedTemplateId] || null;
-  }, [templates, selectedTemplateId]);
+  const selectedTemplate = templates[selectedTemplateId] || null;
 
   // When switching templates (Inline section loading ONLY, never full page reload)
   const handleSelectTemplate = (id: string) => {
@@ -1254,7 +1276,7 @@ export default function MarketingMailPage() {
                   <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-[11px] text-zinc-700 dark:text-zinc-300 flex items-start gap-2">
                     <Info size={14} className="mt-0.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
                     <span>
-                      <strong>Recipient Name Fallback:</strong> If a recipient's name is left blank, it automatically addresses them as <em>"Hi there,"</em>.
+                      <strong>Recipient Name Fallback:</strong> If a recipient&apos;s name is left blank, it automatically addresses them as <em>&quot;Hi there,&quot;</em>.
                     </span>
                   </div>
                 </Card>
@@ -1620,7 +1642,7 @@ export default function MarketingMailPage() {
           </div>
 
           {/* Filters & Actions Bar with Shadcn Select */}
-          <Card className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+          <Card className="sticky top-20 z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 shadow-xs">
             <div className="flex flex-1 items-center gap-2">
               <div className="relative flex-1 max-w-md">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -1672,9 +1694,9 @@ export default function MarketingMailPage() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">
+              <div className="max-h-[600px] 2xl:max-h-[680px] overflow-auto custom-scrollbar table-scrollbar">
+                <table className="w-full text-left text-xs min-w-[860px]">
+                  <thead className="sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 font-semibold uppercase tracking-wider text-[10px] shadow-2xs">
                     <tr>
                       <th className="py-3 px-4">Recipient</th>
                       <th className="py-3 px-4">Subject</th>

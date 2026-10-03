@@ -14,25 +14,44 @@ import {
   Link as LinkIcon,
   Mail,
   MessageSquare,
+  Plus,
   Send,
   ShoppingCart,
   Star,
+  Trash2,
+  Edit2,
   TrendingUp,
   UserCheck,
   Users,
+  X,
+  AlertCircle,
+  LogIn,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import {
+  addOutreachLeadEmailAction,
+  updateOutreachLeadEmailAction,
+  updateOutreachLeadEmailStatusAction,
+  deleteOutreachLeadEmailAction,
   getOutreachLeadConversionsAction,
   type MarketingOutreachLead,
   type OutreachConversionEvent,
   type OutreachConversionSummary,
 } from '@/app/admin/marketing/actions';
+import {
+  normalizeBusinessEmails,
+  type BusinessEmailsMap,
+  type EmailDeliverabilityStatus,
+  type EmailRecord,
+} from '@/lib/marketing/business-emails';
 import { formatMessageTime, formatRelativeTime } from '@/lib/marketing/conversation';
 import { formatLeadStatus, getLeadAutomationHint, getLeadStatusVariant } from '@/lib/marketing/lead-status';
 import { LinkedinIcon, TwitterIcon } from './SocialIcons';
+import EmailDeliverabilityBadge from './EmailDeliverabilityBadge';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pure helpers (lead data is scraped, so every field is parsed defensively)
@@ -60,6 +79,8 @@ function getEventIcon(type: string) {
       return <Globe size={13} />;
     case 'signup':
       return <UserCheck size={13} className="text-emerald-500" />;
+    case 'login':
+      return <LogIn size={13} className="text-indigo-500" />;
     case 'submission':
       return <Layers size={13} className="text-indigo-500" />;
     case 'checkout':
@@ -77,6 +98,8 @@ function formatEventType(type: string): string {
       return 'Page Visit';
     case 'signup':
       return 'Account Signup';
+    case 'login':
+      return 'Account Login';
     case 'submission':
       return 'Tool Submission';
     case 'checkout':
@@ -227,7 +250,7 @@ function buildLeadDetails(lead: MarketingOutreachLead) {
     launchCount: launchDates.length,
     siteAlive,
     livenessCheckedAt: asText(liveness.checked_at),
-    emails: uniqueCaseInsensitive(asStringList(lead.business_emails)),
+    emails: normalizeBusinessEmails(lead.business_emails),
     tractionStats,
     sources,
     links,
@@ -244,28 +267,33 @@ function Section({
   title,
   icon,
   count,
+  action,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
   count?: number;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="min-w-0">
-      <h3
-        id={headingId}
-        className="flex items-center gap-1.5 mb-2.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400"
-      >
-        <span aria-hidden="true" className="text-zinc-400">
-          {icon}
-        </span>
-        {title}
-        {typeof count === 'number' && (
-          <span className="font-semibold text-zinc-400 dark:text-zinc-500">({count})</span>
-        )}
-      </h3>
+      <div className="flex items-center justify-between mb-2.5">
+        <h3
+          id={headingId}
+          className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400"
+        >
+          <span aria-hidden="true" className="text-zinc-400">
+            {icon}
+          </span>
+          {title}
+          {typeof count === 'number' && (
+            <span className="font-semibold text-zinc-400 dark:text-zinc-500">({count})</span>
+          )}
+        </h3>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -289,7 +317,7 @@ function EmptyState({ children }: { children: React.ReactNode }) {
 }
 
 const LIST_CLASS =
-  'rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden';
+  'rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800';
 const ICON_TILE_CLASS =
   'size-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 flex items-center justify-center shrink-0';
 
@@ -396,6 +424,7 @@ interface LeadDetailsDialogProps {
   token?: string;
   onViewConversation?: (lead: MarketingOutreachLead) => void;
   onSendEmail?: (lead: MarketingOutreachLead) => void;
+  onLeadUpdated?: (lead: MarketingOutreachLead) => void;
 }
 
 /**
@@ -410,19 +439,199 @@ export default function LeadDetailsDialog({
   token,
   onViewConversation,
   onSendEmail,
+  onLeadUpdated,
 }: LeadDetailsDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const details = useMemo(() => buildLeadDetails(lead), [lead]);
-  const automationHint = getLeadAutomationHint(lead);
-  const summary = lead.conversation_summary;
-  const hasEmail = details.emails.length > 0;
-  const initial = (lead.tool_name || '?').trim().charAt(0).toUpperCase() || '?';
+  // Sync internal lead representation when external prop updates
+  const [prevLead, setPrevLead] = useState(lead);
+  const [currentLead, setCurrentLead] = useState<MarketingOutreachLead>(lead);
+  if (lead !== prevLead) {
+    setPrevLead(lead);
+    setCurrentLead(lead);
+  }
 
-  const initialConvEvents = lead.conversions?.events || lead.conversion_events || [];
-  const initialConvSummary = lead.conversions?.summary || lead.conversion_summary || null;
+  // Business email operations state
+  const [isAddingEmail, setIsAddingEmail] = useState(false);
+  const [newEmailVal, setNewEmailVal] = useState('');
+  const [newEmailStatus, setNewEmailStatus] = useState<EmailDeliverabilityStatus>('unverified');
+  const [editingEmail, setEditingEmail] = useState<string | null>(null);
+  const [editEmailVal, setEditEmailVal] = useState('');
+  const [editEmailStatus, setEditEmailStatus] = useState<EmailDeliverabilityStatus>('unverified');
+  const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
+  const [emailActionTarget, setEmailActionTarget] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+
+  const details = useMemo(() => buildLeadDetails(currentLead), [currentLead]);
+  const emailEntries = useMemo(() => Object.entries(details.emails || {}), [details.emails]);
+  const automationHint = getLeadAutomationHint(currentLead);
+  const summary = currentLead.conversation_summary;
+  const hasEmail = emailEntries.length > 0;
+  const initial = (currentLead.tool_name || '?').trim().charAt(0).toUpperCase() || '?';
+
+  const initialConvEvents = currentLead.conversions?.events || currentLead.conversion_events || [];
+  const initialConvSummary = currentLead.conversions?.summary || currentLead.conversion_summary || null;
+
+  const handleAddEmail = async () => {
+    if (!token) return;
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    const trimmed = newEmailVal.trim().toLowerCase();
+    if (!trimmed) {
+      setEmailError('Please enter an email address.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError('Please enter a valid email format.');
+      return;
+    }
+    if (currentLead.business_emails && currentLead.business_emails[trimmed] !== undefined) {
+      setEmailError(`"${trimmed}" is already added.`);
+      return;
+    }
+
+    try {
+      setEmailSubmitting(true);
+      setEmailActionTarget('add');
+      const res = await addOutreachLeadEmailAction(token, currentLead.id, trimmed, newEmailStatus);
+      if (!res.success || !res.data) {
+        setEmailError(res.error || 'Failed to add email.');
+        return;
+      }
+      const updatedLead = { ...currentLead, business_emails: res.data.business_emails };
+      setCurrentLead(updatedLead);
+      onLeadUpdated?.(updatedLead);
+      setIsAddingEmail(false);
+      setNewEmailVal('');
+      setNewEmailStatus('unverified');
+      setEmailSuccess(`Added "${trimmed}" successfully.`);
+      setTimeout(() => setEmailSuccess(null), 3000);
+    } catch (err: any) {
+      setEmailError(err?.message || 'Failed to add email.');
+    } finally {
+      setEmailSubmitting(false);
+      setEmailActionTarget(null);
+    }
+  };
+
+  const handleStartEditEmail = (email: string, status: EmailDeliverabilityStatus) => {
+    setEmailError(null);
+    setEmailSuccess(null);
+    setDeletingEmail(null);
+    setIsAddingEmail(false);
+    setEditingEmail(email);
+    setEditEmailVal(email);
+    setEditEmailStatus(status);
+  };
+
+  const handleSaveEditEmail = async (oldEmail: string) => {
+    if (!token) return;
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    const trimmed = editEmailVal.trim().toLowerCase();
+    if (!trimmed) {
+      setEmailError('Email cannot be empty.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError('Please enter a valid email format.');
+      return;
+    }
+    if (trimmed === oldEmail.toLowerCase() && editEmailStatus === currentLead.business_emails?.[oldEmail]?.status) {
+      setEditingEmail(null);
+      setEditEmailVal('');
+      return;
+    }
+    if (
+      currentLead.business_emails &&
+      currentLead.business_emails[trimmed] !== undefined &&
+      trimmed !== oldEmail.toLowerCase()
+    ) {
+      setEmailError(`"${trimmed}" is already listed.`);
+      return;
+    }
+
+    try {
+      setEmailSubmitting(true);
+      setEmailActionTarget(oldEmail);
+      const res = await updateOutreachLeadEmailAction(token, currentLead.id, oldEmail, trimmed, editEmailStatus);
+      if (!res.success || !res.data) {
+        setEmailError(res.error || 'Failed to update email.');
+        return;
+      }
+      const updatedLead = { ...currentLead, business_emails: res.data.business_emails };
+      setCurrentLead(updatedLead);
+      onLeadUpdated?.(updatedLead);
+      setEditingEmail(null);
+      setEditEmailVal('');
+      setEmailSuccess(`Updated to "${trimmed}".`);
+      setTimeout(() => setEmailSuccess(null), 3000);
+    } catch (err: any) {
+      setEmailError(err?.message || 'Failed to update email.');
+    } finally {
+      setEmailSubmitting(false);
+      setEmailActionTarget(null);
+    }
+  };
+
+  const handleStatusChange = async (email: string, newStatus: EmailDeliverabilityStatus) => {
+    if (!token) return;
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    try {
+      setEmailSubmitting(true);
+      setEmailActionTarget(email);
+      const res = await updateOutreachLeadEmailStatusAction(token, currentLead.id, email, newStatus);
+      if (!res.success || !res.data) {
+        setEmailError(res.error || 'Failed to update email deliverability status.');
+        return;
+      }
+      const updatedLead = { ...currentLead, business_emails: res.data.business_emails };
+      setCurrentLead(updatedLead);
+      onLeadUpdated?.(updatedLead);
+      setEmailSuccess(`Updated "${email}" to ${newStatus}.`);
+      setTimeout(() => setEmailSuccess(null), 3000);
+    } catch (err: any) {
+      setEmailError(err?.message || 'Failed to update email status.');
+    } finally {
+      setEmailSubmitting(false);
+      setEmailActionTarget(null);
+    }
+  };
+
+  const handleDeleteEmail = async (emailToDelete: string) => {
+    if (!token) return;
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    try {
+      setEmailSubmitting(true);
+      setEmailActionTarget(emailToDelete);
+      const res = await deleteOutreachLeadEmailAction(token, currentLead.id, emailToDelete);
+      if (!res.success || !res.data) {
+        setEmailError(res.error || 'Failed to delete email.');
+        return;
+      }
+      const updatedLead = { ...currentLead, business_emails: res.data.business_emails };
+      setCurrentLead(updatedLead);
+      onLeadUpdated?.(updatedLead);
+      setDeletingEmail(null);
+      setEmailSuccess(`Removed "${emailToDelete}".`);
+      setTimeout(() => setEmailSuccess(null), 3000);
+    } catch (err: any) {
+      setEmailError(err?.message || 'Failed to delete email.');
+    } finally {
+      setEmailSubmitting(false);
+      setEmailActionTarget(null);
+    }
+  };
 
   // Conversion tracking state
   const [conversionData, setConversionData] = useState<{
@@ -472,7 +681,7 @@ export default function LeadDetailsDialog({
   }, []);
 
   const activityStats = [
-    { label: 'Business emails', value: details.emails.length.toLocaleString('en-US') },
+    { label: 'Business emails', value: emailEntries.length.toLocaleString('en-US') },
     { label: 'Emails sent', value: (summary?.outbound_count ?? 0).toLocaleString('en-US') },
     { label: 'Replies', value: (summary?.reply_count ?? 0).toLocaleString('en-US') },
     { label: 'Last activity', value: formatRelativeTime(summary?.last_message_at) || '—' },
@@ -504,6 +713,11 @@ export default function LeadDetailsDialog({
                   {lead.tool_name || 'Untitled lead'}
                 </DialogTitle>
                 <Badge variant={getLeadStatusVariant(lead.status)}>{formatLeadStatus(lead.status)}</Badge>
+                {(lead.metadata?.is_tool_submission === true || lead.metadata?.is_tool_submission === 'true') && (
+                  <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] font-medium">
+                    Submitted Tool
+                  </Badge>
+                )}
                 {automationHint && (
                   <span className="text-[10px] text-zinc-400" title={automationHint.title}>
                     {automationHint.label}
@@ -583,11 +797,6 @@ export default function LeadDetailsDialog({
                 }`}>
                   {convSummary?.signed_up ? 'Signed Up' : 'Anonymous'}
                 </div>
-                {convSummary?.signed_up_at && (
-                  <div className="text-[10px] text-zinc-500 mt-0.5 truncate" title={formatMessageTime(convSummary.signed_up_at)}>
-                    {formatDate(convSummary.signed_up_at)}
-                  </div>
-                )}
               </div>
 
               {/* Tool Submissions */}
@@ -684,7 +893,9 @@ export default function LeadDetailsDialog({
                         </div>
                         <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                           {evt.page && <span>Page: <span className="font-mono text-zinc-700 dark:text-zinc-300">{evt.page}</span></span>}
-                          {evt.utm_campaign && <span>Campaign: <span className="font-medium text-zinc-700 dark:text-zinc-300">{evt.utm_campaign}</span></span>}
+                          {(evt.utm_campaign || evt.data?.utm_campaign) && (
+                            <span>Campaign: <span className="font-medium text-zinc-700 dark:text-zinc-300">{evt.utm_campaign || evt.data?.utm_campaign}</span></span>
+                          )}
                           {evt.user_email && <span>User: <span className="text-zinc-700 dark:text-zinc-300">{evt.user_email}</span></span>}
                           {evt.type === 'purchase' && (evt.data?.amount_usd || evt.data?.amount) && (
                             <span className="font-semibold text-emerald-600 dark:text-emerald-400">
@@ -816,23 +1027,329 @@ export default function LeadDetailsDialog({
           )}
 
           {/* Business emails */}
-          <Section title="Business emails" icon={<Mail size={12} />} count={details.emails.length}>
+          <Section
+            title="Business emails"
+            icon={<Mail size={12} />}
+            count={emailEntries.length}
+            action={
+              token && !isAddingEmail ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingEmail(true);
+                    setEmailError(null);
+                    setEditingEmail(null);
+                    setDeletingEmail(null);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                >
+                  <Plus size={12} />
+                  <span>Add email</span>
+                </button>
+              ) : null
+            }
+          >
+            {/* Inline Notifications */}
+            {emailError && (
+              <div className="mb-2 p-2.5 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <AlertCircle size={14} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                  <span className="truncate">{emailError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEmailError(null)}
+                  className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 shrink-0"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+
+            {emailSuccess && (
+              <div className="mb-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <CheckCircle2 size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span className="truncate">{emailSuccess}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEmailSuccess(null)}
+                  className="text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-200 shrink-0"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* Inline Add Email Form */}
+            {isAddingEmail && (
+              <div className="mb-3 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-800/40 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="email"
+                    value={newEmailVal}
+                    onChange={(e) => {
+                      setNewEmailVal(e.target.value);
+                      if (emailError) setEmailError(null);
+                    }}
+                    placeholder="e.g. contact@example.com"
+                    className="h-8 text-xs font-mono flex-1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddEmail();
+                      } else if (e.key === 'Escape') {
+                        setIsAddingEmail(false);
+                        setNewEmailVal('');
+                      }
+                    }}
+                    disabled={emailSubmitting && emailActionTarget === 'add'}
+                  />
+                  <select
+                    value={newEmailStatus}
+                    onChange={(e) => setNewEmailStatus(e.target.value as EmailDeliverabilityStatus)}
+                    disabled={emailSubmitting && emailActionTarget === 'add'}
+                    className="h-8 text-xs px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium cursor-pointer"
+                    title="Initial deliverability status"
+                  >
+                    <option value="unverified">Unverified</option>
+                    <option value="deliverable">Deliverable</option>
+                    <option value="undeliverable">Undeliverable</option>
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAddEmail}
+                    disabled={(emailSubmitting && emailActionTarget === 'add') || !newEmailVal.trim()}
+                    className="h-8 text-xs px-3 font-semibold gap-1 shrink-0"
+                  >
+                    {emailSubmitting && emailActionTarget === 'add' ? (
+                      <Spinner size={12} />
+                    ) : (
+                      <Check size={13} />
+                    )}
+                    Add
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsAddingEmail(false);
+                      setNewEmailVal('');
+                    }}
+                    disabled={emailSubmitting && emailActionTarget === 'add'}
+                    className="h-8 text-xs px-2.5 shrink-0"
+                  >
+                    <X size={13} />
+                  </Button>
+                </div>
+                <p className="text-[10px] text-zinc-400 pl-1">
+                  Press Enter to add or Escape to cancel.
+                </p>
+              </div>
+            )}
+
             {hasEmail ? (
               <ul className={LIST_CLASS}>
-                {details.emails.map((email) => (
-                  <li key={email} className="flex items-center gap-3 pl-3.5 pr-2 py-1.5">
-                    <span className={ICON_TILE_CLASS} aria-hidden="true">
-                      <Mail size={13} />
-                    </span>
-                    <span className="min-w-0 flex-1 text-xs font-mono text-zinc-800 dark:text-zinc-200 truncate" title={email}>
-                      {email}
-                    </span>
-                    <CopyButton value={email} label={email} />
-                  </li>
-                ))}
+                {emailEntries.map(([email, rawRecord], index) => {
+                  const record: EmailRecord =
+                    typeof rawRecord === 'object' && rawRecord !== null
+                      ? (rawRecord as EmailRecord)
+                      : { status: (rawRecord as any) || 'unverified' };
+                  const isEditingThis = editingEmail === email;
+                  const isDeletingThis = deletingEmail === email;
+                  const isBusyThis = emailSubmitting && emailActionTarget === email;
+
+                  if (isEditingThis) {
+                    return (
+                      <li key={email} className="p-2.5 bg-zinc-50/50 dark:bg-zinc-800/30">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="email"
+                            value={editEmailVal}
+                            onChange={(e) => setEditEmailVal(e.target.value)}
+                            placeholder="email@example.com"
+                            className="h-7 text-xs font-mono flex-1"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveEditEmail(email);
+                              } else if (e.key === 'Escape') {
+                                setEditingEmail(null);
+                                setEditEmailVal('');
+                              }
+                            }}
+                            disabled={isBusyThis}
+                          />
+                          <select
+                            value={editEmailStatus}
+                            onChange={(e) => setEditEmailStatus(e.target.value as EmailDeliverabilityStatus)}
+                            disabled={isBusyThis}
+                            className="h-7 text-xs px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium cursor-pointer"
+                            title="Deliverability status"
+                          >
+                            <option value="unverified">Unverified</option>
+                            <option value="deliverable">Deliverable</option>
+                            <option value="undeliverable">Undeliverable</option>
+                          </select>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleSaveEditEmail(email)}
+                            disabled={isBusyThis || !editEmailVal.trim()}
+                            className="h-7 text-xs px-2.5 font-semibold gap-1 shrink-0"
+                          >
+                            {isBusyThis ? <Spinner size={11} /> : <Check size={12} />}
+                            Save
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditingEmail(null);
+                              setEditEmailVal('');
+                            }}
+                            disabled={isBusyThis}
+                            className="h-7 text-xs px-2 shrink-0"
+                          >
+                            <X size={12} />
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  }
+
+                  if (isDeletingThis) {
+                    return (
+                      <li
+                        key={email}
+                        className="flex items-center justify-between gap-3 p-2 bg-rose-50/60 dark:bg-rose-950/20"
+                      >
+                        <span className="text-xs text-rose-700 dark:text-rose-300 font-medium pl-1 truncate">
+                          Delete <strong>{email}</strong>?
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteEmail(email)}
+                            disabled={isBusyThis}
+                            className="h-6 text-[11px] px-2 font-semibold gap-1 bg-rose-600 hover:bg-rose-700 text-white"
+                          >
+                            {isBusyThis ? <Spinner size={10} /> : <Trash2 size={11} />}
+                            Confirm
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeletingEmail(null)}
+                            disabled={isBusyThis}
+                            className="h-6 text-[11px] px-2"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  }
+
+                  return (
+                    <li key={email} className="flex flex-col group/email border-b border-zinc-100 dark:border-zinc-800/60 last:border-b-0 transition-colors hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30">
+                      <div className="flex items-center gap-3 px-3.5 py-2.5 justify-between">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <span className={ICON_TILE_CLASS} aria-hidden="true">
+                            <Mail size={13} />
+                          </span>
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                            <span
+                              className="text-xs font-mono font-medium text-zinc-900 dark:text-zinc-100 select-all truncate"
+                              title={email}
+                            >
+                              {email}
+                            </span>
+
+                            <EmailDeliverabilityBadge
+                              email={email}
+                              record={record}
+                              size="sm"
+                              showEmail={false}
+                              showPrimaryBadge={false}
+                              onStatusChange={token ? (st) => handleStatusChange(email, st) : undefined}
+                              disabled={!token || emailSubmitting}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <CopyButton value={email} label={email} />
+
+                          {token && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditEmail(email, record.status)}
+                                disabled={emailSubmitting}
+                                className="size-7 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Edit email"
+                                aria-label={`Edit ${email}`}
+                              >
+                                <Edit2 size={12} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeletingEmail(email);
+                                  setEditingEmail(null);
+                                  setIsAddingEmail(false);
+                                }}
+                                disabled={emailSubmitting}
+                                className="size-7 rounded-lg text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Delete email"
+                                aria-label={`Delete ${email}`}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {record.resend_status === 'bounced' && record.bounce_reason && (
+                        <div className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1.5 px-3.5 pb-2.5 font-medium">
+                          <AlertCircle size={12} className="shrink-0" />
+                          <span>Bounced in Resend: {record.bounce_reason}</span>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <EmptyState>No business email found for this tool.</EmptyState>
+              !isAddingEmail && (
+                <div className="flex items-center justify-between p-3.5 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800 text-xs text-zinc-400">
+                  <span>No business email found for this tool.</span>
+                  {token && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAddingEmail(true)}
+                      className="h-7 text-xs gap-1 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                    >
+                      <Plus size={11} />
+                      Add email
+                    </Button>
+                  )}
+                </div>
+              )
             )}
           </Section>
 
