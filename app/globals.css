@@ -153,46 +153,46 @@ input[type=number] {
 
 /* ─── Data Table Scrollbar Utility (Prominent Horizontal & Vertical) ─── */
 .table-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: #a1a1aa #f4f4f5;
+  scrollbar-width: auto !important;
+  scrollbar-color: #71717a #f4f4f5 !important;
 }
 
 .dark .table-scrollbar {
-  scrollbar-color: #52525b #18181b;
+  scrollbar-color: #71717a #18181b !important;
 }
 
 .table-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 10px;
+  width: 8px !important;
+  height: 12px !important;
 }
 
 .table-scrollbar::-webkit-scrollbar-track {
-  background: #f4f4f5;
+  background: #f4f4f5 !important;
   border-radius: 6px;
 }
 
 .dark .table-scrollbar::-webkit-scrollbar-track {
-  background: #18181b;
+  background: #18181b !important;
   border-radius: 6px;
 }
 
 .table-scrollbar::-webkit-scrollbar-thumb {
-  background: #a1a1aa;
+  background: #71717a !important;
   border-radius: 6px;
-  border: 2px solid #f4f4f5;
+  border: 2px solid #f4f4f5 !important;
 }
 
 .dark .table-scrollbar::-webkit-scrollbar-thumb {
-  background: #52525b;
-  border: 2px solid #18181b;
+  background: #71717a !important;
+  border: 2px solid #18181b !important;
 }
 
 .table-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #71717a;
+  background: #3f3f46 !important;
 }
 
 .dark .table-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #71717a;
+  background: #a1a1aa !important;
 }
 
 /* ─── Selection ─── */

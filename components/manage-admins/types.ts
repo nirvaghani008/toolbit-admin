@@ -167,6 +167,16 @@ export const ADMIN_MODULES: ModuleDefinition[] = [
     supportsUpdate: true,
     supportsDelete: true,
   },
+  {
+    key: 'marketing',
+    name: 'Marketing Outreach',
+    description: 'Manage outreach leads, directory email campaigns, templates, and email dispatch.',
+    badge: '/admin/marketing',
+    category: 'Operations',
+    supportsInsert: true,
+    supportsUpdate: true,
+    supportsDelete: true,
+  },
 
   // ── Audience & Community ──────────────────────────────────────────────────
   {

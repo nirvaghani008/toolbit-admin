@@ -11,19 +11,15 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Send,
   Eye,
-  SlidersHorizontal,
   Mail,
   CheckCircle2,
   AlertCircle,
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
   Sparkles,
   Users,
   Check,
@@ -33,7 +29,13 @@ import {
   RefreshCw,
   Clock,
   Info,
+  ArrowUpRight,
+  ShieldCheck,
+  X,
+  History,
+  MessageSquare,
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import type {
   MarketingTemplate,
   MarketingOutreachLead,
@@ -55,9 +57,12 @@ import {
 } from '@/lib/marketing/business-emails';
 import {
   type ExistingToolMatch,
+  formatExistingToolMatch,
 } from '@/lib/marketing/existing-tools';
 import {
   evaluateOutreachHistory,
+  parseOutreachSendHistory,
+  formatGuardDate,
   type OutreachHistoryFlags,
   type OutreachLeadGuard,
 } from '@/lib/marketing/send-guards';
@@ -150,7 +155,7 @@ function substituteVars(content: string, vars: Record<string, string>): string {
     const key = rawKey.replace(/^\{\{|\}\}$/g, '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (!key) continue;
     const value = val !== undefined && val !== null ? val : '';
-    const literal = () => value; // insert as-is ("$&" / "$1" in a tool name stay literal)
+    const literal = () => value;
     const standardRegex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
     result = result.replace(standardRegex, literal);
     const encodedRegex = new RegExp(`%7B%7B\\s*${key}\\s*%7D%7D`, 'gi');
@@ -161,7 +166,6 @@ function substituteVars(content: string, vars: Record<string, string>): string {
   return result;
 }
 
-/** "If you want {{tool_name}}" or "{{tool_domain}}" keeps the plain (not linked) tool name/domain. `plainName` must be safe for the target format. */
 function replaceIfYouWantToolName(content: string, plainName: string, plainDomain?: string): string {
   let res = content.replace(
     /(If you want\s+(?:<strong[^>]*>|\*\*|))\s*\{\{\s*tool_name\s*\}\}/gi,
@@ -176,10 +180,6 @@ function replaceIfYouWantToolName(content: string, plainName: string, plainDomai
   return res;
 }
 
-/**
- * Lead values for the editor / preview. Lead data is scraped (untrusted), so for HTML output every
- * value is escaped and only http(s) URLs are used (prevents XSS in the admin panel).
- */
 function getLeadVars(lead: MarketingOutreachLead | null) {
   const toolName = lead?.tool_name || 'AI Tool';
   const siteUrl = safeHttpUrl(lead?.tool_site_url);
@@ -194,7 +194,6 @@ function getLeadVars(lead: MarketingOutreachLead | null) {
 
 const GUARD_CHECK_ERROR = 'Could not check the selected leads.';
 
-// "https://www.Foo.ai/en" -> "Foo.ai"
 function getToolDomain(siteUrl: string): string {
   if (!siteUrl) return '';
   try {
@@ -205,12 +204,6 @@ function getToolDomain(siteUrl: string): string {
   }
 }
 
-/**
- * Subject + editor HTML used when a template is selected / reset.
- * - With a lead (single-lead send): the lead's values are filled in, so the admin edits the final text.
- * - Without a lead (bulk send): the {{placeholders}} are kept, so the server fills them in for
- *   every recipient. Filling in one sample lead here would send that tool's name to everyone.
- */
 function buildEditorDefaults(
   template: MarketingTemplate,
   lead: MarketingOutreachLead | null
@@ -223,7 +216,6 @@ function buildEditorDefaults(
   const displayDomain = v.html.toolDomain || v.html.toolName;
   const rawDomain = v.toolDomain || v.toolName;
 
-  // Body becomes editor HTML -> escaped values. Subject is plain text (an <input>) -> raw values.
   const htmlVars: Record<string, string> = {
     tool_name: v.siteUrl ? `[${v.html.toolName}](${v.html.siteUrl})` : v.html.toolName,
     company_name: v.html.toolName,
@@ -245,7 +237,6 @@ function buildEditorDefaults(
     first_name: 'there',
   };
 
-  // In "If you want {{tool_name}} / {{tool_domain}}", do not use link tag, keep as normal plain tool name/domain
   let rawText = replaceIfYouWantToolName(template.text, v.html.toolName, displayDomain);
   if (!v.toolDomain) {
     rawText = rawText.replace(/\s*\(\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}\s*\)/gi, '');
@@ -287,7 +278,6 @@ const TEMPLATE_META: Record<
   },
 };
 
-/** Simplify long guard messages into clean, readable one-liners */
 function cleanHistoryReason(reason: string): string {
   if (!reason) return '';
   return reason
@@ -296,8 +286,74 @@ function cleanHistoryReason(reason: string): string {
     .replace(/\s*\(last on\s+([^)]+)\)/, ' (last $1)');
 }
 
-/** Leads that need an explicit confirmation (already replied / already received the template). */
+async function getFreshToken(fallbackToken?: string): Promise<string> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+  } catch {}
+  return fallbackToken || '';
+}
+
+function getFallbackHistoryFlags(
+  lead: MarketingOutreachLead,
+  templateId: string
+): OutreachHistoryFlags {
+  let replied: string | null = null;
+  let templateSent: string | null = null;
+
+  // 1. Reply check from conversation_summary or status
+  if (lead.conversation_summary?.reply_count && lead.conversation_summary.reply_count > 0) {
+    const replies = lead.conversation_summary.reply_count;
+    const date = formatGuardDate(lead.conversation_summary.last_inbound_at);
+    replied = `Already replied (${replies} ${replies === 1 ? 'reply' : 'replies'}${date ? `, last on ${date}` : ''})`;
+  } else {
+    const s = (lead.status || '').trim().toLowerCase();
+    if (s === 'replied' || s === 'launched') {
+      replied = `Lead status is "${s}"`;
+    }
+  }
+
+  // 2. Structured outreach history if present on lead
+  const rawHistory =
+    (lead as any).outreach_send_history ||
+    (lead.metadata as any)?.outreach_send_history;
+  if (rawHistory) {
+    const parsed = parseOutreachSendHistory(rawHistory);
+    if (parsed) {
+      const evaluated = evaluateOutreachHistory(lead.status, parsed, templateId);
+      if (evaluated.replied) replied = evaluated.replied;
+      if (evaluated.templateSent) templateSent = evaluated.templateSent;
+    }
+  }
+
+  // 3. Fallback check from conversation outbound, status, or business email timestamps
+  if (!templateSent) {
+    const s = (lead.status || '').trim().toLowerCase();
+    if (lead.conversation_summary?.outbound_count && lead.conversation_summary.outbound_count > 0) {
+      const count = lead.conversation_summary.outbound_count;
+      const date = formatGuardDate(lead.conversation_summary.last_message_at);
+      templateSent = `Already received outreach (${count} prior email${count === 1 ? '' : 's'}${date ? `, last on ${date}` : ''})`;
+    } else if (s === 'emailed') {
+      templateSent = 'Lead status is "emailed" (outreach previously sent)';
+    } else if (lead.business_emails) {
+      for (const [email, rawRec] of Object.entries(lead.business_emails)) {
+        const rec = typeof rawRec === 'object' && rawRec !== null ? (rawRec as EmailRecord) : null;
+        if (rec?.last_sent_at || rec?.resend_status === 'sent' || rec?.resend_status === 'delivered') {
+          const date = formatGuardDate(rec.last_sent_at);
+          templateSent = `Already sent to ${email}${date ? ` on ${date}` : ''}`;
+          break;
+        }
+      }
+    }
+  }
+
+  return { replied, templateSent };
+}
+
 function ContactedLeadsGroup({
+  type,
   title,
   leads,
   reasonOf,
@@ -305,6 +361,7 @@ function ContactedLeadsGroup({
   checked,
   onCheckedChange,
 }: {
+  type: 'repeat' | 'replied' | 'existing';
   title: string;
   leads: MarketingOutreachLead[];
   reasonOf: (lead: MarketingOutreachLead) => string;
@@ -316,24 +373,102 @@ function ContactedLeadsGroup({
   const singleLead = isSingle ? leads[0] : null;
   const rawReason = singleLead ? reasonOf(singleLead) : '';
   const singleReason = cleanHistoryReason(rawReason);
+  const isRepeat = type === 'repeat';
+  const isReplied = type === 'replied';
 
   return (
-    <div className="flex items-center justify-between gap-3 text-xs" role="status">
-      <div className="flex items-center gap-1.5 min-w-0 text-zinc-700 dark:text-zinc-300">
-        <Clock size={13} className="shrink-0 text-zinc-400" />
-        <span className="truncate">
-          {isSingle ? (singleReason || title) : title}
-        </span>
+    <div
+      className={`p-3.5 rounded-xl border transition-all ${
+        isRepeat
+          ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-800/60'
+          : isReplied
+          ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200/90 dark:border-indigo-800/60'
+          : 'bg-zinc-100/70 dark:bg-zinc-800/40 border-zinc-200 dark:border-zinc-700/80'
+      }`}
+      role="status"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <div
+            className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+              isRepeat
+                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                : isReplied
+                ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+                : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300'
+            }`}
+          >
+            {isRepeat ? (
+              <History size={15} />
+            ) : isReplied ? (
+              <MessageSquare size={15} />
+            ) : (
+              <ShieldCheck size={15} />
+            )}
+          </div>
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-snug">
+                {title}
+              </span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${
+                  isRepeat
+                    ? 'bg-amber-200/70 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200'
+                    : isReplied
+                    ? 'bg-indigo-200/70 text-indigo-900 dark:bg-indigo-900/60 dark:text-indigo-200'
+                    : 'bg-zinc-200/80 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200'
+                }`}
+              >
+                {isRepeat
+                  ? 'Duplicate Protection'
+                  : isReplied
+                  ? 'Response Detected'
+                  : 'Already Listed'}
+              </span>
+            </div>
+            {isSingle && singleReason && (
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal font-normal">
+                {singleReason}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+          <span
+            className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+              checked
+                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                : 'bg-zinc-200/80 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+            }`}
+          >
+            {checked ? 'Will send' : 'Skipped (default)'}
+          </span>
+          <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700/80 shadow-2xs hover:border-zinc-300 dark:hover:border-zinc-600 cursor-pointer transition-colors">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => onCheckedChange(e.target.checked)}
+              className="size-3.5 cursor-pointer accent-zinc-900 dark:accent-zinc-100 rounded"
+            />
+            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+              {confirmLabel}
+            </span>
+          </label>
+        </div>
       </div>
-      <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-900 dark:text-zinc-100 hover:text-black dark:hover:text-white cursor-pointer shrink-0">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onCheckedChange(e.target.checked)}
-          className="cursor-pointer accent-zinc-900 dark:accent-zinc-100 rounded"
-        />
-        <span>Resend anyway</span>
-      </label>
+
+      {!isSingle && leads.length > 0 && (
+        <div className="mt-2.5 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
+          {leads.map((l) => (
+            <div key={l.id} className="flex items-center justify-between text-[11px] text-zinc-600 dark:text-zinc-400">
+              <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[200px]">{l.tool_name}</span>
+              <span className="text-[10px] text-zinc-500 truncate max-w-[240px]">{cleanHistoryReason(reasonOf(l))}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -349,7 +484,6 @@ export default function SendLeadEmailModal({
   const isSingleLead = selectedLeads.length === 1;
   const singleLead = isSingleLead ? selectedLeads[0] : null;
 
-  // Template selection: Order all 4 templates logically
   const templateList = useMemo(() => {
     const preferredOrder = ['tool_outreach', 'new_tool_launch', 'sponsored_feature', 'affiliate_partnership'];
     const list = Object.values(templates);
@@ -363,47 +497,32 @@ export default function SendLeadEmailModal({
     });
   }, [templates]);
 
-  // Initially unselected so user chooses one of the 4 templates
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-
-  // Single-lead selected emails (Set of strings)
   const [singleSelectedEmails, setSingleSelectedEmails] = useState<string[]>([]);
-
-  // Bulk strategy: 'primary' (1 email per tool), 'all' (all emails per tool), or 'custom' (manually selected per tool)
   const [bulkStrategy, setBulkStrategy] = useState<'primary' | 'all' | 'custom'>('primary');
-
-  // Bulk-mode selected emails mapped by leadId -> array of selected email addresses
   const [bulkSelectedEmails, setBulkSelectedEmails] = useState<Record<string, string[]>>({});
 
-  // One-off customization
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [isUserCustomizingBody, setIsUserCustomizingBody] = useState(false);
   const [customSubject, setCustomSubject] = useState('');
   const [customHtml, setCustomHtml] = useState('');
   const isProgrammaticUpdate = useRef(false);
 
-  // Expanded recipients list toggle
   const [showRecipientsList, setShowRecipientsList] = useState(false);
-
-  // Live preview toggle
-  const [showPreview, setShowPreview] = useState(false);
-
-  // Sending state
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendResults, setSendResults] = useState<SendResult[] | null>(null);
 
-  // Send guards (lib/marketing/send-guards.ts): one pre-check per open drives the UI;
-  // the server re-checks everything when sending.
-  const [guardCheckNonce, setGuardCheckNonce] = useState(0); // bumped on close / retry
+  const [guardCheckNonce, setGuardCheckNonce] = useState(0);
   const [guardCheck, setGuardCheck] = useState<{
     key: string;
     guards: Record<string, OutreachLeadGuard>;
     error: string | null;
   } | null>(null);
-  // Explicit confirmations (default off) for leads that already replied / already got this template
+
   const [allowReplied, setAllowReplied] = useState(false);
   const [allowRepeat, setAllowRepeat] = useState(false);
+  const [allowExisting, setAllowExisting] = useState(false);
 
   const guardLeadIds = useMemo(
     () => Array.from(new Set(selectedLeads.map((lead) => lead.id))),
@@ -415,19 +534,24 @@ export default function SendLeadEmailModal({
     if (!open || guardLeadIds.length === 0) return;
     let cancelled = false;
     const key = guardCheckKey;
-    getOutreachSendPrecheckAction(token, guardLeadIds)
-      .then((res) => {
+
+    const runCheck = async () => {
+      try {
+        const activeToken = await getFreshToken(token);
+        const res = await getOutreachSendPrecheckAction(activeToken, guardLeadIds);
         if (cancelled) return;
         setGuardCheck({
           key,
           guards: res.success ? res.data || {} : {},
           error: res.success ? null : res.error || GUARD_CHECK_ERROR,
         });
-      })
-      .catch((err: any) => {
+      } catch (err: any) {
         if (cancelled) return;
         setGuardCheck({ key, guards: {}, error: err?.message || GUARD_CHECK_ERROR });
-      });
+      }
+    };
+
+    void runCheck();
     return () => {
       cancelled = true;
     };
@@ -438,7 +562,6 @@ export default function SendLeadEmailModal({
   const guardCheckError = currentGuardCheck?.error ?? null;
   const guards = currentGuardCheck && !currentGuardCheck.error ? currentGuardCheck.guards : null;
 
-  // Never sent: tool already on Toolbit (lead id -> matches, listed tools first)
   const existingByLeadId = useMemo(() => {
     const map = new Map<string, ExistingToolMatch[]>();
     if (!guards) return map;
@@ -450,25 +573,31 @@ export default function SendLeadEmailModal({
   }, [guards, selectedLeads]);
 
   const existingLeads = useMemo(
-    () => selectedLeads.filter((lead) => existingByLeadId.has(lead.id)),
-    [selectedLeads, existingByLeadId]
+    () =>
+      selectedTemplateId === 'tool_outreach' || !selectedTemplateId
+        ? selectedLeads.filter((lead) => existingByLeadId.has(lead.id))
+        : [],
+    [selectedLeads, existingByLeadId, selectedTemplateId]
   );
 
-  // Never sent: lead no longer exists
   const missingLeads = useMemo(
     () => (guards ? selectedLeads.filter((lead) => !guards[lead.id]) : []),
     [guards, selectedLeads]
   );
 
-  // Needs confirmation: already replied / already received the selected template
   const historyByLeadId = useMemo(() => {
     const map = new Map<string, OutreachHistoryFlags>();
-    if (!guards) return map;
     for (const lead of selectedLeads) {
-      const guard = guards[lead.id];
-      if (!guard || guard.existing.length > 0) continue;
-      const flags = evaluateOutreachHistory(guard.status, guard.history, selectedTemplateId);
-      if (flags.replied || flags.templateSent) map.set(lead.id, flags);
+      const guard = guards ? guards[lead.id] : null;
+      let flags: OutreachHistoryFlags;
+      if (guard) {
+        flags = evaluateOutreachHistory(guard.status, guard.history, selectedTemplateId);
+      } else {
+        flags = getFallbackHistoryFlags(lead, selectedTemplateId);
+      }
+      if (flags.replied || flags.templateSent) {
+        map.set(lead.id, flags);
+      }
     }
     return map;
   }, [guards, selectedLeads, selectedTemplateId]);
@@ -482,15 +611,18 @@ export default function SendLeadEmailModal({
     [selectedLeads, historyByLeadId]
   );
 
-  // Leads left out of this send (same rules as the server)
   const excludedLeadIds = useMemo(() => {
     const excluded = new Set<string>();
-    if (!guards) return excluded;
     for (const lead of selectedLeads) {
       const flags = historyByLeadId.get(lead.id);
+      const isExistingBlocked =
+        (selectedTemplateId === 'tool_outreach' || !selectedTemplateId) &&
+        existingByLeadId.has(lead.id) &&
+        !allowExisting;
+
       if (
-        !guards[lead.id] ||
-        existingByLeadId.has(lead.id) ||
+        (guards && !guards[lead.id]) ||
+        isExistingBlocked ||
         (flags?.replied && !allowReplied) ||
         (flags?.templateSent && !allowRepeat)
       ) {
@@ -498,9 +630,8 @@ export default function SendLeadEmailModal({
       }
     }
     return excluded;
-  }, [guards, selectedLeads, historyByLeadId, existingByLeadId, allowReplied, allowRepeat]);
+  }, [guards, selectedLeads, historyByLeadId, existingByLeadId, selectedTemplateId, allowExisting, allowReplied, allowRepeat]);
 
-  // Initialize or reset when modal opens or selected leads change
   useEffect(() => {
     if (!open) {
       setSelectedTemplateId('');
@@ -508,35 +639,31 @@ export default function SendLeadEmailModal({
       setSendError(null);
       setIsCustomizing(false);
       setIsUserCustomizingBody(false);
-      setShowPreview(false);
       setAllowReplied(false);
       setAllowRepeat(false);
+      setAllowExisting(false);
       setBulkSelectedEmails({});
       setBulkStrategy('primary');
       setShowRecipientsList(false);
-      setGuardCheckNonce((n) => n + 1); // re-check on next open
+      setGuardCheckNonce((n) => n + 1);
       return;
     }
 
-    // When modal opens, start unselected so user explicitly chooses one of the 4 templates
     setSelectedTemplateId('');
 
     if (isSingleLead && singleLead) {
-      // Default select all deliverable & unverified emails for this single tool
       setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'all'));
     } else if (!isSingleLead && selectedLeads.length > 0) {
-      // Default: select the primary sendable email for each tool
       const initial: Record<string, string[]> = {};
       for (const lead of selectedLeads) {
         initial[lead.id] = getRecommendedEmailsForLead(lead, 'primary');
       }
       setBulkSelectedEmails(initial);
       setBulkStrategy('primary');
-      setShowRecipientsList(true); // Open recipient inboxes so the user can easily see and customize email selections
+      setShowRecipientsList(true);
     }
   }, [open, isSingleLead, singleLead, selectedLeads]);
 
-  // Bulk Strategy Handlers: batch select primary vs all
   const handleSetBulkStrategy = (strat: 'primary' | 'all') => {
     setBulkStrategy(strat);
     const updated: Record<string, string[]> = {};
@@ -546,7 +673,6 @@ export default function SendLeadEmailModal({
     setBulkSelectedEmails(updated);
   };
 
-  // Helper to re-evaluate bulk strategy state
   const recalcBulkStrategy = (updated: Record<string, string[]>) => {
     let matchesPrimary = true;
     let matchesAll = true;
@@ -568,11 +694,10 @@ export default function SendLeadEmailModal({
     else setBulkStrategy('custom');
   };
 
-  // Toggle single email for a specific lead in bulk mode
   const handleToggleBulkEmail = (leadId: string, email: string) => {
     const lead = selectedLeads.find((l) => l.id === leadId);
     const rec = lead?.business_emails?.[email];
-    if (rec?.status === 'undeliverable' || rec?.resend_status === 'bounced') return; // Cannot select undeliverable email
+    if (rec?.status === 'undeliverable' || rec?.resend_status === 'bounced') return;
 
     setBulkSelectedEmails((prev) => {
       const current = prev[leadId] ?? [];
@@ -590,7 +715,6 @@ export default function SendLeadEmailModal({
     });
   };
 
-  // Helper for single tool: select only primary email
   const handleSelectLeadPrimaryEmail = (leadId: string) => {
     const lead = selectedLeads.find((l) => l.id === leadId);
     if (!lead) return;
@@ -602,7 +726,6 @@ export default function SendLeadEmailModal({
     });
   };
 
-  // Helper for single tool: select all sendable emails
   const handleSelectLeadAllEmails = (leadId: string) => {
     const lead = selectedLeads.find((l) => l.id === leadId);
     if (!lead) return;
@@ -619,15 +742,13 @@ export default function SendLeadEmailModal({
     return templates[selectedTemplateId] || null;
   }, [templates, selectedTemplateId]);
 
-  // Compute final list of target dispatch items
   const targetItems: OutreachSendItem[] = useMemo(() => {
     const items: OutreachSendItem[] = [];
-    const seen = new Set<string>(); // lead + address, case-insensitive (never the same inbox twice)
+    const seen = new Set<string>();
     const add = (lead: MarketingOutreachLead, rawEmail: string | undefined) => {
       const email = (rawEmail || '').trim();
       const key = `${lead.id}|${email.toLowerCase()}`;
       if (!email || seen.has(key)) return;
-      // Safeguard: Never dispatch to undeliverable email addresses
       const rec = lead.business_emails?.[email];
       if (rec?.status === 'undeliverable' || rec?.resend_status === 'bounced') return;
       seen.add(key);
@@ -641,14 +762,11 @@ export default function SendLeadEmailModal({
     };
 
     if (isSingleLead && singleLead) {
-      if (excludedLeadIds.has(singleLead.id)) return items;
       for (const email of singleSelectedEmails) add(singleLead, email);
       return items;
     }
 
-    // Bulk mode
     for (const lead of selectedLeads) {
-      if (excludedLeadIds.has(lead.id)) continue;
       const emails = bulkSelectedEmails[lead.id] !== undefined
         ? bulkSelectedEmails[lead.id]
         : getRecommendedEmailsForLead(lead, bulkStrategy === 'all' ? 'all' : 'primary');
@@ -656,23 +774,27 @@ export default function SendLeadEmailModal({
     }
 
     return items;
-  }, [isSingleLead, singleLead, singleSelectedEmails, selectedLeads, bulkStrategy, bulkSelectedEmails, excludedLeadIds]);
+  }, [isSingleLead, singleLead, singleSelectedEmails, selectedLeads, bulkStrategy, bulkSelectedEmails]);
 
-  // Lead without any business email count (leads skipped for other reasons are reported separately)
+  const sendableItemsCount = useMemo(() => {
+    return targetItems.filter((item) => !excludedLeadIds.has(item.leadId)).length;
+  }, [targetItems, excludedLeadIds]);
+
+  const skippedItemsCount = targetItems.length - sendableItemsCount;
+
   const leadsMissingEmailCount = useMemo(() => {
     return selectedLeads.filter(
-      (l) => !excludedLeadIds.has(l.id) && getAllEmails(l).length === 0
+      (l) => getAllEmails(l).length === 0
     ).length;
-  }, [selectedLeads, excludedLeadIds]);
+  }, [selectedLeads]);
 
   const leadsAllUndeliverableCount = useMemo(() => {
     return selectedLeads.filter(
       (l) =>
-        !excludedLeadIds.has(l.id) &&
         getAllEmails(l).length > 0 &&
         getRecommendedEmailsForLead(l, 'all').length === 0
     ).length;
-  }, [selectedLeads, excludedLeadIds]);
+  }, [selectedLeads]);
 
   const hasUnverifiedSelected = useMemo(() => {
     if (isSingleLead && singleLead) {
@@ -687,16 +809,12 @@ export default function SendLeadEmailModal({
     });
   }, [isSingleLead, singleLead, singleSelectedEmails, bulkSelectedEmails, selectedLeads]);
 
-  // Sample data for live preview (prefer a tool that will actually be emailed)
   const sampleLead = isSingleLead
     ? singleLead
     : selectedLeads.find((l) => !excludedLeadIds.has(l.id)) || selectedLeads[0] || null;
 
-  // Single lead: the editor shows the final, personalised text.
-  // Bulk: the editor keeps the {{placeholders}} so every recipient gets their own tool's values.
   const personalizeEditor = isSingleLead;
 
-  // Sync template text into editor when template changes
   useEffect(() => {
     if (!activeTemplate || !open) return;
 
@@ -712,7 +830,6 @@ export default function SendLeadEmailModal({
     }
   }, [activeTemplate, sampleLead, personalizeEditor, isUserCustomizingBody, open]);
 
-  // Reset custom content back to active template default
   const handleResetCustomContent = () => {
     if (!activeTemplate) return;
     setIsUserCustomizingBody(false);
@@ -727,10 +844,8 @@ export default function SendLeadEmailModal({
     }, 50);
   };
 
-  // Preview generated HTML
   const previewHtml = useMemo(() => {
     if (!activeTemplate) return '';
-    // Rendered with dangerouslySetInnerHTML: lead values are escaped, only http(s) links
     const { html: v, siteUrl } = getLeadVars(sampleLead);
     const displayDomain = v.toolDomain || v.toolName;
 
@@ -754,7 +869,6 @@ export default function SendLeadEmailModal({
       base = textToEmailHtml(activeTemplate.text);
     }
 
-    // In "If you want {{tool_name}} / {{tool_domain}}", do not use link tag, keep as normal plain tool name/domain
     base = replaceIfYouWantToolName(base, v.toolName, displayDomain);
     if (!v.toolDomain) {
       base = base.replace(/\s*\(\s*\{\{\s*(?:tool_domain|domain_name)\s*\}\}\s*\)/gi, '');
@@ -763,7 +877,6 @@ export default function SendLeadEmailModal({
     return substituteVars(base, vars);
   }, [activeTemplate, sampleLead, isCustomizing, customHtml]);
 
-  // Preview Subject
   const previewSubject = useMemo(() => {
     if (!activeTemplate) return '';
     const toolName = sampleLead?.tool_name || 'AI Tool';
@@ -779,22 +892,27 @@ export default function SendLeadEmailModal({
     });
   }, [activeTemplate, sampleLead, isCustomizing, customSubject]);
 
-  // Execute Send
+  const handleRetryGuardCheck = () => {
+    setGuardCheck(null);
+    setGuardCheckNonce((n) => n + 1);
+  };
+
   const handleSend = async () => {
-    if (!activeTemplate || targetItems.length === 0 || checkingGuards || guardCheckError) return;
+    if (!activeTemplate || targetItems.length === 0 || checkingGuards || (Boolean(guardCheckError) && !guards)) return;
     setSending(true);
     setSendError(null);
     setSendResults(null);
 
     try {
-      const res = await sendOutreachLeadEmailAction(token, {
+      const activeToken = await getFreshToken(token);
+      const res = await sendOutreachLeadEmailAction(activeToken, {
         templateId: activeTemplate.id,
         items: targetItems,
         customSubject: isCustomizing && customSubject.trim() ? customSubject.trim() : undefined,
         customHtml: isCustomizing && customHtml.trim() ? customHtml.trim() : undefined,
-        // Only the leads the admin saw and explicitly confirmed; the server re-checks the rest.
         allowRepliedLeadIds: allowReplied ? repliedLeads.map((lead) => lead.id) : [],
         allowRepeatLeadIds: allowRepeat ? repeatLeads.map((lead) => lead.id) : [],
+        allowExistingLeadIds: allowExisting ? existingLeads.map((lead) => lead.id) : [],
       });
 
       if (!res.success) {
@@ -814,470 +932,283 @@ export default function SendLeadEmailModal({
     }
   };
 
+  const leadInitial = isSingleLead && singleLead ? (singleLead.tool_name || '?').trim().charAt(0).toUpperCase() : null;
+
   return (
     <Dialog open={open} onOpenChange={(val) => !val && !sending && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl">
-        <DialogHeader className="border-b border-zinc-100 dark:border-zinc-800 pb-3 pr-8">
-          <div className="flex items-start gap-2.5">
-            <div className="flex-1 min-w-0">
-              <DialogTitle className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                {isSingleLead ? `Outreach · ${singleLead?.tool_name}` : `Bulk Outreach (${selectedLeads.length} Tools)`}
-              </DialogTitle>
-              <div className="flex items-center gap-2 mt-1">
-                <DialogDescription className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Dispatch marketing campaigns via Resend.
-                </DialogDescription>
-                <Badge
-                  variant="secondary"
-                  className="text-[11px] font-medium px-2 py-0 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 shrink-0"
-                >
-                  {targetItems.length} {targetItems.length === 1 ? 'recipient' : 'recipients'}
-                </Badge>
+      <DialogContent
+        className={`w-full max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-zinc-200/90 dark:border-zinc-800/80 shadow-2xl transition-all duration-300 ease-out ${
+          selectedTemplateId
+            ? 'max-w-5xl xl:max-w-6xl 2xl:max-w-[1240px]'
+            : 'max-w-xl lg:max-w-[658px]'
+        }`}
+      >
+        {/* ── Dialog Header ── */}
+        <DialogHeader className="px-6 py-5 border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/40 text-left space-y-0">
+          <div className="flex items-center justify-between gap-4 pr-8">
+            <div className="flex items-center gap-3.5 min-w-0">
+              {/* Tool Avatar */}
+              <div
+                aria-hidden="true"
+                className="size-11 rounded-xl bg-gradient-to-br from-zinc-100 to-zinc-200/80 dark:from-zinc-800 dark:to-zinc-800/50 border border-zinc-200/90 dark:border-zinc-700/60 flex items-center justify-center text-base font-bold text-zinc-900 dark:text-zinc-100 shrink-0 shadow-2xs"
+              >
+                {leadInitial || <Mail size={16} />}
+              </div>
+
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <DialogTitle className="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-50 truncate">
+                    {isSingleLead ? `Outreach · ${singleLead?.tool_name}` : `Bulk Outreach (${selectedLeads.length} Tools)`}
+                  </DialogTitle>
+                  <Badge
+                    variant="outline"
+                    className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30 shadow-2xs shrink-0"
+                  >
+                    {targetItems.length} {targetItems.length === 1 ? 'recipient' : 'recipients'}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  <DialogDescription className="sr-only">
+                    Dispatch marketing campaigns via Resend.
+                  </DialogDescription>
+                  {isSingleLead && singleLead?.tool_site_url ? (
+                    <a
+                      href={singleLead.tool_site_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-mono hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors group truncate"
+                    >
+                      <span>{singleLead.tool_site_url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '')}</span>
+                      <ArrowUpRight size={11} className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  ) : (
+                    <span>Direct campaign dispatch via Resend API</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </DialogHeader>
 
-        {/* ── Results Report Banner ── */}
-        {sendResults && (
-          <div className="p-3.5 rounded-xl border space-y-2.5 bg-zinc-50 dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700 text-xs animate-in fade-in-50 duration-200">
-            <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 size={15} className="text-emerald-500" />
-                Dispatch Summary
-              </span>
-              <span className="text-[11px] text-zinc-500">
-                {sendResults.filter((r) => r.success).length} / {sendResults.filter((r) => !r.skipped).length} Sent
-                {sendResults.some((r) => r.skipped) &&
-                  ` · ${sendResults.filter((r) => r.skipped).length} Skipped`}
-              </span>
-            </div>
-
-            <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-              {sendResults.map((r, i) => (
-                <div
-                  key={i}
-                  className={`p-2 rounded-lg flex items-center justify-between gap-3 text-[11px] border ${
-                    r.success
-                      ? 'bg-emerald-50/70 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-900 dark:text-emerald-300'
-                      : r.skipped
-                      ? 'bg-amber-50/70 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-900 dark:text-amber-300'
-                      : 'bg-rose-50/70 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-300'
-                  }`}
-                >
-                  <span className="font-medium truncate max-w-[280px]">
-                    {r.skipped && r.toolName ? `${r.toolName} · ${r.email}` : r.email}
-                  </span>
-                  <span className="text-right">
-                    {r.success
-                      ? '✓ Delivered'
-                      : r.skipped
-                      ? `Skipped: ${r.error || 'already listed'}`
-                      : `✕ ${r.error || 'Failed'}`}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-1 flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onClose}
-                className="h-7 text-xs cursor-pointer"
-              >
-                Done
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Error notification */}
-        {sendError && (
-          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle size={14} className="shrink-0 text-rose-600 dark:text-rose-400" />
-            <span className="font-medium">{sendError}</span>
-          </div>
-        )}
-
-        {!sendResults && (
-          <div className="space-y-4 pt-1">
-            {/* Send guards: tools already on Toolbit, missing leads */}
-            {checkingGuards && (
-              <div className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5" role="status">
-                <Spinner size={12} className="text-zinc-500" />
-                Checking Toolbit listings and email history…
-              </div>
-            )}
-
-            {guardCheckError && (
-              <div
-                className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-300 text-xs flex items-start gap-2"
-                role="alert"
-              >
-                <AlertCircle size={13} className="shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-                <span className="flex-1">
-                  {guardCheckError} Sending is disabled until this check succeeds.
+        {/* ── Content Body (Scrollable) ── */}
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-5">
+          {/* Dispatch Results Report */}
+          {sendResults && (
+            <div className="p-4 rounded-xl border space-y-3 bg-zinc-50 dark:bg-zinc-800/60 border-zinc-200 dark:border-zinc-700 text-xs shadow-2xs animate-in fade-in-50 duration-200">
+              <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-500" />
+                  Dispatch Summary
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setGuardCheckNonce((n) => n + 1)}
-                  className="shrink-0 font-semibold underline cursor-pointer"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {existingLeads.length > 0 && (
-              <div
-                className="p-2.5 rounded-lg bg-zinc-100/70 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700/80 text-zinc-700 dark:text-zinc-300 text-xs flex items-center gap-2"
-                role="status"
-              >
-                <Info size={13} className="shrink-0 text-zinc-400" />
-                <span className="truncate">
-                  {isSingleLead
-                    ? `${singleLead?.tool_name || 'This tool'} is already listed on Toolbit (sending skipped)`
-                    : `${existingLeads.length} of ${selectedLeads.length} tools already on Toolbit (skipped)`}
+                <span className="text-xs text-zinc-500">
+                  {sendResults.filter((r) => r.success).length} / {sendResults.filter((r) => !r.skipped).length} Sent
+                  {sendResults.some((r) => r.skipped) &&
+                    ` · ${sendResults.filter((r) => r.skipped).length} Skipped`}
                 </span>
               </div>
-            )}
 
-            {missingLeads.length > 0 && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1" role="status">
-                <AlertCircle size={12} />
-                {missingLeads.length === 1
-                  ? `${missingLeads[0].tool_name} no longer exists and will be skipped.`
-                  : `${missingLeads.length} selected leads no longer exist and will be skipped.`}
-              </p>
-            )}
-
-            {/* ── Section 1: Recipients & Inboxes ── */}
-            <div className="space-y-2">
-              {isSingleLead && singleLead ? (
-                <>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                      <Mail size={13} className="text-zinc-500" />
-                      Target Email{getAllEmails(singleLead).length > 1 ? 's' : ''}
+              <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                {sendResults.map((r, i) => (
+                  <div
+                    key={i}
+                    className={`p-2.5 rounded-lg flex items-center justify-between gap-3 text-xs border ${
+                      r.success
+                        ? 'bg-emerald-50/70 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-900 dark:text-emerald-300'
+                        : r.skipped
+                        ? 'bg-amber-50/70 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-900 dark:text-amber-300'
+                        : 'bg-rose-50/70 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-300'
+                    }`}
+                  >
+                    <span className="font-mono font-medium truncate max-w-[320px]">
+                      {r.skipped && r.toolName ? `${r.toolName} · ${r.email}` : r.email}
                     </span>
-                    {getAllEmails(singleLead).length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (singleSelectedEmails.length === getAllEmails(singleLead).length) {
-                            setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'primary'));
-                          } else {
-                            setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'all'));
-                          }
-                        }}
-                        className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium cursor-pointer transition-colors text-[11px]"
-                      >
-                        {singleSelectedEmails.length === getAllEmails(singleLead).length ? 'Reset to 1' : 'Select all'}
-                      </button>
-                    )}
+                    <span className="text-right font-medium">
+                      {r.success
+                        ? '✓ Delivered'
+                        : r.skipped
+                        ? `Skipped: ${r.error || 'already listed'}`
+                        : `✕ ${r.error || 'Failed'}`}
+                    </span>
                   </div>
+                ))}
+              </div>
 
-                  {getAllEmails(singleLead).length === 0 ? (
-                    <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs flex items-center gap-2">
-                      <AlertCircle size={13} className="shrink-0 text-zinc-400" />
-                      <span>No business emails found for <strong>{singleLead.tool_name}</strong>.</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 pt-0.5">
-                      <div className="flex flex-wrap gap-1.5">
-                        {Object.entries(singleLead.business_emails || {}).map(([email, rawRecord]) => {
-                          const record: EmailRecord = typeof rawRecord === 'object' && rawRecord !== null ? (rawRecord as EmailRecord) : { status: (rawRecord as any) || 'unverified' };
-                          const isBounced = record.resend_status === 'bounced' || (record.status === 'undeliverable' && Boolean(record.bounce_reason));
-                          const isUndeliverable = record.status === 'undeliverable' || isBounced;
-                          const isDeliverable = record.status === 'deliverable' && !isBounced;
-                          const isChecked = singleSelectedEmails.includes(email) && !isUndeliverable;
+              <div className="pt-1 flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onClose}
+                  className="h-8 text-xs px-4 cursor-pointer"
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+          )}
 
-                          const chipTitle = isBounced
-                            ? `Bounced in Resend: ${record.bounce_reason || 'Mailbox delivery failed'} — sending is blocked`
-                            : isUndeliverable
-                            ? 'Undeliverable email — blocked from sending'
-                            : isDeliverable
-                            ? 'Verified deliverable email'
-                            : 'Unverified email';
+          {/* Send Error Notice */}
+          {sendError && (
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-900 dark:text-rose-300 text-xs flex items-center gap-2 shadow-2xs">
+              <AlertCircle size={15} className="shrink-0 text-rose-600 dark:text-rose-400" />
+              <span className="font-medium">{sendError}</span>
+            </div>
+          )}
 
-                          return (
+          {!sendResults && (
+            <div className="space-y-5">
+              {/* Guard Notices & Warnings */}
+              {checkingGuards && (
+                <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-2" role="status">
+                  <Spinner size={13} className="text-zinc-500" />
+                  <span>Checking Toolbit directory listings and email history…</span>
+                </div>
+              )}
+
+              {guardCheckError && (
+                <div
+                  className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200/80 dark:border-rose-500/20 text-xs flex items-center justify-between gap-3 shadow-2xs animate-in fade-in-50 duration-150"
+                  role="alert"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <AlertCircle size={15} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                    <span className="text-rose-900 dark:text-rose-300 font-medium leading-snug">
+                      {guardCheckError.includes('JWT') || guardCheckError.includes('token')
+                        ? 'Authentication session refreshed. Click Retry to continue verification.'
+                        : `${guardCheckError} Sending is paused until verification succeeds.`}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRetryGuardCheck}
+                    className="h-7 text-xs px-3 bg-white dark:bg-zinc-900 shrink-0 font-semibold cursor-pointer border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 hover:bg-rose-50 dark:hover:bg-zinc-800"
+                  >
+                    <RotateCcw size={11} className="mr-1" />
+                    Retry
+                  </Button>
+                </div>
+              )}
+
+              {missingLeads.length > 0 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5" role="status">
+                  <AlertCircle size={13} />
+                  <span>
+                    {missingLeads.length === 1
+                      ? `${missingLeads[0].tool_name} no longer exists and will be skipped.`
+                      : `${missingLeads.length} selected leads no longer exist and will be skipped.`}
+                  </span>
+                </p>
+              )}
+
+              {/* ── Responsive Layout: Setup (Compact) & Live Preview (Expanded) ── */}
+              <div
+                className={`flex flex-col items-start ${
+                  selectedTemplateId ? 'lg:flex-row gap-6' : 'w-full'
+                }`}
+              >
+                {/* ── Left Column: Configuration ── */}
+                <div className={`${selectedTemplateId ? 'w-full lg:w-[610px] shrink-0' : 'w-full'} space-y-5`}>
+                  {/* Recipients & Inboxes Card */}
+                  <div className="p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-900/50 space-y-3 shadow-2xs">
+                    {isSingleLead && singleLead ? (
+                      <>
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <Mail size={13} className="text-zinc-400" />
+                            <h3 className="font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 text-xs">
+                              Target Email{getAllEmails(singleLead).length > 1 ? 's' : ''}
+                            </h3>
+                          </div>
+                          {getAllEmails(singleLead).length > 1 && (
                             <button
-                              key={email}
                               type="button"
-                              disabled={isUndeliverable}
                               onClick={() => {
-                                if (isUndeliverable) return;
-                                if (isChecked) {
-                                  if (singleSelectedEmails.length > 1) {
-                                    setSingleSelectedEmails(singleSelectedEmails.filter((e) => e !== email));
-                                  }
+                                if (singleSelectedEmails.length === getAllEmails(singleLead).length) {
+                                  setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'primary'));
                                 } else {
-                                  setSingleSelectedEmails([...singleSelectedEmails, email]);
+                                  setSingleSelectedEmails(getRecommendedEmailsForLead(singleLead, 'all'));
                                 }
                               }}
-                              title={chipTitle}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-mono transition-colors ${
-                                isUndeliverable
-                                  ? 'bg-rose-50/50 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/40 line-through opacity-60 cursor-not-allowed'
-                                  : isChecked
-                                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium cursor-pointer shadow-2xs'
-                                  : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 cursor-pointer'
-                              }`}
+                              className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer transition-colors"
                             >
-                              <div
-                                className={`w-3.5 h-3.5 rounded-xs flex items-center justify-center border ${
-                                  isUndeliverable
-                                    ? 'border-rose-400 bg-rose-100/50 dark:bg-rose-900/30 text-rose-500'
-                                    : isChecked
-                                    ? 'border-white bg-white/20 dark:border-zinc-900 dark:bg-zinc-900/20 text-white dark:text-zinc-900'
-                                    : 'border-zinc-300 dark:border-zinc-600'
-                                }`}
-                              >
-                                {isChecked && <Check size={10} strokeWidth={3} />}
-                                {isUndeliverable && <span className="text-[8px] font-bold">✕</span>}
-                              </div>
-                              <span>{email}</span>
-                              <span
-                                className={`size-1.5 rounded-full shrink-0 ${
-                                  isDeliverable
-                                    ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
-                                    : isUndeliverable
-                                    ? 'bg-rose-500'
-                                    : 'bg-zinc-400 dark:bg-zinc-500'
-                                }`}
-                              />
-                              {isBounced && (
-                                <span className="text-[9px] px-1 py-0 rounded font-sans uppercase font-bold tracking-wider bg-rose-200/80 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-                                  Bounced
-                                </span>
-                              )}
+                              {singleSelectedEmails.length === getAllEmails(singleLead).length ? 'Reset to primary' : 'Select all'}
                             </button>
-                          );
-                        })}
-                      </div>
+                          )}
+                        </div>
 
-                      {hasUnverifiedSelected && (
-                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 pt-0.5">
-                          <Info size={12} className="shrink-0 text-zinc-400" />
-                          <span>Unverified address selected (deliverability hasn&apos;t been tested)</span>
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="text-[11px] text-zinc-400 flex items-center gap-1">
-                    <span>Website:</span>
-                    <a
-                      href={singleLead.tool_site_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-zinc-600 dark:text-zinc-300 font-medium hover:underline inline-flex items-center gap-0.5"
-                    >
-                      {singleLead.tool_site_url}
-                      <ExternalLink size={10} />
-                    </a>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                        <Users size={13} className="text-zinc-500" />
-                        Target Inboxes ({targetItems.length})
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowRecipientsList(!showRecipientsList)}
-                        className="text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline cursor-pointer"
-                      >
-                        {showRecipientsList ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-
-                    <div className="flex items-center p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => handleSetBulkStrategy('primary')}
-                        className={`px-2.5 py-0.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                          bulkStrategy === 'primary'
-                            ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs'
-                            : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
-                        }`}
-                      >
-                        1 per tool
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSetBulkStrategy('all')}
-                        className={`px-2.5 py-0.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                          bulkStrategy === 'all'
-                            ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs'
-                            : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
-                        }`}
-                      >
-                        All found
-                      </button>
-                    </div>
-                  </div>
-
-                  {leadsMissingEmailCount > 0 && (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                      <AlertCircle size={12} />
-                      {leadsMissingEmailCount} of {selectedLeads.length} tools have no email on file (skipped).
-                    </p>
-                  )}
-
-                  {leadsAllUndeliverableCount > 0 && (
-                    <p className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                      <AlertCircle size={12} />
-                      {leadsAllUndeliverableCount} of {selectedLeads.length} tools have only undeliverable emails (skipped).
-                    </p>
-                  )}
-
-                  {hasUnverifiedSelected && (
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 pt-0.5">
-                      <Info size={12} className="shrink-0 text-zinc-400" />
-                      <span>Unverified addresses selected (deliverability hasn&apos;t been tested)</span>
-                    </p>
-                  )}
-
-                  {showRecipientsList && (
-                    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950 p-2.5 max-h-44 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/80">
-                      {selectedLeads.map((lead) => {
-                        const emailEntries = Object.entries(lead.business_emails || {});
-                        const isExcluded = excludedLeadIds.has(lead.id);
-                        const selectedForLead = bulkSelectedEmails[lead.id] || [];
-                        const hasSendable = emailEntries.some(([, raw]) => {
-                          const rec: EmailRecord = typeof raw === 'object' && raw !== null ? (raw as EmailRecord) : { status: (raw as any) || 'unverified' };
-                          return rec.status !== 'undeliverable' && rec.resend_status !== 'bounced';
-                        });
-
-                        if (isExcluded) {
-                          return (
-                            <div key={lead.id} className="py-1.5 flex items-center justify-between text-xs opacity-60">
-                              <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
-                                {lead.tool_name}
-                              </span>
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                                Already on Toolbit (Skipped)
-                              </span>
-                            </div>
-                          );
-                        }
-
-                        if (emailEntries.length === 0) {
-                          return (
-                            <div key={lead.id} className="py-1.5 flex items-center justify-between text-xs opacity-70">
-                              <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
-                                {lead.tool_name}
-                              </span>
-                              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                                No email (Skipped)
-                              </span>
-                            </div>
-                          );
-                        }
-
-                        if (!hasSendable) {
-                          return (
-                            <div key={lead.id} className="py-1.5 flex items-center justify-between text-xs opacity-70">
-                              <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
-                                {lead.tool_name}
-                              </span>
-                              <span className="text-[10px] text-rose-500 dark:text-rose-400 font-medium">
-                                Undeliverable only (Skipped)
-                              </span>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div key={lead.id} className="py-2 first:pt-0.5 last:pb-0.5 space-y-1.5">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[240px]">
-                                {lead.tool_name}
-                              </span>
-                              {emailEntries.length > 1 && (
-                                <div className="flex items-center gap-1.5 text-[10px]">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSelectLeadPrimaryEmail(lead.id)}
-                                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline cursor-pointer"
-                                  >
-                                    First
-                                  </button>
-                                  <span className="text-zinc-300 dark:text-zinc-700">/</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSelectLeadAllEmails(lead.id)}
-                                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline cursor-pointer"
-                                  >
-                                    All
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Email Selection Pills with Checkbox */}
+                        {getAllEmails(singleLead).length === 0 ? (
+                          <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs flex items-center gap-2">
+                            <AlertCircle size={14} className="shrink-0 text-zinc-400" />
+                            <span>No business emails configured for <strong>{singleLead.tool_name}</strong>.</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
                             <div className="flex flex-wrap gap-1.5">
-                              {emailEntries.map(([email, rawRecord]) => {
+                              {Object.entries(singleLead.business_emails || {}).map(([email, rawRecord]) => {
                                 const record: EmailRecord = typeof rawRecord === 'object' && rawRecord !== null ? (rawRecord as EmailRecord) : { status: (rawRecord as any) || 'unverified' };
                                 const isBounced = record.resend_status === 'bounced' || (record.status === 'undeliverable' && Boolean(record.bounce_reason));
                                 const isUndeliverable = record.status === 'undeliverable' || isBounced;
                                 const isDeliverable = record.status === 'deliverable' && !isBounced;
-                                const isChecked = selectedForLead.includes(email) && !isUndeliverable;
+                                const isChecked = singleSelectedEmails.includes(email) && !isUndeliverable;
+
+                                const chipTitle = isBounced
+                                  ? `Bounced in Resend: ${record.bounce_reason || 'Mailbox delivery failed'} — sending is blocked`
+                                  : isUndeliverable
+                                  ? 'Undeliverable email — blocked from sending'
+                                  : isDeliverable
+                                  ? 'Verified deliverable email'
+                                  : 'Unverified email';
 
                                 return (
                                   <button
                                     key={email}
                                     type="button"
                                     disabled={isUndeliverable}
-                                    onClick={() => handleToggleBulkEmail(lead.id, email)}
-                                    title={
-                                      isBounced
-                                        ? `Bounced in Resend: ${record.bounce_reason || 'Mailbox delivery failed'} — sending is blocked`
-                                        : isUndeliverable
-                                        ? 'Undeliverable email — blocked from sending'
-                                        : isDeliverable
-                                        ? 'Verified deliverable email'
-                                        : 'Unverified email'
-                                    }
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-mono transition-colors ${
+                                    onClick={() => {
+                                      if (isUndeliverable) return;
+                                      if (isChecked) {
+                                        if (singleSelectedEmails.length > 1) {
+                                          setSingleSelectedEmails(singleSelectedEmails.filter((e) => e !== email));
+                                        }
+                                      } else {
+                                        setSingleSelectedEmails([...singleSelectedEmails, email]);
+                                      }
+                                    }}
+                                    title={chipTitle}
+                                    className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all ${
                                       isUndeliverable
-                                        ? 'bg-rose-50/40 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/40 line-through opacity-60 cursor-not-allowed'
+                                        ? 'bg-rose-50/50 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/40 line-through opacity-60 cursor-not-allowed'
                                         : isChecked
                                         ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium cursor-pointer shadow-2xs'
-                                        : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80 hover:border-zinc-300 cursor-pointer'
+                                        : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer'
                                     }`}
                                   >
                                     <div
-                                      className={`w-3.5 h-3.5 rounded-xs flex items-center justify-center border ${
+                                      className={`size-3.5 rounded-xs flex items-center justify-center border ${
                                         isUndeliverable
                                           ? 'border-rose-400 bg-rose-100/50 dark:bg-rose-900/30 text-rose-500'
                                           : isChecked
                                           ? 'border-white bg-white/20 dark:border-zinc-900 dark:bg-zinc-900/20 text-white dark:text-zinc-900'
-                                          : 'border-zinc-400 dark:border-zinc-600'
+                                          : 'border-zinc-300 dark:border-zinc-600'
                                       }`}
                                     >
                                       {isChecked && <Check size={10} strokeWidth={3} />}
                                       {isUndeliverable && <span className="text-[8px] font-bold">✕</span>}
                                     </div>
-                                    <span className="truncate max-w-[240px]">{email}</span>
+                                    <span className="truncate max-w-[220px]">{email}</span>
                                     <span
                                       className={`size-1.5 rounded-full shrink-0 ${
-                                        isBounced
-                                          ? 'bg-rose-600'
-                                          : isDeliverable
-                                          ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
+                                        isDeliverable
+                                          ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
                                           : isUndeliverable
-                                          ? 'bg-rose-500'
+                                          ? 'bg-rose-500 ring-2 ring-rose-500/20'
                                           : 'bg-zinc-400 dark:bg-zinc-500'
                                       }`}
                                     />
                                     {isBounced && (
-                                      <span className="text-[8px] px-1 py-0 rounded font-sans uppercase font-bold tracking-wider bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300">
+                                      <span className="text-[9px] px-1 py-0 rounded font-sans uppercase font-bold tracking-wider bg-rose-200/80 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
                                         Bounced
                                       </span>
                                     )}
@@ -1285,233 +1216,483 @@ export default function SendLeadEmailModal({
                                 );
                               })}
                             </div>
+
+                            {hasUnverifiedSelected && (
+                              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 pt-0.5">
+                                <Info size={12} className="shrink-0 text-zinc-400" />
+                                <span>Unverified address selected (deliverability hasn&apos;t been tested)</span>
+                              </p>
+                            )}
                           </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Users size={13} className="text-zinc-400" />
+                            <h3 className="font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 text-xs">
+                              Target Inboxes ({targetItems.length})
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={() => setShowRecipientsList(!showRecipientsList)}
+                              className="text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline cursor-pointer ml-1"
+                            >
+                              {showRecipientsList ? 'Hide details' : 'Show details'}
+                            </button>
+                          </div>
+
+                          <div className="flex items-center p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => handleSetBulkStrategy('primary')}
+                              className={`px-2.5 py-0.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                                bulkStrategy === 'primary'
+                                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
+                              }`}
+                            >
+                              1 per tool
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSetBulkStrategy('all')}
+                              className={`px-2.5 py-0.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                                bulkStrategy === 'all'
+                                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
+                              }`}
+                            >
+                              All found
+                            </button>
+                          </div>
+                        </div>
+
+                        {leadsMissingEmailCount > 0 && (
+                          <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                            <AlertCircle size={12} />
+                            <span>{leadsMissingEmailCount} of {selectedLeads.length} tools have no email on file (skipped).</span>
+                          </p>
+                        )}
+
+                        {leadsAllUndeliverableCount > 0 && (
+                          <p className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                            <AlertCircle size={12} />
+                            <span>{leadsAllUndeliverableCount} of {selectedLeads.length} tools have only undeliverable emails (skipped).</span>
+                          </p>
+                        )}
+
+                        {showRecipientsList && (
+                          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950 p-3 max-h-48 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800/80">
+                            {selectedLeads.map((lead) => {
+                              const emailEntries = Object.entries(lead.business_emails || {});
+                              const isExcluded = excludedLeadIds.has(lead.id);
+                              const selectedForLead = bulkSelectedEmails[lead.id] || [];
+                              const hasSendable = emailEntries.some(([, raw]) => {
+                                const rec: EmailRecord = typeof raw === 'object' && raw !== null ? (raw as EmailRecord) : { status: (raw as any) || 'unverified' };
+                                return rec.status !== 'undeliverable' && rec.resend_status !== 'bounced';
+                              });
+
+                              if (isExcluded) {
+                                const flags = historyByLeadId.get(lead.id);
+                                const isExisting = (selectedTemplateId === 'tool_outreach' || !selectedTemplateId) && existingByLeadId.has(lead.id);
+                                const reasonBadge = flags?.replied
+                                  ? 'Replied (Skipped)'
+                                  : flags?.templateSent
+                                  ? 'Duplicate (Skipped)'
+                                  : isExisting
+                                  ? 'Already on Toolbit (Skipped)'
+                                  : 'Skipped';
+
+                                return (
+                                  <div key={lead.id} className="py-2 flex items-center justify-between text-xs opacity-60">
+                                    <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
+                                      {lead.tool_name}
+                                    </span>
+                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                      {reasonBadge}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              if (emailEntries.length === 0) {
+                                return (
+                                  <div key={lead.id} className="py-2 flex items-center justify-between text-xs opacity-70">
+                                    <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
+                                      {lead.tool_name}
+                                    </span>
+                                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                                      No email (Skipped)
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              if (!hasSendable) {
+                                return (
+                                  <div key={lead.id} className="py-2 flex items-center justify-between text-xs opacity-70">
+                                    <span className="font-medium text-zinc-600 dark:text-zinc-400 truncate max-w-[220px]">
+                                      {lead.tool_name}
+                                    </span>
+                                    <span className="text-[10px] text-rose-500 dark:text-rose-400 font-medium">
+                                      Undeliverable only (Skipped)
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div key={lead.id} className="py-2.5 first:pt-1 last:pb-1 space-y-1.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-[240px]">
+                                      {lead.tool_name}
+                                    </span>
+                                    {emailEntries.length > 1 && (
+                                      <div className="flex items-center gap-1.5 text-[10px]">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSelectLeadPrimaryEmail(lead.id)}
+                                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline cursor-pointer"
+                                        >
+                                          Primary
+                                        </button>
+                                        <span className="text-zinc-300 dark:text-zinc-700">·</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSelectLeadAllEmails(lead.id)}
+                                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline cursor-pointer"
+                                        >
+                                          All
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {emailEntries.map(([email, rawRecord]) => {
+                                      const record: EmailRecord = typeof rawRecord === 'object' && rawRecord !== null ? (rawRecord as EmailRecord) : { status: (rawRecord as any) || 'unverified' };
+                                      const isBounced = record.resend_status === 'bounced' || (record.status === 'undeliverable' && Boolean(record.bounce_reason));
+                                      const isUndeliverable = record.status === 'undeliverable' || isBounced;
+                                      const isDeliverable = record.status === 'deliverable' && !isBounced;
+                                      const isChecked = selectedForLead.includes(email) && !isUndeliverable;
+
+                                      return (
+                                        <button
+                                          key={email}
+                                          type="button"
+                                          disabled={isUndeliverable}
+                                          onClick={() => handleToggleBulkEmail(lead.id, email)}
+                                          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-mono transition-colors ${
+                                            isUndeliverable
+                                              ? 'bg-rose-50/40 dark:bg-rose-950/20 text-rose-500 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/40 line-through opacity-60 cursor-not-allowed'
+                                              : isChecked
+                                              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium cursor-pointer shadow-2xs'
+                                              : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700/80 hover:border-zinc-300 cursor-pointer'
+                                          }`}
+                                        >
+                                          <div
+                                            className={`size-3 rounded-xs flex items-center justify-center border ${
+                                              isUndeliverable
+                                                ? 'border-rose-400 bg-rose-100/50 dark:bg-rose-900/30 text-rose-500'
+                                                : isChecked
+                                                ? 'border-white bg-white/20 dark:border-zinc-900 dark:bg-zinc-900/20 text-white dark:text-zinc-900'
+                                                : 'border-zinc-400 dark:border-zinc-600'
+                                            }`}
+                                          >
+                                            {isChecked && <Check size={8} strokeWidth={3} />}
+                                            {isUndeliverable && <span className="text-[7px] font-bold">✕</span>}
+                                          </div>
+                                          <span className="truncate max-w-[200px]">{email}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Campaign Template Picker */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                          Marketing Template
+                        </span>
+                        {!selectedTemplateId && (
+                          <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                            • Select a template to preview &amp; send
+                          </span>
+                        )}
+                      </div>
+                      {selectedTemplateId && activeTemplate && (
+                        <span className="text-[10px] text-zinc-500 font-medium">
+                          Selected: <strong className="text-zinc-900 dark:text-zinc-100">{activeTemplate.name}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {templateList.map((tmpl) => {
+                        const isSelected = selectedTemplateId === tmpl.id;
+                        const meta = TEMPLATE_META[tmpl.id] || {
+                          icon: <Mail size={15} className="text-zinc-500" />,
+                          badge: 'Template',
+                          description: tmpl.description,
+                        };
+
+                        return (
+                          <button
+                            key={tmpl.id}
+                            type="button"
+                            onClick={() => {
+                              if (tmpl.id !== selectedTemplateId) setAllowRepeat(false);
+                              setSelectedTemplateId(tmpl.id);
+                              setIsUserCustomizingBody(false);
+                            }}
+                            className={`p-2.5 rounded-xl border text-left transition-all relative flex items-start gap-2.5 cursor-pointer bg-white dark:bg-zinc-900/60 ${
+                              isSelected
+                                ? 'border-zinc-400 dark:border-zinc-500 shadow-2xs'
+                                : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700'
+                            }`}
+                          >
+                            <div className="p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 shrink-0 mt-0.5">
+                              {meta.icon}
+                            </div>
+                            <div className="min-w-0 flex-1 pr-5">
+                              <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate block">
+                                {tmpl.name}
+                              </span>
+                              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                                {meta.description}
+                              </p>
+                            </div>
+                            {isSelected && (
+                              <div className="absolute top-2.5 right-2.5 size-4 rounded border border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center shrink-0 shadow-2xs pointer-events-none">
+                                <Check size={11} strokeWidth={2.5} />
+                              </div>
+                            )}
+                          </button>
                         );
                       })}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* ── Section 2: Marketing Template ── */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-                  Marketing Template
-                </span>
-                {selectedTemplateId && activeTemplate && (
-                  <span className="text-[11px] text-zinc-500 font-medium">
-                    Selected: <strong className="text-zinc-900 dark:text-zinc-100">{activeTemplate.name}</strong>
-                  </span>
-                )}
-              </div>
-
-              {/* 4 Template Cards Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {templateList.map((tmpl) => {
-                  const isSelected = selectedTemplateId === tmpl.id;
-                  const meta = TEMPLATE_META[tmpl.id] || {
-                    icon: <Mail size={15} className="text-zinc-500" />,
-                    badge: 'Template',
-                    description: tmpl.description,
-                  };
-
-                  return (
-                    <button
-                      key={tmpl.id}
-                      type="button"
-                      onClick={() => {
-                        if (tmpl.id !== selectedTemplateId) setAllowRepeat(false);
-                        setSelectedTemplateId(tmpl.id);
-                        setIsUserCustomizingBody(false);
-                      }}
-                      className={`p-2.5 rounded-xl border text-left transition-all relative flex items-start gap-2.5 cursor-pointer ${
-                        isSelected
-                          ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-50 dark:bg-zinc-800/60 ring-1 ring-zinc-900/10 dark:ring-zinc-100/10'
-                          : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 hover:border-zinc-300 dark:hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 shrink-0 mt-0.5">
-                        {meta.icon}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">
-                            {tmpl.name}
-                          </span>
-                          {isSelected && <Check size={13} strokeWidth={2.5} className="text-zinc-900 dark:text-zinc-100 shrink-0" />}
-                        </div>
-                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
-                          {meta.description}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Already contacted: skipped unless explicitly confirmed */}
-            {(repliedLeads.length > 0 || repeatLeads.length > 0) && (
-              <div className="p-2.5 rounded-lg bg-zinc-100/70 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700/80 text-zinc-800 dark:text-zinc-200 text-xs space-y-2">
-                {repliedLeads.length > 0 && (
-                  <ContactedLeadsGroup
-                    title={
-                      isSingleLead
-                        ? `${repliedLeads[0].tool_name} already replied`
-                        : `${repliedLeads.length} of ${selectedLeads.length} tools already replied`
-                    }
-                    leads={repliedLeads}
-                    reasonOf={(lead) => historyByLeadId.get(lead.id)?.replied || ''}
-                    confirmLabel="Send anyway"
-                    checked={allowReplied}
-                    onCheckedChange={setAllowReplied}
-                  />
-                )}
-                {repeatLeads.length > 0 && activeTemplate && (
-                  <ContactedLeadsGroup
-                    title={
-                      isSingleLead
-                        ? `${repeatLeads[0].tool_name} previously received this template`
-                        : `${repeatLeads.length} of ${selectedLeads.length} tools previously received this template`
-                    }
-                    leads={repeatLeads}
-                    reasonOf={(lead) => historyByLeadId.get(lead.id)?.templateSent || ''}
-                    confirmLabel="Resend anyway"
-                    checked={allowRepeat}
-                    onCheckedChange={setAllowRepeat}
-                  />
-                )}
-              </div>
-            )}
-
-            {!selectedTemplateId ? (
-              <div className="py-4 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800 text-center text-xs text-zinc-400">
-                Select a template above to preview and edit.
-              </div>
-            ) : (
-              <>
-                {/* ── Section 3: Subject & Customization ── */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-                      Subject Line
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomizing(!isCustomizing)}
-                      className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 font-medium underline inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <Sparkles size={11} />
-                      {isCustomizing ? 'Close body editor' : 'Customize email body'}
-                    </button>
                   </div>
-                  <Input
-                    value={customSubject}
-                    onChange={(e) => {
-                      setIsUserCustomizingBody(true);
-                      setCustomSubject(e.target.value);
-                    }}
-                    className="h-9 text-xs"
-                    placeholder="Subject line with {{tool_name}}..."
-                  />
 
-                  {/* One-Off TipTap Rich Text Customization */}
-                  {isCustomizing && (
-                    <div className="space-y-1.5 pt-2 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in-50 duration-150">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-medium text-zinc-500">Custom Body (Rich Text)</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleResetCustomContent}
-                          className="h-6 text-[10px] text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 gap-1 px-1 cursor-pointer"
-                        >
-                          <RotateCcw size={10} />
-                          Reset
-                        </Button>
-                      </div>
-
-                      <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 overflow-hidden">
-                        <RichTextEditor
-                          content={customHtml}
-                          outputFormat="html"
-                          onChange={(html) => {
-                            if (isProgrammaticUpdate.current) return;
-                            setIsUserCustomizingBody(true);
-                            setCustomHtml(html);
+                  {/* History & Existing Warnings / Confirmations */}
+                  {(repliedLeads.length > 0 || repeatLeads.length > 0 || existingLeads.length > 0) && (
+                    <div className="space-y-3">
+                      {existingLeads.length > 0 && (
+                        <ContactedLeadsGroup
+                          type="existing"
+                          title={
+                            isSingleLead
+                              ? `${existingLeads[0].tool_name} is already listed on Toolbit`
+                              : `${existingLeads.length} of ${selectedLeads.length} tools already listed on Toolbit`
+                          }
+                          leads={existingLeads}
+                          reasonOf={(lead) => {
+                            const m = existingByLeadId.get(lead.id) || [];
+                            return m.map(formatExistingToolMatch).join('; ');
                           }}
-                          placeholder="Type custom email message..."
+                          confirmLabel="Send anyway"
+                          checked={allowExisting}
+                          onCheckedChange={setAllowExisting}
                         />
-                      </div>
+                      )}
+                      {repeatLeads.length > 0 && (
+                        <ContactedLeadsGroup
+                          type="repeat"
+                          title={
+                            isSingleLead
+                              ? `${repeatLeads[0].tool_name} previously received outreach`
+                              : `${repeatLeads.length} of ${selectedLeads.length} tools previously received outreach`
+                          }
+                          leads={repeatLeads}
+                          reasonOf={(lead) => historyByLeadId.get(lead.id)?.templateSent || ''}
+                          confirmLabel="Resend anyway"
+                          checked={allowRepeat}
+                          onCheckedChange={setAllowRepeat}
+                        />
+                      )}
+                      {repliedLeads.length > 0 && (
+                        <ContactedLeadsGroup
+                          type="replied"
+                          title={
+                            isSingleLead
+                              ? `${repliedLeads[0].tool_name} already replied`
+                              : `${repliedLeads.length} of ${selectedLeads.length} tools already replied`
+                          }
+                          leads={repliedLeads}
+                          reasonOf={(lead) => historyByLeadId.get(lead.id)?.replied || ''}
+                          confirmLabel="Send anyway"
+                          checked={allowReplied}
+                          onCheckedChange={setAllowReplied}
+                        />
+                      )}
                     </div>
                   )}
+
+
                 </div>
 
-                {/* ── Section 4: Live Preview Toggle ── */}
-                <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setShowPreview(!showPreview)}
-                    className="w-full flex items-center justify-between px-3.5 py-2.5 bg-zinc-50 dark:bg-zinc-900/60 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Eye size={13} className="text-zinc-400" />
-                      <span>Preview Email ({sampleLead?.tool_name || 'Sample'})</span>
-                    </span>
-                    {showPreview ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                  </button>
-
-                  {showPreview && (
-                    <div className="p-3 bg-white dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 space-y-2 animate-in fade-in-50 duration-150">
-                      <div className="text-xs text-zinc-500 space-y-0.5 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-                        <div>
-                          <span className="text-zinc-400">Subject:</span>{' '}
-                          <strong className="text-zinc-800 dark:text-zinc-200">{previewSubject}</strong>
+                {/* ── Right Column: Subject & Live Email Preview ── */}
+                {selectedTemplateId && (
+                  <div className="w-full lg:flex-1 min-w-0 space-y-4 animate-in fade-in-50 duration-200">
+                    {/* Subject Line & Customizer Card */}
+                    <div className="p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-900/50 space-y-3 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                            Subject Line
+                          </label>
+                          <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono hidden sm:inline">
+                            {`{{tool_name}}, {{tool_domain}}`}
+                          </span>
                         </div>
-                        <div className="text-[11px]">
-                          <span className="text-zinc-400">From:</span>{' '}
-                          {activeTemplate?.from_name === 'Toolbit Team' || !activeTemplate?.from_name ? 'Toolbit AI' : activeTemplate.from_name}{' '}
-                          &lt;{activeTemplate?.from_email}&gt;
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomizing(!isCustomizing)}
+                          className="text-xs text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 font-semibold inline-flex items-center gap-1.5 cursor-pointer px-2 py-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/80 transition-colors"
+                        >
+                          <Sparkles size={12} className="text-amber-500" />
+                          <span>{isCustomizing ? 'Close body editor' : 'Customize email body'}</span>
+                        </button>
                       </div>
 
-                      <div className="border border-zinc-100 dark:border-zinc-800 rounded-lg p-3 bg-white max-h-64 overflow-y-auto text-zinc-900">
-                        <div
-                          dangerouslySetInnerHTML={{ __html: previewHtml }}
-                          className="text-xs leading-relaxed email-preview-container [&_ul]:!list-disc [&_ul]:!pl-6 [&_ol]:!list-decimal [&_ol]:!pl-6 [&_li]:!list-item"
-                        />
-                      </div>
+                      <Input
+                        value={customSubject}
+                        onChange={(e) => {
+                          setIsUserCustomizingBody(true);
+                          setCustomSubject(e.target.value);
+                        }}
+                        className="h-9 text-xs font-medium bg-zinc-50/50 dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 focus-visible:ring-emerald-500/20"
+                        placeholder="Subject line with {{tool_name}}..."
+                      />
+
+                      {/* Custom Rich Text Body Editor */}
+                      {isCustomizing && (
+                        <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in-50 duration-150">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                              Custom Body Content
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleResetCustomContent}
+                              className="h-6 text-[10px] text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 gap-1 px-1.5 cursor-pointer"
+                            >
+                              <RotateCcw size={10} />
+                              Reset to template
+                            </Button>
+                          </div>
+
+                          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 overflow-hidden shadow-2xs">
+                            <RichTextEditor
+                              content={customHtml}
+                              outputFormat="html"
+                              onChange={(html) => {
+                                if (isProgrammaticUpdate.current) return;
+                                setIsUserCustomizingBody(true);
+                                setCustomHtml(html);
+                              }}
+                              placeholder="Type custom email message..."
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
 
-        {/* ── Dialog Footer with Action Button ── */}
-        <DialogFooter className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex-col sm:flex-row gap-2 sm:justify-between items-center">
-          <div className="text-xs text-zinc-400">
-            {activeTemplate ? (
-              <span>From <strong>{activeTemplate?.from_email}</strong> via Resend</span>
-            ) : (
-              <span>Select a template to send</span>
-            )}
+                    {/* Live Email Preview Card */}
+                    <div className="rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/40 p-4 space-y-3 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Eye size={13} className="text-zinc-400" />
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                            Live Email Preview
+                          </h3>
+                        </div>
+                        {sampleLead && (
+                          <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[200px]" title={sampleLead.tool_name}>
+                            Previewing: <strong className="text-zinc-700 dark:text-zinc-300 font-semibold">{sampleLead.tool_name}</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      {activeTemplate ? (
+                        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden shadow-2xs">
+                          {/* Email Header */}
+                          <div className="p-3 border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/80 dark:bg-zinc-900/80 space-y-1.5 text-xs">
+                            <div className="flex items-start gap-2">
+                              <span className="text-zinc-400 font-medium shrink-0">Subject:</span>
+                              <span className="font-semibold text-zinc-900 dark:text-zinc-100 break-words leading-snug">
+                                {previewSubject || '(No subject line)'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                              <span className="text-zinc-400">From:</span>
+                              <span className="truncate">
+                                {activeTemplate?.from_name === 'Toolbit Team' || !activeTemplate?.from_name ? 'Toolbit AI' : activeTemplate.from_name}{' '}
+                                &lt;{activeTemplate?.from_email}&gt;
+                              </span>
+                            </div>
+                            {targetItems.length > 0 && (
+                              <div className="flex items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                                <span className="text-zinc-400">To:</span>
+                                <span className="font-mono text-zinc-700 dark:text-zinc-300 truncate">
+                                  {targetItems[0].recipientEmail}
+                                  {targetItems.length > 1 && ` (+${targetItems.length - 1} more)`}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Email Body */}
+                          <div className="p-4 max-h-[420px] overflow-y-auto custom-scrollbar bg-white text-zinc-900">
+                            <div
+                              dangerouslySetInnerHTML={{ __html: previewHtml }}
+                              className="text-xs leading-relaxed email-preview-container [&_ul]:!list-disc [&_ul]:!pl-6 [&_ol]:!list-decimal [&_ol]:!pl-6 [&_li]:!list-item"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Dialog Footer ── */}
+        <DialogFooter className="px-6 py-4 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-zinc-900/60 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="inline-block size-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20 shrink-0" />
+            <span className="text-zinc-500 dark:text-zinc-400 font-medium">From:</span>
+            <span className="font-semibold text-zinc-900 dark:text-zinc-100 bg-zinc-200/70 dark:bg-zinc-800 px-2 py-0.5 rounded-md border border-zinc-300/60 dark:border-zinc-700/80 font-mono text-[11px] truncate max-w-[280px]">
+              {(activeTemplate?.from_name === 'Toolbit Team' || !activeTemplate?.from_name ? 'Toolbit AI' : activeTemplate.from_name)}{' '}
+              &lt;{activeTemplate?.from_email?.trim() || 'team@mail.toolbit.ai'}&gt;
+            </span>
+            <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0">via Resend</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 justify-end">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onClose}
               disabled={sending}
-              className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 cursor-pointer"
+              className="h-8 text-xs border-zinc-200 dark:border-zinc-800 cursor-pointer"
             >
-              Cancel
+              {sendResults ? 'Close' : 'Cancel'}
             </Button>
 
             {!sendResults && (
@@ -1523,32 +1704,37 @@ export default function SendLeadEmailModal({
                   sending ||
                   targetItems.length === 0 ||
                   checkingGuards ||
-                  !!guardCheckError
+                  (Boolean(guardCheckError) && !guards)
                 }
-                className="h-9 px-4 text-xs gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-100 dark:hover:bg-zinc-200 dark:text-zinc-900 font-semibold shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-8 px-4 text-xs gap-1.5 font-semibold shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 title={
                   !selectedTemplateId
                     ? 'Please select a template first'
                     : checkingGuards
                     ? 'Checking Toolbit listings and email history…'
-                    : guardCheckError
-                    ? 'Could not check the selected leads'
-                    : targetItems.length === 0 && excludedLeadIds.size > 0
-                    ? 'All selected tools are skipped (see the notes above)'
+                    : guardCheckError && !guards
+                    ? 'Precheck verification failed. Click Retry above.'
                     : targetItems.length === 0
-                    ? 'No valid recipients selected'
-                    : undefined
+                    ? 'No valid email recipients selected'
+                    : skippedItemsCount > 0
+                    ? `${sendableItemsCount} will be sent, ${skippedItemsCount} will be skipped by Duplicate Protection`
+                    : `Send outreach to ${targetItems.length} recipients`
                 }
               >
                 {sending ? (
                   <>
-                    <Spinner size={13} className="text-white dark:text-zinc-900" />
-                    Sending ({targetItems.length})...
+                    <Spinner size={12} />
+                    <span>Sending ({targetItems.length})...</span>
+                  </>
+                ) : !selectedTemplateId ? (
+                  <>
+                    <Mail size={12} />
+                    <span>Select a template</span>
                   </>
                 ) : (
                   <>
                     <Send size={12} />
-                    Send ({targetItems.length})
+                    <span>Send ({targetItems.length})</span>
                   </>
                 )}
               </Button>

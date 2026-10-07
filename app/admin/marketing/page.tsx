@@ -258,12 +258,16 @@ export default function MarketingMailPage() {
   const [authToken, setAuthToken] = useState<string>('');
 
   const getAuthToken = async (): Promise<string> => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const token = session?.access_token || '';
-    if (token && !authToken) setAuthToken(token);
-    return token;
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+      if (token) setAuthToken(token);
+      return token;
+    } catch {
+      return authToken;
+    }
   };
 
   useEffect(() => {
@@ -271,6 +275,18 @@ export default function MarketingMailPage() {
       const token = await getAuthToken();
       if (token) setAuthToken(token);
     })();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) {
+        setAuthToken(session.access_token);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Helper: Generate populated template HTML & Subject

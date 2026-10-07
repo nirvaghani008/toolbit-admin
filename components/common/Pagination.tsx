@@ -12,6 +12,7 @@ interface PaginationProps {
   currentPage: number;
   onPageChange: (page: number) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 export default function Pagination({
@@ -19,7 +20,8 @@ export default function Pagination({
   pageSize,
   currentPage,
   onPageChange,
-  className
+  className,
+  disabled = false
 }: PaginationProps) {
   const totalPages = Math.ceil(totalCount / pageSize) || 1;
 
@@ -54,6 +56,7 @@ export default function Pagination({
         key={page}
         variant={currentPage === page ? 'default' : 'ghost'}
         size="icon"
+        disabled={disabled}
         onClick={() => onPageChange(page)}
         className={`w-9 h-9 text-xs font-bold rounded-lg ${
           currentPage === page
@@ -102,6 +105,7 @@ export default function Pagination({
 
   const handleJump = (e: React.FormEvent) => {
     e.preventDefault();
+    if (disabled) return;
     const p = parseInt(jumpPage);
     if (!isNaN(p) && p >= 1 && p <= totalPages) {
       onPageChange(p);
@@ -116,6 +120,7 @@ export default function Pagination({
     <div
       className={cn(
         'px-6 py-4 bg-[var(--bg-elevated)]/20 border-t border-[var(--border-color)] flex flex-col sm:flex-row items-center justify-between gap-4',
+        disabled && 'opacity-60 pointer-events-none transition-opacity',
         className
       )}
     >
@@ -130,6 +135,7 @@ export default function Pagination({
             type="text"
             placeholder="Page#"
             value={jumpPage}
+            disabled={disabled}
             onChange={(e) => setJumpPage(e.target.value)}
             className="w-16 h-9 px-2 text-xs font-bold text-center placeholder:font-medium placeholder:text-[var(--text-muted)]/50"
           />
@@ -137,6 +143,7 @@ export default function Pagination({
             type="submit"
             variant="secondary"
             size="sm"
+            disabled={disabled}
             className="h-9 px-3 text-[10px] font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 hover:bg-zinc-900 hover:text-white dark:hover:bg-zinc-100 dark:hover:text-zinc-900 transition-all border border-zinc-200 dark:border-zinc-700"
           >
             Go
@@ -148,7 +155,7 @@ export default function Pagination({
             variant="ghost"
             size="icon"
             onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
+            disabled={disabled || currentPage === 1}
             className="w-9 h-9 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             aria-label="Previous page"
           >
@@ -163,7 +170,7 @@ export default function Pagination({
             variant="ghost"
             size="icon"
             onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
+            disabled={disabled || currentPage === totalPages}
             className="w-9 h-9 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             aria-label="Next page"
           >

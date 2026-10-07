@@ -1,13 +1,12 @@
 /**
- * Cross-Lead Email Deliverability Verification Cache
+ * Email Deliverability Verification Service
  *
- * Utilizes public.marketing_email_verifications table and RPCs
- * (marketing_get_email_verifications, marketing_save_email_verifications)
- * to persist verification results cross-lead, preventing redundant API calls
- * and credit consumption.
+ * Stores and queries verification outcomes directly from marketing_outreach_leads.business_emails
+ * as the single source of truth.
  *
- * Resilient: If RPCs or tables are temporarily missing or undergoing migration,
- * queries degrade gracefully without disrupting the marketing outreach pipeline.
+ * Cross-lead optimization: If an email address has already been verified on ANY lead,
+ * its deliverability status (deliverable or undeliverable) is automatically reused so
+ * No2Bounce credits are never spent more than once for the same address.
  */
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -26,7 +25,7 @@ export interface CachedEmailVerification {
 }
 
 /**
- * Retrieves cached email verification records for the given email addresses.
+ * Retrieves email verification records across all leads in marketing_outreach_leads.
  * Returns a Map keyed by lowercase email address.
  */
 export async function getCachedEmailVerifications(
@@ -40,13 +39,13 @@ export async function getCachedEmailVerifications(
   if (uniqueEmails.length === 0) return cacheMap;
 
   try {
-    // 1. Primary: Query via RPC
+    // 1. Primary: Fast RPC lookup directly on marketing_outreach_leads
     const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
-      'marketing_get_email_verifications',
+      'marketing_get_lead_email_verifications',
       { p_emails: uniqueEmails }
     );
 
-    if (!rpcError && Array.isArray(rpcData)) {
+    if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
       for (const row of rpcData as any[]) {
         if (row && typeof row.email === 'string') {
           const email = row.email.toLowerCase();
@@ -70,68 +69,65 @@ export async function getCachedEmailVerifications(
             score,
             score_status: typeof row.score_status === 'string' ? row.score_status : null,
             provider: typeof row.provider === 'string' ? row.provider : 'no2bounce',
-            raw_response: row.raw_response && typeof row.raw_response === 'object' ? row.raw_response : null,
             verified_at: typeof row.verified_at === 'string' ? row.verified_at : new Date().toISOString(),
-            updated_at: typeof row.updated_at === 'string' ? row.updated_at : undefined,
           });
         }
       }
       return cacheMap;
     }
 
-    // 2. Fallback: Direct table select if RPC is not present
-    const { data: tableData, error: tableError } = await supabaseAdmin
-      .from('marketing_email_verifications')
-      .select('email, status, score, score_status, provider, raw_response, verified_at, updated_at')
-      .in('email', uniqueEmails);
+    // 2. Direct fallback: Query marketing_outreach_leads directly via Supabase client
+    for (const email of uniqueEmails) {
+      const { data, error } = await supabaseAdmin
+        .from('marketing_outreach_leads')
+        .select('business_emails')
+        .contains('business_emails', { [email]: {} })
+        .limit(10);
 
-    if (!tableError && Array.isArray(tableData)) {
-      for (const row of tableData as any[]) {
-        if (row && typeof row.email === 'string') {
-          const email = row.email.toLowerCase();
-          const rawStatus = typeof row.status === 'string' ? row.status.toLowerCase() : '';
-          const status: EmailDeliverabilityStatus =
-            rawStatus === 'deliverable' || rawStatus === 'undeliverable'
-              ? rawStatus
-              : 'unverified';
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          const beMap = (row.business_emails || {}) as Record<string, any>;
+          const rec = beMap[email];
+          if (rec && (rec.status === 'deliverable' || rec.status === 'undeliverable')) {
+            const hasScore =
+              rec.verification_score !== undefined &&
+              rec.verification_score !== null &&
+              String(rec.verification_score).trim() !== '';
+            const scoreNum = hasScore ? Number(rec.verification_score) : NaN;
 
-          const hasScore =
-            row.score !== null &&
-            row.score !== undefined &&
-            typeof row.score !== 'boolean' &&
-            String(row.score).trim() !== '';
-          const scoreNum = hasScore ? Number(row.score) : NaN;
-          const score = Number.isFinite(scoreNum) ? scoreNum : null;
-
-          cacheMap.set(email, {
-            email,
-            status,
-            score,
-            score_status: typeof row.score_status === 'string' ? row.score_status : null,
-            provider: typeof row.provider === 'string' ? row.provider : 'no2bounce',
-            raw_response: row.raw_response && typeof row.raw_response === 'object' ? row.raw_response : null,
-            verified_at: typeof row.verified_at === 'string' ? row.verified_at : new Date().toISOString(),
-            updated_at: typeof row.updated_at === 'string' ? row.updated_at : undefined,
-          });
+            cacheMap.set(email, {
+              email,
+              status: rec.status,
+              score: Number.isFinite(scoreNum) ? scoreNum : null,
+              score_status:
+                rec.verification_status ||
+                (rec.resend_status === 'bounced' ? 'Bounced (Resend)' : null),
+              provider: rec.verification_provider || (rec.resend_status ? 'resend' : 'no2bounce'),
+              verified_at:
+                rec.verified_at ||
+                rec.last_bounced_at ||
+                rec.last_delivered_at ||
+                new Date().toISOString(),
+            });
+            break; // found definitive status for this address
+          }
         }
       }
     }
   } catch (err: any) {
-    // Fail-safe: caching error should never crash callers
-    console.warn('[EmailVerificationCache] getCachedEmailVerifications degraded gracefully:', err?.message);
+    console.warn('[EmailVerificationService] getCachedEmailVerifications degraded gracefully:', err?.message);
   }
 
   return cacheMap;
 }
 
 /**
- * Saves or updates email verifications in the persistent cache.
+ * Synchronizes verified email outcomes across all matching leads in marketing_outreach_leads.
  * Excludes transient failures ('unverified' / failOpen).
  */
 export async function saveEmailVerifications(
   verifications: Array<No2BounceVerificationResult | CachedEmailVerification>
 ): Promise<void> {
-  // Only persist definitive deliverability outcomes (deliverable or undeliverable)
   const validRecords = verifications.filter((v) => {
     const isFailOpen = 'failOpen' in v && v.failOpen === true;
     return !isFailOpen && (v.status === 'deliverable' || v.status === 'undeliverable');
@@ -139,43 +135,62 @@ export async function saveEmailVerifications(
 
   if (validRecords.length === 0) return;
 
-  const payload = validRecords.map((r) => ({
-    email: r.email.trim().toLowerCase(),
-    status: r.status,
-    score: r.score ?? null,
-    score_status: ('scoreStatus' in r ? r.scoreStatus : r.score_status) ?? null,
-    provider: r.provider || 'no2bounce',
-    raw_response: ('rawResponse' in r ? r.rawResponse : ('raw_response' in r ? r.raw_response : null)) || null,
-  }));
-
   try {
-    // 1. Primary: Save via RPC
-    const { error: rpcError } = await supabaseAdmin.rpc('marketing_save_email_verifications', {
-      p_verifications: payload,
-    });
+    for (const record of validRecords) {
+      const email = record.email.trim().toLowerCase();
+      const status = record.status;
+      const score = record.score !== null && record.score !== undefined ? String(record.score) : '';
+      const scoreStatus = ('scoreStatus' in record ? record.scoreStatus : record.score_status) || '';
+      const provider = record.provider || 'no2bounce';
+      const verifiedAt = ('verifiedAt' in record ? record.verifiedAt : record.verified_at) || new Date().toISOString();
 
-    if (!rpcError) return;
+      // 1. Try atomic sync RPC if deployed
+      const { error: rpcErr } = await supabaseAdmin.rpc('marketing_sync_lead_email_verification', {
+        p_email: email,
+        p_status: status,
+        p_score: score,
+        p_score_status: scoreStatus,
+        p_provider: provider,
+        p_verified_at: verifiedAt,
+      });
 
-    // 2. Fallback: Direct table upsert
-    const upsertRows = payload.map((p) => ({
-      email: p.email,
-      status: p.status,
-      score: p.score,
-      score_status: p.score_status,
-      provider: p.provider,
-      raw_response: p.raw_response,
-      verified_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
+      if (!rpcErr) continue;
 
-    const { error: tableError } = await supabaseAdmin
-      .from('marketing_email_verifications')
-      .upsert(upsertRows, { onConflict: 'email' });
+      // 2. Fallback: Query all leads having this email and update their business_emails directly
+      const { data: matchingLeads, error: queryErr } = await supabaseAdmin
+        .from('marketing_outreach_leads')
+        .select('id, business_emails')
+        .contains('business_emails', { [email]: {} });
 
-    if (tableError) {
-      console.warn('[EmailVerificationCache] saveEmailVerifications fallback error:', tableError.message);
+      if (!queryErr && Array.isArray(matchingLeads) && matchingLeads.length > 0) {
+        await Promise.all(
+          matchingLeads.map(async (l) => {
+            const currentMap = (l.business_emails || {}) as Record<string, any>;
+            const existingRec = currentMap[email] || { status: 'unverified' };
+            const updatedMap = {
+              ...currentMap,
+              [email]: {
+                ...existingRec,
+                status,
+                verification_score: score,
+                verification_status: scoreStatus,
+                verification_provider: provider,
+                verified_at: verifiedAt,
+              },
+            };
+            await supabaseAdmin
+              .from('marketing_outreach_leads')
+              .update({
+                business_emails: updatedMap,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', l.id);
+          })
+        );
+      }
     }
   } catch (err: any) {
-    console.warn('[EmailVerificationCache] saveEmailVerifications degraded gracefully:', err?.message);
+    console.warn('[EmailVerificationService] saveEmailVerifications degraded gracefully:', err?.message);
   }
 }
+

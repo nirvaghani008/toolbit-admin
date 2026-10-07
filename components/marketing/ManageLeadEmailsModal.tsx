@@ -25,6 +25,7 @@ import {
   ExternalLink,
   Info,
   ShieldCheck,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   type MarketingOutreachLead,
@@ -96,6 +97,7 @@ export default function ManageLeadEmailsModal({
   if (!lead) return null;
 
   const emailEntries = Object.entries(emails);
+  const initial = (lead.tool_name || '?').trim().charAt(0).toUpperCase() || '?';
 
   const handleCopy = async (email: string) => {
     try {
@@ -244,7 +246,6 @@ export default function ManageLeadEmailsModal({
       return;
     }
 
-    // Check if new email is already another entry in the list
     if (trimmed !== oldEmail.toLowerCase() && emails[trimmed] !== undefined) {
       setError(`Email "${trimmed}" already exists in the list.`);
       return;
@@ -306,77 +307,89 @@ export default function ManageLeadEmailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl">
-        {/* Header */}
-        <DialogHeader className="px-6 pt-5 pb-4 border-b border-zinc-100 dark:border-zinc-800 text-left">
-          <div className="flex items-center justify-between gap-3 pr-6">
-            <div className="space-y-1">
-              <DialogTitle
-                id={titleId}
-                className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"
+      <DialogContent className="w-full max-w-2xl max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-zinc-200/90 dark:border-zinc-800/80 shadow-2xl transition-all">
+        {/* ── Header ── */}
+        <DialogHeader className="px-6 py-5 border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/40 text-left space-y-0">
+          <div className="flex items-center justify-between gap-4 pr-8">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div
+                aria-hidden="true"
+                className="size-11 rounded-xl bg-gradient-to-br from-zinc-100 to-zinc-200/80 dark:from-zinc-800 dark:to-zinc-800/50 border border-zinc-200/90 dark:border-zinc-700/60 flex items-center justify-center text-base font-bold text-zinc-900 dark:text-zinc-100 shrink-0 shadow-2xs"
               >
-                <div className="size-8 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center shrink-0">
-                  <Mail size={16} />
+                {initial}
+              </div>
+
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <DialogTitle
+                    id={titleId}
+                    className="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-50 truncate"
+                  >
+                    Business Emails
+                  </DialogTitle>
+                  <span className="text-zinc-300 dark:text-zinc-700">·</span>
+                  <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 truncate max-w-[200px] sm:max-w-xs">
+                    {lead.tool_name}
+                  </span>
                 </div>
-                <span>Manage Business Emails</span>
-              </DialogTitle>
-              <DialogDescription id={descriptionId} className="text-xs text-zinc-500 dark:text-zinc-400">
-                Add, edit, or delete outreach email addresses for <strong>{lead.tool_name}</strong>.
-              </DialogDescription>
+
+                <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  <DialogDescription id={descriptionId} className="sr-only">
+                    Add, edit, or delete outreach email addresses for {lead.tool_name}.
+                  </DialogDescription>
+                  {lead.tool_site_url ? (
+                    <a
+                      href={lead.tool_site_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-mono hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors group truncate"
+                    >
+                      <span>{lead.tool_site_url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '')}</span>
+                      <ArrowUpRight size={11} className="shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  ) : (
+                    <span>Manage contact endpoints for marketing outreach</span>
+                  )}
+                </div>
+              </div>
             </div>
 
             <Badge
               variant="outline"
-              className={`text-xs font-semibold px-2.5 py-1 shrink-0 ${
+              className={`text-xs font-semibold px-2.5 py-1 shrink-0 shadow-2xs ${
                 emailEntries.length > 0
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
                   : 'bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
               }`}
             >
-              {emailEntries.length} {emailEntries.length === 1 ? 'email' : 'emails'}
+              {emailEntries.length} {emailEntries.length === 1 ? 'address' : 'addresses'}
             </Badge>
           </div>
-
-          {/* Lead metadata preview */}
-          {lead.tool_site_url && (
-            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/60">
-              <span className="text-[11px] text-zinc-400">Website:</span>
-              <a
-                href={lead.tool_site_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-zinc-600 dark:text-zinc-300 hover:underline font-mono truncate max-w-[280px] inline-flex items-center gap-1"
-              >
-                {lead.tool_site_url.replace(/^https?:\/\//, '')}
-                <ExternalLink size={10} className="shrink-0 text-zinc-400" />
-              </a>
-            </div>
-          )}
         </DialogHeader>
 
-        {/* Content Body */}
-        <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto">
+        {/* ── Content Body ── */}
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-5">
           {/* Notifications */}
           {error && (
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs flex items-center justify-between gap-2 animate-in fade-in duration-150">
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-300 text-xs flex items-center justify-between gap-2 shadow-2xs animate-in fade-in duration-150">
               <div className="flex items-center gap-2 min-w-0">
-                <AlertCircle size={15} className="shrink-0 text-rose-600 dark:text-rose-400" />
-                <span className="break-words">{error}</span>
+                <AlertCircle size={14} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                <span className="break-words font-medium">{error}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setError(null)}
                 className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-200 shrink-0"
               >
-                <X size={14} />
+                <X size={13} />
               </button>
             </div>
           )}
 
           {success && (
-            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between gap-2 animate-in fade-in duration-150">
+            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between gap-2 shadow-2xs animate-in fade-in duration-150">
               <div className="flex items-center gap-2 min-w-0">
-                <CheckCircle2 size={15} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <CheckCircle2 size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <span className="break-words font-medium">{success}</span>
               </div>
               <button
@@ -384,17 +397,20 @@ export default function ManageLeadEmailsModal({
                 onClick={() => setSuccess(null)}
                 className="text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-200 shrink-0"
               >
-                <X size={14} />
+                <X size={13} />
               </button>
             </div>
           )}
 
           {/* Existing Emails List */}
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                Configured Addresses ({emailEntries.length})
-              </h3>
+              <div className="flex items-center gap-2">
+                <Mail size={13} className="text-zinc-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                  Configured Addresses ({emailEntries.length})
+                </h3>
+              </div>
               {emailEntries.length === 0 && (
                 <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
                   <AlertCircle size={12} /> Outreach disabled (no email)
@@ -403,18 +419,20 @@ export default function ManageLeadEmailsModal({
             </div>
 
             {emailEntries.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800 p-6 text-center space-y-1.5 bg-zinc-50/50 dark:bg-zinc-800/20">
-                <Mail size={24} className="mx-auto text-zinc-300 dark:text-zinc-600" />
-                <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              <div className="rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800 p-8 text-center space-y-2 bg-zinc-50/50 dark:bg-zinc-900/30">
+                <div className="size-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto text-zinc-400">
+                  <Mail size={18} />
+                </div>
+                <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
                   No business emails found
                 </p>
-                <p className="text-[11px] text-zinc-400 max-w-xs mx-auto">
-                  Add a verified business email below so you can send outreach campaigns to this tool.
+                <p className="text-[11px] text-zinc-400 max-w-xs mx-auto leading-relaxed">
+                  Add a verified business email below to enable automated and manual outreach campaigns for this tool.
                 </p>
               </div>
             ) : (
-              <ul className="rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/50">
-                {emailEntries.map(([email, rawRecord], index) => {
+              <div className="space-y-2">
+                {emailEntries.map(([email, rawRecord]) => {
                   const record: EmailRecord =
                     typeof rawRecord === 'object' && rawRecord !== null
                       ? (rawRecord as EmailRecord)
@@ -423,216 +441,242 @@ export default function ManageLeadEmailsModal({
                   const isDeleting = deletingEmail === email;
                   const isLoadingThis = isSubmitting && actionTarget === email;
 
+                  if (isEditing) {
+                    return (
+                      <div
+                        key={email}
+                        className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 space-y-2 shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="email"
+                            value={editInput}
+                            onChange={(e) => setEditInput(e.target.value)}
+                            placeholder="email@example.com"
+                            className="h-8 text-xs font-mono flex-1 bg-white dark:bg-zinc-900"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveEdit(email);
+                              } else if (e.key === 'Escape') {
+                                handleCancelEdit();
+                              }
+                            }}
+                            disabled={isLoadingThis}
+                          />
+                          <select
+                            value={editStatus}
+                            onChange={(e) => setEditStatus(e.target.value as EmailDeliverabilityStatus)}
+                            disabled={isLoadingThis}
+                            className="h-8 text-xs px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 font-medium cursor-pointer"
+                          >
+                            <option value="unverified">Unverified</option>
+                            <option value="deliverable">Deliverable</option>
+                            <option value="undeliverable">Undeliverable</option>
+                          </select>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleSaveEdit(email)}
+                            disabled={isLoadingThis || !editInput.trim()}
+                            className="h-8 text-xs px-3 font-semibold gap-1 shrink-0"
+                          >
+                            {isLoadingThis ? <Spinner size={11} /> : <Check size={12} />}
+                            Save
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCancelEdit}
+                            disabled={isLoadingThis}
+                            className="h-8 text-xs px-2.5 shrink-0"
+                          >
+                            <X size={12} />
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-zinc-400 pl-1">
+                          Press Enter to save or Escape to cancel.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  if (isDeleting) {
+                    return (
+                      <div
+                        key={email}
+                        className="flex items-center justify-between gap-3 p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 shadow-2xs"
+                      >
+                        <span className="text-xs text-rose-700 dark:text-rose-300 font-medium truncate">
+                          Delete <strong>{email}</strong> from this lead?
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleConfirmDelete(email)}
+                            disabled={isLoadingThis}
+                            className="h-7 text-xs px-2.5 font-semibold gap-1 bg-rose-600 hover:bg-rose-700 text-white"
+                          >
+                            {isLoadingThis ? <Spinner size={11} /> : <Trash2 size={12} />}
+                            Delete
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDeletingEmail(null)}
+                            disabled={isLoadingThis}
+                            className="h-7 text-xs px-2"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <li
+                    <div
                       key={email}
-                      className="p-3 transition-colors hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30"
+                      className="p-3 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-900/50 hover:border-zinc-300 dark:hover:border-zinc-700/80 transition-colors shadow-2xs group"
                     >
-                      {isEditing ? (
-                        /* Inline Edit Form */
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="email"
-                              value={editInput}
-                              onChange={(e) => setEditInput(e.target.value)}
-                              placeholder="email@example.com"
-                              className="h-8 text-xs font-mono flex-1"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleSaveEdit(email);
-                                } else if (e.key === 'Escape') {
-                                  handleCancelEdit();
-                                }
-                              }}
-                              disabled={isLoadingThis}
+                      <div className="flex items-center justify-between gap-3">
+                        {/* Email text & badges */}
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="size-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 flex items-center justify-center shrink-0">
+                            <Mail size={13} />
+                          </div>
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                            <span
+                              className="text-xs font-mono font-medium text-zinc-900 dark:text-zinc-100 truncate select-all"
+                              title={email}
+                            >
+                              {email}
+                            </span>
+
+                            <EmailDeliverabilityBadge
+                              email={email}
+                              record={record}
+                              size="sm"
+                              showEmail={false}
+                              showPrimaryBadge={false}
+                              onStatusChange={(newStatus) => handleStatusChange(email, newStatus)}
                             />
-                            <select
-                              value={editStatus}
-                              onChange={(e) => setEditStatus(e.target.value as EmailDeliverabilityStatus)}
-                              disabled={isLoadingThis}
-                              className="h-8 text-xs px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium cursor-pointer"
-                              title="Deliverability status"
-                            >
-                              <option value="unverified">Unverified</option>
-                              <option value="deliverable">Deliverable</option>
-                              <option value="undeliverable">Undeliverable</option>
-                            </select>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => handleSaveEdit(email)}
-                              disabled={isLoadingThis || !editInput.trim()}
-                              className="h-8 text-xs px-3 font-semibold gap-1 shrink-0"
-                            >
-                              {isLoadingThis ? <Spinner size={12} /> : <Check size={13} />}
-                              Save
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={handleCancelEdit}
-                              disabled={isLoadingThis}
-                              className="h-8 text-xs px-2.5 shrink-0"
-                            >
-                              <X size={13} />
-                            </Button>
-                          </div>
-                          <p className="text-[10px] text-zinc-400 pl-1">
-                            Press Enter to save or Escape to cancel.
-                          </p>
-                        </div>
-                      ) : isDeleting ? (
-                        /* Inline Delete Confirmation */
-                        <div className="flex items-center justify-between gap-3 p-1 rounded-lg bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40">
-                          <span className="text-xs text-rose-700 dark:text-rose-300 font-medium pl-2 truncate">
-                            Remove <strong>{email}</strong>?
-                          </span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleConfirmDelete(email)}
-                              disabled={isLoadingThis}
-                              className="h-7 text-xs px-2.5 font-semibold gap-1 bg-rose-600 hover:bg-rose-700 text-white"
-                            >
-                              {isLoadingThis ? <Spinner size={11} /> : <Trash2 size={12} />}
-                              Confirm Delete
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDeletingEmail(null)}
-                              disabled={isLoadingThis}
-                              className="h-7 text-xs px-2"
-                            >
-                              Cancel
-                            </Button>
+
+                            {record.verification_score !== undefined && (
+                              <span
+                                className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200/60 dark:border-zinc-700/60"
+                                title={`No2Bounce score: ${record.verification_score}/100`}
+                              >
+                                {record.verification_score}/100
+                              </span>
+                            )}
                           </div>
                         </div>
-                      ) : (
-                        /* Standard Email Row */
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <div className="size-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 flex items-center justify-center shrink-0">
-                                <Mail size={13} />
-                              </div>
-                              <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                                <span
-                                  className="text-xs font-mono font-medium text-zinc-900 dark:text-zinc-100 truncate select-all"
-                                  title={email}
-                                >
-                                  {email}
-                                </span>
 
-                                <EmailDeliverabilityBadge
-                                  email={email}
-                                  record={record}
-                                  size="sm"
-                                  showEmail={false}
-                                  showPrimaryBadge={false}
-                                  onStatusChange={(newStatus) => handleStatusChange(email, newStatus)}
-                                />
-                              </div>
-                            </div>
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Verify */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleVerifyEmail(email)}
+                            disabled={isSubmitting || verifyingEmail !== null}
+                            className="size-7 p-0 rounded-lg text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                            title={
+                              record.verification_score !== undefined
+                                ? `Re-verify deliverability via No2Bounce (current score: ${record.verification_score}/100)`
+                                : 'Verify deliverability via No2Bounce'
+                            }
+                            aria-label={`Verify deliverability for ${email}`}
+                          >
+                            {verifyingEmail === email ? (
+                              <Spinner size={12} />
+                            ) : (
+                              <ShieldCheck
+                                size={13}
+                                className={record.verification_provider ? 'text-emerald-600 dark:text-emerald-400' : ''}
+                              />
+                            )}
+                          </Button>
 
-                            <div className="flex items-center gap-1 shrink-0">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleVerifyEmail(email)}
-                                disabled={isSubmitting || verifyingEmail !== null}
-                                className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                                title={
-                                  record.verification_score !== undefined
-                                    ? `Re-verify deliverability via No2Bounce (current score: ${record.verification_score}/100)`
-                                    : 'Verify deliverability via No2Bounce'
-                                }
-                                aria-label={`Verify deliverability for ${email}`}
-                              >
-                                {verifyingEmail === email ? (
-                                  <Spinner size={12} />
-                                ) : (
-                                  <ShieldCheck
-                                    size={13}
-                                    className={record.verification_provider ? 'text-emerald-600 dark:text-emerald-400' : ''}
-                                  />
-                                )}
-                              </Button>
+                          {/* Copy */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCopy(email)}
+                            className="size-7 p-0 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                            title={copiedEmail === email ? 'Copied!' : 'Copy email'}
+                            aria-label={`Copy ${email}`}
+                          >
+                            {copiedEmail === email ? (
+                              <Check size={12} className="text-emerald-600 dark:text-emerald-400" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </Button>
 
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleCopy(email)}
-                                className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                                title={copiedEmail === email ? 'Copied!' : 'Copy email'}
-                                aria-label={`Copy ${email}`}
-                              >
-                                {copiedEmail === email ? (
-                                  <Check size={13} className="text-emerald-600 dark:text-emerald-400" />
-                                ) : (
-                                  <Copy size={13} />
-                                )}
-                              </Button>
+                          {/* Edit */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleStartEdit(email, record.status)}
+                            disabled={isSubmitting}
+                            className="size-7 p-0 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                            title="Edit email"
+                            aria-label={`Edit ${email}`}
+                          >
+                            <Edit2 size={12} />
+                          </Button>
 
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleStartEdit(email, record.status)}
-                                disabled={isSubmitting}
-                                className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                                title="Edit email"
-                                aria-label={`Edit ${email}`}
-                              >
-                                <Edit2 size={13} />
-                              </Button>
+                          {/* Delete */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeletingEmail(email)}
+                            disabled={isSubmitting}
+                            className="size-7 p-0 rounded-lg text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                            title="Delete email"
+                            aria-label={`Delete ${email}`}
+                          >
+                            <Trash2 size={12} />
+                          </Button>
+                        </div>
+                      </div>
 
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setDeletingEmail(email)}
-                                disabled={isSubmitting}
-                                className="h-7 w-7 p-0 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400"
-                                title="Delete email"
-                                aria-label={`Delete ${email}`}
-                              >
-                                <Trash2 size={13} />
-                              </Button>
-                            </div>
+                      {/* Resend Bounced Notice */}
+                      {record.resend_status === 'bounced' && record.bounce_reason && (
+                        <div className="mt-2.5 flex items-start gap-2 p-2.5 rounded-lg bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 text-[11px] text-rose-700 dark:text-rose-300">
+                          <AlertCircle size={13} className="shrink-0 mt-0.5 text-rose-500" />
+                          <div className="min-w-0 flex-1 leading-snug">
+                            <span className="font-semibold">Bounced in Resend: </span>
+                            <span className="text-rose-600 dark:text-rose-400">{record.bounce_reason}</span>
                           </div>
-
-                          {record.resend_status === 'bounced' && record.bounce_reason && (
-                            <div className="text-[10px] text-rose-600 dark:text-rose-400 flex items-center gap-1.5 pl-8.5 font-medium">
-                              <AlertCircle size={11} className="shrink-0" />
-                              <span>Bounced in Resend: {record.bounce_reason}</span>
-                            </div>
-                          )}
                         </div>
                       )}
-                    </li>
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             )}
           </div>
 
-          {/* Add New Email Section */}
-          <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/80 space-y-2.5">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-              <Plus size={13} /> Add Business Email
-            </h3>
+          {/* ── Add New Email Section ── */}
+          <div className="p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/40 space-y-3 shadow-2xs">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+              <Plus size={13} />
+              <span>Add Business Email</span>
+            </div>
 
-            <form onSubmit={handleAddEmail} className="flex items-center gap-2">
+            <form onSubmit={handleAddEmail} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="relative flex-1">
                 <Input
                   type="email"
@@ -642,7 +686,7 @@ export default function ManageLeadEmailsModal({
                     if (error) setError(null);
                   }}
                   placeholder="e.g. founder@domain.ai, team@domain.com"
-                  className="h-9 text-xs pl-8 font-mono"
+                  className="h-9 text-xs pl-8 font-mono bg-white dark:bg-zinc-900"
                   disabled={isSubmitting && actionTarget === 'add'}
                 />
                 <Mail
@@ -651,51 +695,53 @@ export default function ManageLeadEmailsModal({
                 />
               </div>
 
-              <select
-                value={newEmailStatus}
-                onChange={(e) => setNewEmailStatus(e.target.value as EmailDeliverabilityStatus)}
-                disabled={isSubmitting && actionTarget === 'add'}
-                className="h-9 text-xs px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium cursor-pointer"
-                title="Deliverability status"
-              >
-                <option value="unverified">Unverified</option>
-                <option value="deliverable">Deliverable</option>
-                <option value="undeliverable">Undeliverable</option>
-              </select>
+              <div className="flex items-center gap-2 shrink-0">
+                <select
+                  value={newEmailStatus}
+                  onChange={(e) => setNewEmailStatus(e.target.value as EmailDeliverabilityStatus)}
+                  disabled={isSubmitting && actionTarget === 'add'}
+                  className="h-9 text-xs px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 font-medium cursor-pointer"
+                  title="Deliverability status"
+                >
+                  <option value="unverified">Unverified</option>
+                  <option value="deliverable">Deliverable</option>
+                  <option value="undeliverable">Undeliverable</option>
+                </select>
 
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!newEmail.trim() || (isSubmitting && actionTarget === 'add')}
-                className="h-9 text-xs px-4 font-semibold gap-1.5 shrink-0"
-              >
-                {isSubmitting && actionTarget === 'add' ? (
-                  <Spinner size={13} />
-                ) : (
-                  <Plus size={14} />
-                )}
-                Add Email
-              </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!newEmail.trim() || (isSubmitting && actionTarget === 'add')}
+                  className="h-9 text-xs px-4 font-semibold gap-1.5 shadow-xs"
+                >
+                  {isSubmitting && actionTarget === 'add' ? (
+                    <Spinner size={12} />
+                  ) : (
+                    <Plus size={13} />
+                  )}
+                  Add Email
+                </Button>
+              </div>
             </form>
 
-            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500 pl-1">
-              <Info size={12} className="shrink-0" />
-              <span>Emails are automatically normalized to lowercase and trimmed.</span>
+            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500 pl-0.5">
+              <Info size={11} className="shrink-0" />
+              <span>Addresses are automatically normalized to lowercase and trimmed.</span>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/20 flex items-center justify-between">
-          <span className="text-xs text-zinc-400">
-            Changes update the database immediately.
+        {/* ── Footer ── */}
+        <div className="px-6 py-3.5 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/50 flex items-center justify-between">
+          <span className="text-[11px] text-zinc-400">
+            Changes are saved to the database immediately.
           </span>
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="text-xs px-4"
+            className="text-xs px-4 border-zinc-200 dark:border-zinc-800"
           >
             Done
           </Button>

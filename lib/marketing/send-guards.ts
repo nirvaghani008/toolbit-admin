@@ -141,6 +141,21 @@ export function evaluateOutreachHistory(
       .filter(Boolean)
       .join(' ');
     templateSent = `Already received this template${times}${details ? ` (${details})` : ''}`;
+  } else if (history.templates && Object.keys(history.templates).length > 0) {
+    const entries = Object.entries(history.templates);
+    const totalCount = entries.reduce((acc, [, val]) => acc + (val?.count || 1), 0);
+    const sorted = [...entries].sort((a, b) => (b[1]?.lastSentAt || '').localeCompare(a[1]?.lastSentAt || ''));
+    const latest = sorted[0]?.[1];
+    const date = formatGuardDate(latest?.lastSentAt);
+    const details = [date ? `last on ${date}` : '', latest?.lastSentTo ? `to ${latest.lastSentTo}` : '']
+      .filter(Boolean)
+      .join(' ');
+    templateSent = `Already received outreach (${totalCount} prior email${totalCount === 1 ? '' : 's'}${details ? `, ${details}` : ''})`;
+  } else {
+    const s = (status || '').trim().toLowerCase();
+    if (s === 'emailed') {
+      templateSent = 'Lead status is "emailed" (outreach already sent)';
+    }
   }
 
   return { replied, templateSent };

@@ -34,12 +34,23 @@ import {
   MessageSquareText,
   Plus,
   Edit2,
-  Sparkles,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
-  getMarketingOutreachLeadsAction,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   updateOutreachLeadStatusAction,
   updateOutreachLeadEmailStatusAction,
+  deleteOutreachLeadAction,
+  bulkDeleteOutreachLeadsAction,
   type MarketingOutreachLead,
   type OutreachLeadsStats,
   type MarketingTemplate,
@@ -62,6 +73,8 @@ import LeadConversationDialog from './LeadConversationDialog';
 import LeadDetailsDialog from './LeadDetailsDialog';
 import ManageLeadEmailsModal from './ManageLeadEmailsModal';
 import EmailDeliverabilityBadge from './EmailDeliverabilityBadge';
+import AddLeadModal from './AddLeadModal';
+import EditLeadModal from './EditLeadModal';
 
 /** Clicks on these (or inside them) keep their own behavior and never open the details dialog. */
 const ROW_CLICK_IGNORE_SELECTOR = 'a, button, input, select, textarea, label, [data-no-row-click]';
@@ -97,7 +110,6 @@ export default function OutreachLeadsTable({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [hasEmailOnly, setHasEmailOnly] = useState(false);
   const [hasRepliesOnly, setHasRepliesOnly] = useState(false);
-  const [isToolSubmissionOnly, setIsToolSubmissionOnly] = useState(false);
 
   // Conversation dialog (history is written by the Resend webhook)
   const [conversationLead, setConversationLead] = useState<MarketingOutreachLead | null>(null);
@@ -112,8 +124,9 @@ export default function OutreachLeadsTable({
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Selection state (lead IDs)
-  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  // Selection state: map of lead ID -> MarketingOutreachLead
+  const [selectedLeadsMap, setSelectedLeadsMap] = useState<Map<string, MarketingOutreachLead>>(new Map());
+  const selectedLeadIds = useMemo(() => new Set(selectedLeadsMap.keys()), [selectedLeadsMap]);
 
   // Modal State
   const [sendModalOpen, setSendModalOpen] = useState(false);
@@ -121,6 +134,20 @@ export default function OutreachLeadsTable({
 
   // Email management modal
   const [managingEmailsLead, setManagingEmailsLead] = useState<MarketingOutreachLead | null>(null);
+
+  // Add Lead Modal State
+  const [addModalOpen, setAddModalOpen] = useState(false);
+
+  // Edit Lead Modal State
+  const [editingLead, setEditingLead] = useState<MarketingOutreachLead | null>(null);
+
+  // Single Delete Confirmation State
+  const [deletingLead, setDeletingLead] = useState<MarketingOutreachLead | null>(null);
+  const [isDeletingSingle, setIsDeletingSingle] = useState(false);
+
+  // Bulk Delete Confirmation State
+  const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
   // Toast / notification
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -150,21 +177,32 @@ export default function OutreachLeadsTable({
       else setLoading(true);
 
       try {
-        const res = await getMarketingOutreachLeadsAction(token, {
-          page,
-          pageSize,
-          search: debouncedSearch,
-          status: statusFilter,
-          source: sourceFilter,
-          hasEmailOnly,
-          hasRepliesOnly,
-          isToolSubmissionOnly,
+        const queryParams = new URLSearchParams({
+          page: String(page),
+          pageSize: String(pageSize),
         });
 
-        if (res.success && res.data) {
-          setLeads(res.data.leads);
-          setTotalCount(res.data.totalCount);
-          setStats(res.data.stats);
+        if (debouncedSearch) queryParams.set('search', debouncedSearch);
+        if (statusFilter && statusFilter !== 'all') queryParams.set('status', statusFilter);
+        if (sourceFilter && sourceFilter !== 'all') queryParams.set('source', sourceFilter);
+        if (hasEmailOnly) queryParams.set('hasEmailOnly', 'true');
+        if (hasRepliesOnly) queryParams.set('hasRepliesOnly', 'true');
+
+        const res = await fetch(`/api/admin/marketing/leads?${queryParams.toString()}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (res.ok && json?.success && json.data) {
+          setLeads(json.data.leads);
+          setTotalCount(json.data.totalCount);
+          setStats(json.data.stats);
+        } else {
+          console.error('Failed to load leads:', json?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
         console.error('Failed to load leads:', err);
@@ -173,7 +211,7 @@ export default function OutreachLeadsTable({
         setIsRefreshing(false);
       }
     },
-    [token, page, pageSize, debouncedSearch, statusFilter, sourceFilter, hasEmailOnly, hasRepliesOnly, isToolSubmissionOnly]
+    [token, page, pageSize, debouncedSearch, statusFilter, sourceFilter, hasEmailOnly, hasRepliesOnly]
   );
 
   useEffect(() => {
@@ -188,6 +226,14 @@ export default function OutreachLeadsTable({
         setLeads((prev) =>
           prev.map((l) => (l.id === itemId ? { ...l, status: newStatus } : l))
         );
+        setSelectedLeadsMap((prev) => {
+          const idStr = String(itemId);
+          if (!prev.has(idStr)) return prev;
+          const next = new Map(prev);
+          const existing = next.get(idStr);
+          if (existing) next.set(idStr, { ...existing, status: newStatus });
+          return next;
+        });
         setActionSuccess(`Updated lead status to "${newStatus}".`);
         fetchLeads(true);
       }
@@ -195,6 +241,9 @@ export default function OutreachLeadsTable({
       console.error('Failed to update status:', err);
     }
   };
+
+  // Total pages calculation
+  const totalPages = useMemo(() => Math.ceil(totalCount / pageSize) || 1, [totalCount, pageSize]);
 
   // Selection helpers
   const allPageIds = useMemo(() => leads.map((l) => l.id), [leads]);
@@ -206,24 +255,33 @@ export default function OutreachLeadsTable({
     !isAllPageSelected;
 
   const toggleSelectAllPage = () => {
-    const updated = new Set(selectedLeadIds);
-    if (isAllPageSelected) {
-      for (const id of allPageIds) updated.delete(id);
-    } else {
-      for (const id of allPageIds) updated.add(id);
-    }
-    setSelectedLeadIds(updated);
+    setSelectedLeadsMap((prev) => {
+      const next = new Map(prev);
+      if (isAllPageSelected) {
+        for (const id of allPageIds) next.delete(id);
+      } else {
+        for (const lead of leads) next.set(lead.id, lead);
+      }
+      return next;
+    });
   };
 
-  const toggleSelectLead = (id: string) => {
-    const updated = new Set(selectedLeadIds);
-    if (updated.has(id)) updated.delete(id);
-    else updated.add(id);
-    setSelectedLeadIds(updated);
+  const toggleSelectLead = (leadOrId: MarketingOutreachLead | string) => {
+    const id = typeof leadOrId === 'string' ? leadOrId : leadOrId.id;
+    const leadObj = typeof leadOrId === 'string' ? leads.find((l) => l.id === leadOrId) : leadOrId;
+    setSelectedLeadsMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (leadObj) {
+        next.set(id, leadObj);
+      }
+      return next;
+    });
   };
 
   const clearSelection = () => {
-    setSelectedLeadIds(new Set());
+    setSelectedLeadsMap(new Map());
   };
 
   // Open modal for single tool
@@ -232,9 +290,9 @@ export default function OutreachLeadsTable({
     setSendModalOpen(true);
   };
 
-  // Open modal for multiple selected tools
+  // Open modal for multiple selected tools (preserves selected leads across pages)
   const handleOpenBulkSend = () => {
-    const selected = leads.filter((l) => selectedLeadIds.has(l.id));
+    const selected = Array.from(selectedLeadsMap.values());
     if (selected.length === 0) return;
     setLeadsForModal(selected);
     setSendModalOpen(true);
@@ -277,6 +335,114 @@ export default function OutreachLeadsTable({
     setManagingEmailsLead((prev) =>
       prev && prev.id === leadId ? { ...prev, business_emails: updatedEmails } : prev
     );
+
+    setSelectedLeadsMap((prev) => {
+      if (!prev.has(leadId)) return prev;
+      const next = new Map(prev);
+      const existing = next.get(leadId);
+      if (existing) next.set(leadId, { ...existing, business_emails: updatedEmails });
+      return next;
+    });
+  };
+
+  // Handler when a new lead is created
+  const handleLeadCreated = (newLead: MarketingOutreachLead) => {
+    setLeads((prev) => [newLead, ...prev]);
+    setTotalCount((c) => c + 1);
+    setStats((s) => ({
+      ...s,
+      total: s.total + 1,
+      pending: newLead.status === 'pending' ? s.pending + 1 : s.pending,
+      emailed: newLead.status === 'emailed' ? s.emailed + 1 : s.emailed,
+      replied: newLead.status === 'replied' ? s.replied + 1 : s.replied,
+      withEmails: Object.keys(newLead.business_emails || {}).length > 0 ? s.withEmails + 1 : s.withEmails,
+    }));
+    setActionSuccess(`Successfully added "${newLead.tool_name}" to outreach leads.`);
+    fetchLeads(true);
+  };
+
+  // Handler when an existing lead is updated
+  const handleLeadUpdated = (updatedLead: MarketingOutreachLead) => {
+    setLeads((prev) =>
+      prev.map((l) => (l.id === updatedLead.id ? updatedLead : l))
+    );
+    setSelectedLeadsMap((prev) => {
+      if (!prev.has(updatedLead.id)) return prev;
+      const next = new Map(prev);
+      next.set(updatedLead.id, updatedLead);
+      return next;
+    });
+    setActionSuccess(`Updated details for "${updatedLead.tool_name}".`);
+    fetchLeads(true);
+  };
+
+  // Handler to permanently delete single lead
+  const handleConfirmDeleteSingle = async () => {
+    if (!deletingLead || !token) return;
+    setIsDeletingSingle(true);
+    try {
+      const res = await deleteOutreachLeadAction(token, deletingLead.id);
+      if (res.success) {
+        const deletedId = deletingLead.id;
+        const deletedName = deletingLead.tool_name;
+        const deletedStatus = deletingLead.status;
+        const hasEmail = Object.keys(deletingLead.business_emails || {}).length > 0;
+
+        setLeads((prev) => prev.filter((l) => l.id !== deletedId));
+        setSelectedLeadsMap((prev) => {
+          if (!prev.has(deletedId)) return prev;
+          const next = new Map(prev);
+          next.delete(deletedId);
+          return next;
+        });
+        setTotalCount((c) => Math.max(0, c - 1));
+        setStats((s) => ({
+          ...s,
+          total: Math.max(0, s.total - 1),
+          withEmails: hasEmail ? Math.max(0, s.withEmails - 1) : s.withEmails,
+          pending: deletedStatus === 'pending' ? Math.max(0, s.pending - 1) : s.pending,
+          emailed: deletedStatus === 'emailed' ? Math.max(0, s.emailed - 1) : s.emailed,
+          replied: deletedStatus === 'replied' ? Math.max(0, s.replied - 1) : s.replied,
+        }));
+        if (detailLeadId === deletedId) {
+          setDetailLeadId(null);
+        }
+        setActionSuccess(`Deleted outreach lead "${deletedName}".`);
+        setDeletingLead(null);
+        fetchLeads(true);
+      } else {
+        console.error('Failed to delete lead:', res.error);
+      }
+    } catch (err) {
+      console.error('Error deleting lead:', err);
+    } finally {
+      setIsDeletingSingle(false);
+    }
+  };
+
+  // Handler to bulk delete selected leads
+  const handleConfirmBulkDelete = async () => {
+    if (selectedLeadIds.size === 0 || !token) return;
+    setIsDeletingBulk(true);
+    try {
+      const idsToDelete = Array.from(selectedLeadIds);
+      const res = await bulkDeleteOutreachLeadsAction(token, idsToDelete);
+      if (res.success) {
+        const deletedCount = res.data?.deletedCount ?? idsToDelete.length;
+        setLeads((prev) => prev.filter((l) => !selectedLeadIds.has(l.id)));
+        setTotalCount((c) => Math.max(0, c - deletedCount));
+        clearSelection();
+        setActionSuccess(`Successfully deleted ${deletedCount} ${deletedCount === 1 ? 'lead' : 'leads'}.`);
+        setBulkDeleteModalOpen(false);
+        fetchLeads(true);
+      } else {
+        console.error('Failed to bulk delete leads:', res.error);
+      }
+    } catch (err) {
+      console.error('Error bulk deleting leads:', err);
+    } finally {
+      setIsDeletingBulk(false);
+    }
   };
 
   // Quick deliverability status toggle/change from the table badge
@@ -525,27 +691,9 @@ export default function OutreachLeadsTable({
               <MessageSquareText size={13} />
               <span>Has Replies</span>
             </button>
-
-            {/* Only Tool Submissions Toggle */}
-            <button
-              type="button"
-              aria-pressed={isToolSubmissionOnly}
-              onClick={() => {
-                setIsToolSubmissionOnly(!isToolSubmissionOnly);
-                setPage(1);
-              }}
-              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                isToolSubmissionOnly
-                  ? 'bg-amber-600 text-white dark:bg-amber-500 dark:text-zinc-900 border-amber-600 dark:border-amber-500 shadow-xs'
-                  : 'bg-zinc-50 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400'
-              }`}
-            >
-              <Sparkles size={13} className={isToolSubmissionOnly ? 'text-amber-100 dark:text-zinc-900' : 'text-amber-500'} />
-              <span>Tool Submissions</span>
-            </button>
           </div>
 
-          {/* Refresh Action */}
+          {/* Refresh & Add Lead Actions */}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -557,13 +705,21 @@ export default function OutreachLeadsTable({
               <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
               Refresh
             </Button>
+            <Button
+              size="sm"
+              onClick={() => setAddModalOpen(true)}
+              className="h-9 text-xs gap-1.5 bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 font-semibold shadow-xs cursor-pointer"
+            >
+              <Plus size={14} />
+              <span>Add Lead</span>
+            </Button>
           </div>
         </div>
       </Card>
 
       {/* ── Floating Sticky Bulk Action Bar (When Rows Are Selected) ── */}
       {selectedLeadIds.size > 0 && (
-        <div className="sticky top-20 z-20 flex items-center justify-between p-3 rounded-2xl bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md text-zinc-900 dark:text-zinc-100 shadow-md border border-zinc-200/80 dark:border-zinc-700/60 ring-1 ring-zinc-900/5 dark:ring-white/5 animate-in fade-in-50 slide-in-from-top-2 duration-200">
+        <div className="sticky top-20 z-20 flex items-center justify-between p-3 rounded-2xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md text-zinc-900 dark:text-zinc-100 shadow-md border border-zinc-200/80 dark:border-zinc-700/60 ring-1 ring-zinc-900/5 dark:ring-white/5 animate-in fade-in-50 slide-in-from-top-2 duration-200">
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-xs text-zinc-900 dark:text-zinc-100">
               {selectedLeadIds.size}
@@ -573,6 +729,50 @@ export default function OutreachLeadsTable({
             </span>
           </div>
 
+          {/* Quick page switcher when rows are selected */}
+          {totalCount > pageSize && (
+            <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+              <span>
+                Page <strong className="text-zinc-900 dark:text-zinc-100">{page}</strong> of{' '}
+                <strong className="text-zinc-900 dark:text-zinc-100">{totalPages}</strong>
+              </span>
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={page <= 1}
+                  onClick={() => {
+                    setPage((p) => Math.max(1, p - 1));
+                    if (tableCardRef.current) {
+                      const scrollableTable = tableCardRef.current.querySelector('.overflow-auto');
+                      if (scrollableTable) scrollableTable.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                  className="w-7 h-7 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer disabled:opacity-30"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={page >= totalPages}
+                  onClick={() => {
+                    setPage((p) => Math.min(totalPages, p + 1));
+                    if (tableCardRef.current) {
+                      const scrollableTable = tableCardRef.current.querySelector('.overflow-auto');
+                      if (scrollableTable) scrollableTable.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                  className="w-7 h-7 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer disabled:opacity-30"
+                  aria-label="Next page"
+                >
+                  <ChevronRight size={14} />
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -581,6 +781,15 @@ export default function OutreachLeadsTable({
               className="h-8 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
             >
               Clear
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkDeleteModalOpen(true)}
+              className="h-8 text-xs gap-1.5 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 cursor-pointer"
+            >
+              <Trash2 size={12} />
+              <span>Delete Selected</span>
             </Button>
             <Button
               size="sm"
@@ -597,15 +806,19 @@ export default function OutreachLeadsTable({
       {/* ── Leads Data Table ── */}
       <Card
         ref={tableCardRef}
-        className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs relative"
+        className={`rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xs relative overflow-hidden flex flex-col ${
+          selectedLeadIds.size > 0
+            ? 'h-[calc(100vh-560px)] min-h-[260px]'
+            : 'h-[calc(100vh-495px)] min-h-[300px]'
+        }`}
       >
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3 text-zinc-400">
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center py-16 gap-3 text-zinc-400">
             <Spinner size={32} className="text-zinc-900 dark:text-zinc-100" />
             <p className="text-xs font-medium">Loading outreach leads...</p>
           </div>
         ) : leads.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center text-zinc-400">
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center py-16 text-center text-zinc-400">
             <Users size={36} className="mb-2 opacity-40 text-zinc-400" />
             <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
               No marketing leads found
@@ -615,11 +828,14 @@ export default function OutreachLeadsTable({
             </p>
           </div>
         ) : (
-          <Table containerClassName="max-h-[600px] 2xl:max-h-[680px] rounded-t-2xl table-scrollbar" className="min-w-[1520px] border-collapse">
-            <TableHeader className="sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shadow-2xs">
+          <Table
+            containerClassName="w-full max-w-full overflow-x-auto overflow-y-auto flex-1 min-h-0 rounded-t-2xl table-scrollbar"
+            className="w-full min-w-[1780px] border-separate border-spacing-0"
+          >
+            <TableHeader className="sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900 shadow-2xs">
               <TableRow>
                 {/* Select All Checkbox - Sticky Left */}
-                <TableHead className="w-12 px-4 py-3.5 text-center sticky left-0 top-0 z-30 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200/80 dark:border-zinc-800/80">
+                <TableHead className="w-12 px-4 py-3.5 text-center sticky left-0 top-0 z-30 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 border-b border-zinc-200 dark:border-zinc-800">
                   <button
                     type="button"
                     onClick={toggleSelectAllPage}
@@ -637,28 +853,28 @@ export default function OutreachLeadsTable({
                     )}
                   </button>
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[240px]">
+                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[260px] border-b border-zinc-200 dark:border-zinc-800">
                   Tool / Product
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[260px]">
+                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[320px] border-b border-zinc-200 dark:border-zinc-800">
                   Business Emails
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[160px]">
+                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[160px] border-b border-zinc-200 dark:border-zinc-800">
                   Source Platforms
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[120px]">
+                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[120px] border-b border-zinc-200 dark:border-zinc-800">
                   Socials / Links
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[130px]">
+                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[140px] border-b border-zinc-200 dark:border-zinc-800">
                   Status
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[190px]">
+                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[210px] border-b border-zinc-200 dark:border-zinc-800">
                   Conversation
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[120px]">
+                <TableHead className="px-6 py-3.5 text-left align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 min-w-[130px] border-b border-zinc-200 dark:border-zinc-800">
                   Date Added
                 </TableHead>
-                <TableHead className="px-6 py-3.5 text-right align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 sticky right-0 top-0 z-30 bg-zinc-50 dark:bg-zinc-900 border-l border-zinc-200/80 dark:border-zinc-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.02)] min-w-[170px] pr-6">
+                <TableHead className="px-6 py-3.5 text-right align-middle text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 sticky right-0 top-0 z-30 bg-zinc-50 dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 border-b border-zinc-200 dark:border-zinc-800 shadow-[-4px_0_8px_rgba(0,0,0,0.06)] min-w-[240px] pr-6">
                   Action
                 </TableHead>
               </TableRow>
@@ -687,14 +903,14 @@ export default function OutreachLeadsTable({
                       }`}
                     >
                       {/* Selection Checkbox - Sticky Left */}
-                      <TableCell data-no-row-click className={`w-12 px-4 py-3.5 text-center sticky left-0 z-10 border-r border-zinc-100 dark:border-zinc-800/80 transition-colors ${
+                      <TableCell data-no-row-click className={`w-12 px-4 py-3.5 text-center sticky left-0 z-10 border-r border-zinc-200 dark:border-zinc-800 border-b border-zinc-100 dark:border-zinc-800/80 transition-colors ${
                         isSelected
-                          ? 'bg-zinc-50 dark:bg-zinc-800/90'
-                          : 'bg-white dark:bg-zinc-900 group-hover:bg-zinc-50/90 dark:group-hover:bg-zinc-800/50'
+                          ? 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-800'
+                          : 'bg-white dark:bg-zinc-900 group-hover:bg-zinc-50 dark:group-hover:bg-zinc-800'
                       }`}>
                         <button
                           type="button"
-                          onClick={() => toggleSelectLead(lead.id)}
+                          onClick={() => toggleSelectLead(lead)}
                           className="inline-flex items-center justify-center text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
                         >
                           {isSelected ? (
@@ -706,7 +922,7 @@ export default function OutreachLeadsTable({
                       </TableCell>
 
                       {/* Tool Name & Site URL */}
-                      <TableCell className="px-6 py-3.5 min-w-[240px]">
+                      <TableCell className="px-6 py-3.5 min-w-[260px] border-b border-zinc-100 dark:border-zinc-800/80">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
@@ -750,7 +966,7 @@ export default function OutreachLeadsTable({
                       </TableCell>
 
                       {/* Business Emails (Clean & Modern Layout) */}
-                      <TableCell className="px-6 py-3.5 min-w-[300px]">
+                      <TableCell className="px-6 py-3.5 min-w-[320px] border-b border-zinc-100 dark:border-zinc-800/80">
                         {hasEmail ? (
                           <div className="flex items-start justify-between gap-2 max-w-[320px]">
                             <div className="flex flex-col gap-1.5 min-w-0 flex-1">
@@ -837,7 +1053,7 @@ export default function OutreachLeadsTable({
                       </TableCell>
 
                       {/* Source Platforms */}
-                      <TableCell className="px-6 py-3.5 min-w-[160px]">
+                      <TableCell className="px-6 py-3.5 min-w-[160px] border-b border-zinc-100 dark:border-zinc-800/80">
                         <div className="flex flex-wrap gap-1 max-w-[180px]">
                           {sources.length > 0 ? (
                             sources.map((src, i) => {
@@ -859,7 +1075,7 @@ export default function OutreachLeadsTable({
                       </TableCell>
 
                       {/* Socials / Links */}
-                      <TableCell className="px-6 py-3.5 min-w-[120px]">
+                      <TableCell className="px-6 py-3.5 min-w-[120px] border-b border-zinc-100 dark:border-zinc-800/80">
                         <div className="flex items-center gap-2 text-zinc-400">
                           {socials.some((s) => s.includes('twitter') || s.includes('x.com')) && (
                             <a
@@ -901,7 +1117,7 @@ export default function OutreachLeadsTable({
                       </TableCell>
 
                       {/* Status Control */}
-                      <TableCell className="px-6 py-3.5 min-w-[130px]">
+                      <TableCell className="px-6 py-3.5 min-w-[140px] border-b border-zinc-100 dark:border-zinc-800/80">
                         <StatusChangeControl
                           itemId={lead.id}
                           currentStatus={lead.status}
@@ -923,7 +1139,7 @@ export default function OutreachLeadsTable({
                       </TableCell>
 
                       {/* Conversation summary & Conversion status */}
-                      <TableCell className="px-6 py-3.5 min-w-[190px]">
+                      <TableCell className="px-6 py-3.5 min-w-[210px] border-b border-zinc-100 dark:border-zinc-800/80">
                         <div className="space-y-1">
                           {(() => {
                             const summary = lead.conversation_summary;
@@ -999,7 +1215,7 @@ export default function OutreachLeadsTable({
                       </TableCell>
 
                       {/* Date Added */}
-                      <TableCell className="px-6 py-3.5 min-w-[120px] text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                      <TableCell className="px-6 py-3.5 min-w-[130px] text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap border-b border-zinc-100 dark:border-zinc-800/80">
                         {lead.created_at
                           ? new Date(lead.created_at).toLocaleDateString('en-US', {
                               month: 'short',
@@ -1009,22 +1225,42 @@ export default function OutreachLeadsTable({
                           : '—'}
                       </TableCell>
 
-                      {/* Quick Send Action - Sticky Right (disabled buttons use pointer-events-none, so the whole cell opts out of row clicks) */}
-                      <TableCell data-no-row-click className={`px-6 py-3.5 text-right pr-6 sticky right-0 z-10 border-l border-zinc-100 dark:border-zinc-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.02)] min-w-[170px] transition-colors ${
+                      {/* Quick Actions - Sticky Right (disabled buttons use pointer-events-none, so the whole cell opts out of row clicks) */}
+                      <TableCell data-no-row-click className={`px-6 py-3.5 text-right pr-6 sticky right-0 z-10 border-l border-zinc-200 dark:border-zinc-800 border-b border-zinc-100 dark:border-zinc-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.06)] min-w-[240px] transition-colors ${
                         isSelected
-                          ? 'bg-zinc-50 dark:bg-zinc-800/90'
-                          : 'bg-white dark:bg-zinc-900 group-hover:bg-zinc-50/90 dark:group-hover:bg-zinc-800/50'
+                          ? 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-800'
+                          : 'bg-white dark:bg-zinc-900 group-hover:bg-zinc-50 dark:group-hover:bg-zinc-800'
                       }`}>
                         <div className="inline-flex items-center gap-1.5">
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => setEditingLead(lead)}
+                          className="h-8 w-8 p-0 cursor-pointer text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-600"
+                          title={`Edit ${lead.tool_name}`}
+                          aria-label={`Edit ${lead.tool_name}`}
+                        >
+                          <Edit2 size={13} />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => setConversationLead(lead)}
-                          className="h-8 w-8 p-0 cursor-pointer text-zinc-600 dark:text-zinc-300"
+                          className="h-8 w-8 p-0 cursor-pointer text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100"
                           title={`View conversation with ${lead.tool_name}`}
                           aria-label={`View conversation with ${lead.tool_name}`}
                         >
                           <MessageSquare size={13} />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDeletingLead(lead)}
+                          className="h-8 w-8 p-0 cursor-pointer text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800/60"
+                          title={`Delete ${lead.tool_name}`}
+                          aria-label={`Delete ${lead.tool_name}`}
+                        >
+                          <Trash2 size={13} />
                         </Button>
                         {/* Solid `default` variant when sendable: its hover keeps text contrast in both themes
                             (the outline variant's hover:text-[--text-primary] made the label vanish on hover). */}
@@ -1050,13 +1286,15 @@ export default function OutreachLeadsTable({
             </Table>
         )}
 
-        {/* ── Table Footer & Pagination (Reusable Component Only) ── */}
-        {!loading && totalCount > 0 && (
+        {/* ── Table Footer & Pagination (Sticky Bottom so it never hides on row selection or scroll) ── */}
+        {totalCount > 0 && (
           <Pagination
             totalCount={totalCount}
             pageSize={pageSize}
             currentPage={page}
+            disabled={loading}
             onPageChange={(p) => {
+              if (loading) return;
               setPage(p);
               if (tableCardRef.current) {
                 const scrollableTable = tableCardRef.current.querySelector('.overflow-auto');
@@ -1072,7 +1310,7 @@ export default function OutreachLeadsTable({
                 }
               }
             }}
-            className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 rounded-b-2xl"
+            className="shrink-0 mt-auto py-2.5 px-6 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-b-2xl"
           />
         )}
       </Card>
@@ -1112,6 +1350,8 @@ export default function OutreachLeadsTable({
           onViewConversation={handleViewConversationFromDetails}
           onSendEmail={handleSendFromDetails}
           onLeadUpdated={(updatedLead) => handleEmailsUpdated(updatedLead.id, updatedLead.business_emails)}
+          onEditLead={(lead) => setEditingLead(lead)}
+          onDeleteLead={(lead) => setDeletingLead(lead)}
         />
       )}
 
@@ -1127,6 +1367,137 @@ export default function OutreachLeadsTable({
           onEmailsUpdated={handleEmailsUpdated}
         />
       )}
+
+      {/* ── Add Lead Modal ── */}
+      <AddLeadModal
+        open={addModalOpen}
+        onOpenChange={setAddModalOpen}
+        token={token}
+        onLeadCreated={handleLeadCreated}
+      />
+
+      {/* ── Edit Lead Modal ── */}
+      {editingLead && (
+        <EditLeadModal
+          open={Boolean(editingLead)}
+          onOpenChange={(open) => {
+            if (!open) setEditingLead(null);
+          }}
+          lead={editingLead}
+          token={token}
+          onLeadUpdated={handleLeadUpdated}
+        />
+      )}
+
+      {/* ── Single Delete Confirmation Dialog ── */}
+      <Dialog
+        open={Boolean(deletingLead)}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingSingle) setDeletingLead(null);
+        }}
+      >
+        <DialogContent className="max-w-md p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <Trash2 size={18} className="text-rose-600 dark:text-rose-400" />
+              Delete Outreach Lead
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">
+              Are you sure you want to delete{' '}
+              <strong className="text-zinc-900 dark:text-zinc-100">{deletingLead?.tool_name}</strong>?
+              This will permanently remove the lead, associated emails, and conversation logs. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-6 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isDeletingSingle}
+              onClick={() => setDeletingLead(null)}
+              className="text-xs cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={isDeletingSingle}
+              onClick={handleConfirmDeleteSingle}
+              className="text-xs gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-medium cursor-pointer"
+            >
+              {isDeletingSingle ? (
+                <>
+                  <Spinner size={14} className="text-white" />
+                  <span>Deleting...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 size={13} />
+                  <span>Delete Permanently</span>
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Bulk Delete Confirmation Dialog ── */}
+      <Dialog
+        open={bulkDeleteModalOpen}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingBulk) setBulkDeleteModalOpen(false);
+        }}
+      >
+        <DialogContent className="max-w-md p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <Trash2 size={18} className="text-rose-600 dark:text-rose-400" />
+              Bulk Delete Leads
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">
+              Are you sure you want to permanently delete{' '}
+              <strong className="text-zinc-900 dark:text-zinc-100">
+                {selectedLeadIds.size} {selectedLeadIds.size === 1 ? 'selected lead' : 'selected leads'}
+              </strong>?
+              All emails and outreach histories associated with these records will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-6 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isDeletingBulk}
+              onClick={() => setBulkDeleteModalOpen(false)}
+              className="text-xs cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={isDeletingBulk}
+              onClick={handleConfirmBulkDelete}
+              className="text-xs gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-medium cursor-pointer"
+            >
+              {isDeletingBulk ? (
+                <>
+                  <Spinner size={14} className="text-white" />
+                  <span>Deleting {selectedLeadIds.size}...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 size={13} />
+                  <span>Delete {selectedLeadIds.size} Leads</span>
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
